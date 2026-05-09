@@ -2190,72 +2190,78 @@ void sc1PStageClearCopyFramebufToWallpaper(void)
 	u32 *wallpaper_pixels;
 
 #ifdef PORT
-	/* On the port the GPU rasterizer never writes back to gSYFramebufferSets,
-	 * so gSYSchedulerCurrentFramebuffer is zero (issue #57). Capture the live
-	 * GPU framebuffer to a 320x240 RGBA5551 buffer (N64 BE per-pixel, top-down
-	 * origin), then write linear pixels straight into the wallpaper bitmap.
+	/* GPU framebuffer passthrough (issue #57).
 	 *
-	 * The decomp swap-chunk + +=2-every-6-rows loop is the N64-side bake-in
-	 * of the inverse RDP TMEM line swizzle (XOR-4 odd-row qword swap). LUS
-	 * Fast3D doesn't emulate the RDP swizzle on LoadBlock; instead its sprite
-	 * load path expects linear data after `portFixupSpriteBitmapData` has
-	 * undone the file's pre-swizzle. So on PORT we write linear and skip the
-	 * decomp loop entirely. */
+	 * On real hardware the RDP renders into RDRAM so the CPU can memcpy
+	 * the framebuffer pixels straight into the wallpaper bitmap. Under
+	 * libultraship the RDP is replaced by a GPU rasterizer and
+	 * gSYSchedulerCurrentFramebuffer stays zero, so the original copy
+	 * loop produced an all-black wallpaper.
+	 *
+	 * Replacement: register every stripe-bitmap's pixel buffer as a
+	 * mirror of an internal snapshot FB. The wallpaper sprite is split
+	 * into ~37 row-stripes (one Bitmap struct per stripe); the sprite
+	 * renderer issues one gsDPSetTextureImage(bitmap[i].buf) per
+	 * stripe, so we have to register every stripe address that the
+	 * GBI will reference. Fast3D then samples the snapshot directly
+	 * via SelectTextureFb -- no CPU readback, no byte-swap, no
+	 * texture-cache eviction, full GPU resolution. The registrations
+	 * are dropped on the next scene change via lbRelocInitSetup ->
+	 * port_capture_release_all (see port/bridge/lbreloc_bridge.cpp). */
 	{
-		const u16 *cap;
 		Sprite *wp_sprite = lbRelocGetFileData(Sprite*, sSC1PStageClearFiles[6], llGRWallpaperTrainingBlackSprite);
 		Bitmap *wp_bitmap;
-		u16 *dst;
-		const u16 *src_row;
-		u16 *dst_row;
-		s32 row, col;
+		s32 nbitmaps;
+		s32 i;
+		s32 bytes_per_row;
 
-		/* Make sure the sprite's struct fields and the file's pre-swizzled
-		 * pixel data have all been normalised so wp_bitmap->buf points at
-		 * a linear-RGBA5551 buffer Fast3D can read directly. All idempotent. */
+		/* Normalise the sprite/bitmap structs so each bitmap[i].buf is
+		 * a resolved native pointer Fast3D will see in its GBI
+		 * processing. All idempotent. */
 		portFixupSprite(wp_sprite);
 		wp_bitmap = (Bitmap*)PORT_RESOLVE(wp_sprite->bitmap);
-		portFixupBitmapArray(wp_bitmap, (unsigned int)wp_sprite->nbitmaps);
+		nbitmaps = wp_sprite->nbitmaps;
+		portFixupBitmapArray(wp_bitmap, (unsigned int)nbitmaps);
 		portFixupSpriteBitmapData(wp_sprite, wp_bitmap);
 
-		dst = (u16*)PORT_RESOLVE(wp_bitmap->buf);
-		/* User opt-out, OR the GPU readback bridge couldn't grab a clean
-		 * source FB (e.g. Windows D3D11 default config — see
-		 * port/bridge/framebuffer_capture.cpp). In either case leave the
-		 * fixed-up asset pixels untouched: the wallpaper renders the asset's
-		 * stored solid-black bitmap, matching the pre-fix behaviour. */
+		/* User opt-out leaves the asset's stored black bitmap untouched. */
 		if (!port_enhancement_stage_clear_frozen_wallpaper_enabled()) {
 			return;
 		}
-		if (port_capture_game_framebuffer() != 0 || dst == NULL) {
-			return;
-		}
-		cap = port_get_captured_framebuffer();
 
-		/* The wallpaper bitmap buffer is laid out as 300 visible pixels
-		 * per row plus a 4-pixel (8-byte) skip every 6 rows, matching
-		 * what the original decomp writer produced -- a TMEM-line-stride
-		 * artefact preserved by the asset pipeline. Mirror that exact
-		 * dst stride pattern (without the chunk-swap, which compensated
-		 * for the N64 RDP's odd-row qword swizzle that LUS Fast3D's
-		 * sprite path doesn't reproduce). */
-		dst_row = dst;
-		for (row = 0; row < 220; row++) {
-			src_row = cap + (10 + row) * 320 + 10;
-			for (col = 0; col < 300; col++) {
-				dst_row[col] = src_row[col];
+		/* Each bitmap[i] is one row-stripe of the wallpaper. Stripes stack
+		 * top-to-bottom into the photo region (rows 10..229, cols 10..309
+		 * of the N64 320x240 framebuffer) -- the same region the original
+		 * decomp memcpy loop pulled from gSYSchedulerCurrentFramebuffer.
+		 * For each stripe we register its CPU buf range AND the
+		 * corresponding sub-rect of the snapshot FB so its local UV (0..1)
+		 * samples just its slice. RGBA5551 = 2 bytes/px; width_img is the
+		 * stripe's natural row width (the LoadBlock line stride). */
+		const float fb_w_n64 = 320.0f;
+		const float fb_h_n64 = 240.0f;
+		const float photo_x0 = 10.0f;
+		const float photo_y0 = 10.0f;
+		s32 cur_y = 0; /* cumulative N64 rows consumed across stripes so far */
+		for (i = 0; i < nbitmaps; i++) {
+			void *buf = PORT_RESOLVE(wp_bitmap[i].buf);
+			s32 width_img = wp_bitmap[i].width_img;
+			s32 actualHeight = wp_bitmap[i].actualHeight;
+			if (buf == NULL || width_img <= 0 || actualHeight <= 0) {
+				continue;
 			}
-			dst_row += 300;
-			if (((row + 1) % 6) == 0) {
-				dst_row += 4; /* +2 u32 = +4 u16 */
-			}
-		}
+			bytes_per_row = width_img * 2;
 
-		/* Drop any cached GPU upload of this buffer so Fast3D re-reads
-		 * the freshly captured pixels next frame. The +288 covers the
-		 * 36 stride-padding gaps the loop wrote past the natural
-		 * width*height extent (see comment above). */
-		portTextureCacheDeleteRange(dst, (size_t)wp_bitmap->width * 220u * sizeof(u16) + 288u);
+			float u0 = photo_x0 / fb_w_n64;
+			float u1 = (photo_x0 + (float)width_img) / fb_w_n64;
+			float v0 = (photo_y0 + (float)cur_y) / fb_h_n64;
+			float v1 = (photo_y0 + (float)(cur_y + actualHeight)) / fb_h_n64;
+
+			(void)port_capture_register_fb_for_subrect(
+				buf, (unsigned int)(bytes_per_row * actualHeight),
+				u0, v0, u1, v1);
+
+			cur_y += actualHeight;
+		}
 	}
 #else
 	// gSYSchedulerCurrentFramebuffer = framebuf0; start farther in, skipping border

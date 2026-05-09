@@ -197,3 +197,30 @@ void func_ovl0_800D4C90(void)
 {
     return;
 }
+
+extern int port_cheat_unlock_all(void);
+extern int port_cheat_unlock_luigi(void);
+extern int port_cheat_unlock_ness(void);
+extern int port_cheat_unlock_captain(void);
+extern int port_cheat_unlock_purin(void);
+extern int port_cheat_unlock_inishie(void);
+extern int port_cheat_unlock_soundtest(void);
+extern int port_cheat_unlock_itemswitch(void);
+
+void lbBackupApplyCheats(void) {
+    // If the master cheat is checked, unlock everything instantly
+    if (port_cheat_unlock_all()) {
+        gSCManagerBackupData.fighter_mask |= LBBACKUP_CHARACTER_MASK_ALL;
+        gSCManagerBackupData.unlock_mask  |= LBBACKUP_UNLOCK_MASK_ALL;
+    } else {
+        // Otherwise, check them individually
+        if (port_cheat_unlock_luigi())   gSCManagerBackupData.fighter_mask |= LBBACKUP_MASK_FIGHTER(nFTKindLuigi);
+        if (port_cheat_unlock_ness())    gSCManagerBackupData.fighter_mask |= LBBACKUP_MASK_FIGHTER(nFTKindNess);
+        if (port_cheat_unlock_captain()) gSCManagerBackupData.fighter_mask |= LBBACKUP_MASK_FIGHTER(nFTKindCaptain);
+        if (port_cheat_unlock_purin())   gSCManagerBackupData.fighter_mask |= LBBACKUP_MASK_FIGHTER(nFTKindPurin);
+
+        if (port_cheat_unlock_inishie())    gSCManagerBackupData.unlock_mask |= LBBACKUP_UNLOCK_MASK_INISHIE;
+        if (port_cheat_unlock_soundtest())  gSCManagerBackupData.unlock_mask |= LBBACKUP_UNLOCK_MASK_SOUNDTEST;
+        if (port_cheat_unlock_itemswitch()) gSCManagerBackupData.unlock_mask |= LBBACKUP_UNLOCK_MASK_ITEMSWITCH;
+    }
+}
