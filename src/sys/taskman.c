@@ -1314,6 +1314,8 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 	GCSetup gcsetup;
 
 #ifdef PORT
+	extern void port_taskman_evict_arena_caches(const void *base, size_t size);
+
 	/* The original arena_start / arena_size values come from N64 linker
 	 * symbols. In the host port those symbols are ordinary globals, so their
 	 * relative addresses are not a valid heap on any platform. Use a fresh
@@ -1348,6 +1350,7 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 		         (unsigned long long)tsetup->scene_setup.arena_size);
 		if (sPrevHeap != NULL)
 		{
+			port_taskman_evict_arena_caches(sPrevHeap, kPortHeapSize);
 			port_log("SSB64: syTaskmanStartTask — freeing prev PORT heap=%p (16MiB)\n", sPrevHeap);
 			free(sPrevHeap);
 		}
