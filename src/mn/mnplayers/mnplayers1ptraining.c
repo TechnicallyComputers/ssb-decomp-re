@@ -9,6 +9,9 @@
 extern void *func_800269C0_275C0(u16 id);
 extern void func_80026738_27338(void *arg0);
 extern void func_800266A0_272A0(void);
+#ifdef PORT
+extern float port_widescreen_clip_x_scale(void);
+#endif
 
 
 // // // // // // // // // // // //
@@ -1163,6 +1166,18 @@ void mnPlayers1PTrainingMakeFighter(GObj *fighter_gobj, s32 player, s32 fkind, s
 			DObjGetStruct(fighter_gobj)->translate.vec.f.x = 830.0F;
 			DObjGetStruct(fighter_gobj)->translate.vec.f.y = -870.0F;
 		}
+#ifdef PORT
+		/* Widescreen: pre-divide world-x so both man and CPU fighters land
+		 * at their 4:3 authored NDC positions vs the 2D panel UI. Same
+		 * pattern as the VS CSS fix. */
+		{
+			f32 scale = port_widescreen_clip_x_scale();
+			if (scale > 0.0F && scale < 1.0F)
+			{
+				DObjGetStruct(fighter_gobj)->translate.vec.f.x /= scale;
+			}
+		}
+#endif
 		DObjGetStruct(fighter_gobj)->rotate.vec.f.y = rot_y;
 
 		DObjGetStruct(fighter_gobj)->scale.vec.f.x = dSCSubsysFighterScales[fkind];
@@ -2820,6 +2835,17 @@ void mnPlayers1PTrainingMakeSpotlight(void)
 			DObjGetStruct(gobj)->translate.vec.f.y = -870.0F;
 			DObjGetStruct(gobj)->translate.vec.f.z = 0.0F;
 		}
+#ifdef PORT
+		/* Track the widened fighter world-x so each spotlight stays under
+		 * its fighter. */
+		{
+			f32 scale = port_widescreen_clip_x_scale();
+			if (scale > 0.0F && scale < 1.0F)
+			{
+				DObjGetStruct(gobj)->translate.vec.f.x /= scale;
+			}
+		}
+#endif
 	}
 }
 

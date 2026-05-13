@@ -7,6 +7,7 @@
 
 #ifdef PORT
 #include <enhancements/enhancements.h>
+extern float port_widescreen_clip_x_scale(void);
 #endif
 
 // // // // // // // // // // // //
@@ -1157,6 +1158,32 @@ void ftDisplayMainProcDisplay(GObj *fighter_gobj)
                     ft_pos.y += 300.0F;
 
                     func_ovl2_800EB924(CObjGetStruct(gGMCameraGObj), gGMCameraMatrix, &ft_pos, &fp->magnify_pos.x, &fp->magnify_pos.y);
+
+#ifdef PORT
+                    /* Widescreen: func_ovl2_800EB924 compresses *rx by the
+                     * same factor libultraship's AdjXForAspectRatio applies
+                     * to 3D vertices, so HUD sprites that attach to projected
+                     * world points track the rendered character. The magnify
+                     * (offscreen-fighter bubble) is the exception: it uses
+                     * fp->magnify_pos to (a) compute the arrow's rotation
+                     * via atan2(y, x) and (b) trace the ray from origin to
+                     * the viewport edge in ifCommonPlayerMagnifyGetPosition.
+                     * Both want the *un-compressed direction* — atan2 with
+                     * a shrunk x produces an over-vertical angle, and the
+                     * traced edge intersection lands in the wrong direction.
+                     * Undo the compression here so the magnify path sees the
+                     * true 4:3 projection. The arrow's translate then gets
+                     * pre-divided by the same scale in ifCommonPlayerMagnify-
+                     * ProcDisplay so AdjX brings it back to align with the
+                     * (non-AdjX'd) bubble frame texture. */
+                    {
+                        f32 scale = port_widescreen_clip_x_scale();
+                        if (scale > 0.0F && scale < 1.0F)
+                        {
+                            fp->magnify_pos.x /= scale;
+                        }
+                    }
+#endif
 
                     fp->is_magnify_show = TRUE;
 

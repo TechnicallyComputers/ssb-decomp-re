@@ -3,6 +3,10 @@
 #include <sys/matrix.h>
 #include <ef/efdef.h>
 
+#ifdef PORT
+extern float port_widescreen_clip_x_scale(void);
+#endif
+
 extern u16 gSYSinTable[0x800];
 
 // // // // // // // // // // // //
@@ -1822,11 +1826,36 @@ void lbParticleDrawTextures(GObj *gobj)
                     else
                     {
                         tm = 1.0F / tm;
-                
+
                         tx *= tm;
                         ty *= tm;
                         tz *= tm;
-                        
+
+#ifdef PORT
+                        /* Widescreen: particles are projected on the CPU here
+                         * and drawn via gSPScisTextureRectangle (below),
+                         * which libultraship deliberately leaves at authored
+                         * 4:3 NDC — bypassing AdjXForAspectRatio. The 3D
+                         * pipeline meanwhile compresses character vertex
+                         * clip-X by (4/3)/window_aspect to widen the camera
+                         * frustum. Without compensation here, particles like
+                         * Ness's PSI double-jump sparkles drift away from
+                         * the character. Apply the same compression to clip-
+                         * space x (center) and mx (half-width) so the quad
+                         * matches AdjX's effect on a 3D vertex pair. Compress
+                         * before the bounds check so particles that the
+                         * widescreen frustum has brought into view (raw
+                         * |tx| > 1, compressed |tx| <= 1) render correctly. */
+                        {
+                            f32 ws_scale = port_widescreen_clip_x_scale();
+                            if (ws_scale > 0.0F && ws_scale < 1.0F)
+                            {
+                                tx *= ws_scale;
+                                mx *= ws_scale;
+                            }
+                        }
+#endif
+
                         if
                         (
                             (tx < -1.0F) || (tx > 1.0F) ||

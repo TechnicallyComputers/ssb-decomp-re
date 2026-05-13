@@ -324,7 +324,27 @@ void mvOpeningRunFuncRun(GObj *gobj)
 		{
 			mvOpeningRunMakeCrash();
 			func_800269C0_275C0(nSYAudioFGMExplodeL);
+#ifdef PORT
+			/* Issue #73 restored the impact-flash mesh, but that mesh's
+			 * world geometry spans ~480 Z units of depth (parent rotate.y
+			 * = 90° swings the local-XY-planar starburst into the YZ plane).
+			 * In 4:3 the depth foreshortening is hidden behind the scissor
+			 * crop; in widescreen the extra horizontal frustum exposes a
+			 * perspective trapezoid. Tighten the scissor to the original
+			 * 4:3 sub-region for the 30-tic explosion window so the mesh
+			 * renders the same in widescreen as in 4:3, including the
+			 * 26-frame bitmap animation cycling through the rays. */
+			extern void GfxSetTight4_3ScissorWindow(int active);
+			GfxSetTight4_3ScissorWindow(1);
+#endif
 		}
+#ifdef PORT
+		if (sMVOpeningRunTotalTimeTics == 220)
+		{
+			extern void GfxSetTight4_3ScissorWindow(int active);
+			GfxSetTight4_3ScissorWindow(0);
+		}
+#endif
 		if (sMVOpeningRunTotalTimeTics == 220)
 		{
 			gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;

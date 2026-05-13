@@ -2038,11 +2038,31 @@ void gcDrawDObjDLLinks(DObj *dobj, DObjDLLink *dl_link)
     Gfx *dl_end; // end
     s32 unused;
     void *ptr;
+#ifdef PORT
+    s32 walk_count = 0;
+#endif
 
     list_id = -1;
 
     if ((dl_link != NULL) && (dobj->flags == DOBJ_FLAG_NONE))
     {
+#ifdef PORT
+        /* PORT defensive guard: bail before indexing arrays if list_id is
+         * OOB. See gcDrawDObjTreeDLLinks for the stale-dl_link rationale. */
+        if ((u32)dl_link->list_id > (u32)ARRAY_COUNT(gSYTaskmanDLHeads))
+        {
+            static u32 sStaleDLLinkSpamFrame = 0xFFFFFFFFu;
+            if (sStaleDLLinkSpamFrame != dSYTaskmanFrameCount)
+            {
+                sStaleDLLinkSpamFrame = dSYTaskmanFrameCount;
+                port_log("SSB64: gcDrawDObjDLLinks: stale dl_link head bail "
+                         "dobj=%p dl_link=%p list_id=%d frame=%u\n",
+                         (void*)dobj, (void*)dl_link, dl_link->list_id,
+                         (unsigned)dSYTaskmanFrameCount);
+            }
+            return;
+        }
+#endif
         dl_start = gSYTaskmanDLHeads[dl_link->list_id];
         num = gcPrepDObjMatrix(&gSYTaskmanDLHeads[dl_link->list_id], dobj);
         dl_end = gSYTaskmanDLHeads[dl_link->list_id];
@@ -2069,6 +2089,23 @@ void gcDrawDObjDLLinks(DObj *dobj, DObjDLLink *dl_link)
 
         while ((++dl_link)->list_id != ARRAY_COUNT(gSYTaskmanDLHeads))
         {
+#ifdef PORT
+            /* PORT defensive: bound list_id and cap iterations (see head guard above). */
+            if (((u32)dl_link->list_id > (u32)ARRAY_COUNT(gSYTaskmanDLHeads))
+                || (++walk_count > 64))
+            {
+                static u32 sStaleDLLinkLoopSpamFrame = 0xFFFFFFFFu;
+                if (sStaleDLLinkLoopSpamFrame != dSYTaskmanFrameCount)
+                {
+                    sStaleDLLinkLoopSpamFrame = dSYTaskmanFrameCount;
+                    port_log("SSB64: gcDrawDObjDLLinks: stale dl_link tail bail "
+                             "dobj=%p dl_link=%p list_id=%d walk=%d frame=%u\n",
+                             (void*)dobj, (void*)dl_link, dl_link->list_id, walk_count,
+                             (unsigned)dSYTaskmanFrameCount);
+                }
+                break;
+            }
+#endif
             if (dl_link->dl != NULL)
             {
                 Gfx *dl_curr = dl_start;
@@ -2134,6 +2171,9 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
     DObj *current_dobj;
     void *ptr;
     f32 bak;
+#ifdef PORT
+    s32 walk_count;
+#endif
 
     ptr = NULL;
 
@@ -2146,8 +2186,36 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
 
         if ((dl_link != NULL) && !(dobj->flags & DOBJ_FLAG_NOTEXTURE))
         {
+#ifdef PORT
+            walk_count = 0;
+#endif
             while (dl_link->list_id != ARRAY_COUNT(gSYTaskmanDLHeads))
             {
+#ifdef PORT
+                /* PORT defensive guard: a stale dobj->dl_link surviving a
+                 * scene-heap recycle (issue #128 family) points at memory
+                 * whose first u32 (list_id) is either out-of-range — would
+                 * OOB-index sGCForwardDLs[] / gSYTaskmanDLHeads[] — or zero
+                 * with a NULL dl, walking forever past the relocData
+                 * sentinel { ARRAY_COUNT(...), NULL }. Cast to u32 so
+                 * negative s32 garbage trips the bound; cap iterations at
+                 * 64 (real arrays are <= 8 entries). */
+                if (((u32)dl_link->list_id > (u32)ARRAY_COUNT(gSYTaskmanDLHeads))
+                    || (++walk_count > 64))
+                {
+                    static u32 sStaleDLLinkSpamFrame = 0xFFFFFFFFu;
+                    if (sStaleDLLinkSpamFrame != dSYTaskmanFrameCount)
+                    {
+                        sStaleDLLinkSpamFrame = dSYTaskmanFrameCount;
+                        port_log("SSB64: gcDrawDObjTreeDLLinks: stale dl_link bail "
+                                 "dobj=%p dl_link=%p root=%p list_id=%d walk=%d frame=%u\n",
+                                 (void*)dobj, (void*)dl_link, (void*)dobj->dl_link,
+                                 dl_link->list_id, walk_count,
+                                 (unsigned)dSYTaskmanFrameCount);
+                    }
+                    break;
+                }
+#endif
                 if (dl_link->dl != NULL)
                 {
                     while (sGCCurrentDL != sGCForwardDLs[dl_link->list_id])

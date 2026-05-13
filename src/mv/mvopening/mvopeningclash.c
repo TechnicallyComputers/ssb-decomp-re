@@ -350,12 +350,38 @@ void mvOpeningClashFuncRun(GObj *gobj)
         }
         if (scSubsysControllerGetPlayerTapButtons(A_BUTTON | B_BUTTON | START_BUTTON) != FALSE)
         {
+#ifdef PORT
+            /* Tap-skip jumps straight to Title, bypassing OpeningNewcomers
+             * where the scissor is normally cleared. Clear it here so the
+             * Title scene doesn't inherit the clash-window crop. */
+            extern void GfxSetTight4_3ScissorWindow(int active);
+            GfxSetTight4_3ScissorWindow(0);
+#endif
             gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
             gSCManagerSceneData.scene_curr = nSCKindTitle;
-            
+
             syTaskmanSetLoadScene();
         }
 
+#ifdef PORT
+        /* Same trapezoid issue as OpeningRun (scene 38): the clash
+         * sequence's depth-spanning impact geometry foreshortens into a
+         * clean rectangle in 4:3 but exposes a perspective trapezoid
+         * under widescreen's wider frustum. Tighten the GPU scissor to
+         * the centered 4:3 sub-region starting at the first clash
+         * (Mario + Kirby impact at tic 15) so every clash impact + the
+         * final void/flash render at the 4:3 framing the assets were
+         * authored for, inside the wider widescreen window. The flag is
+         * libultraship-global and persists across the scene transition;
+         * OpeningNewcomers clears it at its tic 30 (when its black fade-
+         * out begins) so the reveal flash at the top of Newcomers stays
+         * cropped too. */
+        if (sMVOpeningClashTotalTimeTics == 15)
+        {
+            extern void GfxSetTight4_3ScissorWindow(int active);
+            GfxSetTight4_3ScissorWindow(1);
+        }
+#endif
         if (sMVOpeningClashTotalTimeTics == 144)
         {
             mvOpeningClashMakeVoid();

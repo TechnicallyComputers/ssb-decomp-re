@@ -2559,6 +2559,10 @@ void ftParamClearAnimLocks(FTStruct *fp)
     }
 }
 
+#ifdef PORT
+extern float port_widescreen_clip_x_scale(void);
+#endif
+
 // 0x800EB924
 void func_ovl2_800EB924(CObj *cobj, Mtx44f mtx, Vec3f *vec, f32 *rx, f32 *ry)
 {
@@ -2578,6 +2582,21 @@ void func_ovl2_800EB924(CObj *cobj, Mtx44f mtx, Vec3f *vec, f32 *rx, f32 *ry)
 
     *rx = (cobj->viewport.vp.vscale[0] / 4) * (tempx * scale);
     *ry = (cobj->viewport.vp.vscale[1] / 4) * (tempy * scale);
+
+#ifdef PORT
+    // Widescreen: libultraship's Interpreter::AdjXForAspectRatio compresses
+    // 3D vertices' clip-space X by (4/3)/window_aspect (frustum expands into
+    // the wider window), but explicitly skips TextureRectangle ops so HUD
+    // sprites stay at their authored 4:3 NDC. Without this fixup, sprites
+    // attached to projected world positions (player tag, item arrow, fighter
+    // magnify indicator, boomerang off-screen check) draw at the un-widened
+    // 4:3 position while the character/item renders at the compressed
+    // widescreen position — visible as flags drifting away from their
+    // characters. Apply the same compression here so projected x lands at
+    // the same clip-space NDC as the 3D vertex path. No-op (1.0f) when
+    // widescreen is off.
+    *rx *= port_widescreen_clip_x_scale();
+#endif
 }
 
 // 0x800EBA6C

@@ -10,6 +10,9 @@
 extern void *func_800269C0_275C0(u16 id);
 extern void func_80026738_27338(void *arg0);
 extern void func_800266A0_272A0(void);
+#ifdef PORT
+extern float port_widescreen_clip_x_scale(void);
+#endif
 
 
 // // // // // // // // // // // //
@@ -1678,6 +1681,21 @@ void mnPlayersVSMakeFighter(GObj *fighter_gobj, s32 player, s32 fkind, s32 costu
 
 		DObjGetStruct(fighter_gobj)->translate.vec.f.x = (player * 840) - 1250;
 		DObjGetStruct(fighter_gobj)->translate.vec.f.y = -850.0F;
+#ifdef PORT
+		/* Widescreen FOV expansion compresses 3D-vertex clip-x via
+		 * libultraship's AdjXForAspectRatio, while the CSS panel UI
+		 * draws via 2D TextureRectangle ops that skip AdjX. Pre-divide
+		 * the fighter's world-x by the same factor so it lands at the
+		 * original 4:3 NDC position relative to its panel. Same pattern
+		 * as ifCommonPlayerMagnifyProcDisplay's arrow DObj fixup. */
+		{
+			f32 scale = port_widescreen_clip_x_scale();
+			if (scale > 0.0F && scale < 1.0F)
+			{
+				DObjGetStruct(fighter_gobj)->translate.vec.f.x /= scale;
+			}
+		}
+#endif
 
 		DObjGetStruct(fighter_gobj)->rotate.vec.f.y = rot_y;
 
@@ -4150,6 +4168,17 @@ void mnPlayersVSMakeSpotlight(void)
 		DObjGetStruct(gobj)->translate.vec.f.x = x;
 		DObjGetStruct(gobj)->translate.vec.f.y = y;
 		DObjGetStruct(gobj)->translate.vec.f.z = 0.0F;
+#ifdef PORT
+		/* Track the widened fighter world-x so each spotlight stays
+		 * under its fighter (see mnPlayersVSMakeFighter). */
+		{
+			f32 scale = port_widescreen_clip_x_scale();
+			if (scale > 0.0F && scale < 1.0F)
+			{
+				DObjGetStruct(gobj)->translate.vec.f.x /= scale;
+			}
+		}
+#endif
 	}
 }
 

@@ -12,7 +12,6 @@ extern void portFixupSprite(void *sprite);
 extern void portFixupBitmapArray(void *bitmaps, unsigned int count);
 extern void portFixupSpriteBitmapData(void *sprite, void *bitmaps);
 extern void portTextureCacheDeleteRange(const void *base, size_t size);
-extern int port_enhancement_stage_clear_frozen_wallpaper_enabled(void);
 #endif
 extern void *func_800269C0_275C0(u16 id);
 
@@ -2223,11 +2222,6 @@ void sc1PStageClearCopyFramebufToWallpaper(void)
 		nbitmaps = wp_sprite->nbitmaps;
 		portFixupBitmapArray(wp_bitmap, (unsigned int)nbitmaps);
 		portFixupSpriteBitmapData(wp_sprite, wp_bitmap);
-
-		/* User opt-out leaves the asset's stored black bitmap untouched. */
-		if (!port_enhancement_stage_clear_frozen_wallpaper_enabled()) {
-			return;
-		}
 
 		/* Each bitmap[i] is one row-stripe of the wallpaper. Stripes stack
 		 * top-to-bottom into the photo region (rows 10..229, cols 10..309

@@ -5,6 +5,10 @@
 #include <sc/scene.h>
 #include <reloc_data.h>
 extern void *func_800269C0_275C0(u16 id);
+#ifdef PORT
+/* For the defensive NULL-file_head guard's one-shot warning. */
+extern void port_log(const char *fmt, ...);
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -1979,6 +1983,32 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
     o_anim_joint = effect_desc->o_anim_joint;
     o_matanim_joint = effect_desc->o_matanim_joint;
     addr = (uintptr_t) *effect_desc->file_head;
+#ifdef PORT
+    /* Defensive guard: the per-fighter data file global (e.g.
+     * gFTDataKirbySpecial2) is dereferenced via *effect_desc->file_head to
+     * locate the DObjDesc array. If the global has been NULLed because the
+     * file isn't currently loaded — or, on Linux/glibc, never reset between
+     * scene-arena reuse and stale-GObj firing — addr ends up pointing into
+     * freed memory and downstream gcSetupCustomDObjs reads garbage tokens.
+     * This was hit by a stale Kirby fighter from a prior auto-demo cycle
+     * trying to spawn the Cutter Draw effect after the Kirby Special2 file
+     * was unloaded (Linux-only SIGSEGV; Win/Mac allocators happened to leave
+     * compatible memory at the same address). Bail safely if the global is
+     * NULL so the caller's `!= NULL` check skips the effect cleanly. */
+    if (*effect_desc->file_head == NULL) {
+        static int sNullFileHeadWarnCount = 0;
+        if (sNullFileHeadWarnCount < 10) {
+            sNullFileHeadWarnCount++;
+            port_log("SSB64: efManagerMakeEffect bail — *file_head=NULL (effect_desc=%p)\n",
+                     effect_desc);
+        }
+        if (ep != NULL) {
+            efManagerSetPrevStructAlloc(ep);
+        }
+        gcEjectGObj(effect_gobj);
+        return NULL;
+    }
+#endif
 
     transform_types1 = &effect_desc->transform_types1;
 

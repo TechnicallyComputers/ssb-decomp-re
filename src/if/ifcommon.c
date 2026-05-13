@@ -22,6 +22,7 @@ extern void portFixupSprite(void *sprite);
 extern void portFixupBitmapArray(void *bitmaps, unsigned int count);
 extern void portFixupSpriteBitmapData(void *sprite, void *bitmaps);
 extern void portFixupRawTextureBSWAP32(void *base, size_t bytes);
+extern float port_widescreen_clip_x_scale(void);
 
 /* Ensure a Sprite* read from reloc file data has its header, bitmap
  * array, and texel data in the correct byte order for LE rendering.
@@ -1714,6 +1715,28 @@ void ifCommonPlayerMagnifyProcDisplay(FTStruct *fp)
 
         dobj->translate.vec.f.x = ifmag->pos.x;
         dobj->translate.vec.f.y = ifmag->pos.y;
+
+#ifdef PORT
+        /* Widescreen: the magnify bubble is composed of two pieces drawn via
+         * different paths — the frame border via gSPTextureRectangle (which
+         * libultraship leaves at authored 4:3 NDC, no AdjX) and this arrow
+         * DObj rendered through the standard 3D path (which gets AdjX clip-X
+         * compression). Without compensation the arrow drifts toward
+         * screen-center relative to the frame, appearing offset inside the
+         * bubble. Pre-divide translate.x by the same scale AdjX applies so
+         * after AdjX compresses on the way to the FB, the arrow lands at the
+         * same NDC as in 4:3 — restoring its authored visual position inside
+         * the bubble. ftdisplaymain.c already undoes the func_ovl2_800EB924
+         * compression on fp->magnify_pos so ifmag->pos here is in 4:3
+         * coords. */
+        {
+            f32 scale = port_widescreen_clip_x_scale();
+            if (scale > 0.0F && scale < 1.0F)
+            {
+                dobj->translate.vec.f.x /= scale;
+            }
+        }
+#endif
 
         dobj->rotate.vec.f.z = syUtilsArcTan2(fp->magnify_pos.y, fp->magnify_pos.x) - F_CST_DTOR32(90.0F);
 

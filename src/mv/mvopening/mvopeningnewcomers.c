@@ -387,6 +387,13 @@ void mvOpeningNewcomersFuncRun(GObj *gobj)
         }
         if (scSubsysControllerGetPlayerTapButtons(A_BUTTON | B_BUTTON | START_BUTTON) != FALSE)
         {
+#ifdef PORT
+            /* Tap-skip bypasses the tic-30 cleanup below; clear the
+             * clash-window scissor here so the Title scene doesn't
+             * inherit the crop. */
+            extern void GfxSetTight4_3ScissorWindow(int active);
+            GfxSetTight4_3ScissorWindow(0);
+#endif
             gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
             gSCManagerSceneData.scene_curr = nSCKindTitle;
 
@@ -394,6 +401,19 @@ void mvOpeningNewcomersFuncRun(GObj *gobj)
         }
         if (sMVOpeningNewcomersTotalTimeTics == 30)
         {
+#ifdef PORT
+            /* OpeningClash activated the tight 4:3 scissor at its tic 15
+             * and left it active across the scene transition so the
+             * reveal flash at the start of Newcomers stayed cropped to
+             * the 4:3 sub-region. The black overlay fade-out now starts
+             * — it will cover the trapezoid-prone geometry on its own,
+             * so the scissor can come off and the fade can fill the full
+             * widescreen window. */
+            {
+                extern void GfxSetTight4_3ScissorWindow(int active);
+                GfxSetTight4_3ScissorWindow(0);
+            }
+#endif
             mvOpeningNewcomersMakeHide();
         }
         if (sMVOpeningNewcomersTotalTimeTics == 40)
