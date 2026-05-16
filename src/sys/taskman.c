@@ -25,6 +25,7 @@ extern void port_log(const char *fmt, ...);
 
 #ifdef PORT
 #include "port_log.h"
+#include "port_scene_heap.h"
 _Static_assert(sizeof(uintptr_t) == 8, "PORT build requires 64-bit uintptr_t");
 #endif
 
@@ -1350,6 +1351,7 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 		memset(sPortHeap, 0, kPortHeapSize);
 		tsetup->scene_setup.arena_start = sPortHeap;
 		tsetup->scene_setup.arena_size = (u32)kPortHeapSize;
+		gPortSceneHeap = sPortHeap;
 	}
 #endif
 	syTaskmanInitGeneralHeap(tsetup->scene_setup.arena_start, tsetup->scene_setup.arena_size);
