@@ -402,6 +402,17 @@ void sc1PManagerUpdateScene(void)
                 syDmaLoadOverlay(&dSC1PManagerObjectsOverlay);
                 syDmaLoadOverlay(&dSC1PManager1PGameOverlay);
 
+#ifdef PORT
+                /* sc1PIntro on exit (sc1pintro.c:2035, 2053) clobbers
+                 * scene_curr to nSCKindTitle before returning, so without
+                 * this assignment the fight runs with scene_curr=1. The
+                 * decomp's later code at sc1pmanager.c:489/546/606 writes
+                 * `scene_prev = nSCKind1PGame` as if scene_curr had been
+                 * nSCKind1PGame during the round — making scene_curr match
+                 * that intent. Required for the C-Stick Smash / D-Pad Jump
+                 * gameplay gate in controller.c (issue #97). */
+                gSCManagerSceneData.scene_curr = nSCKind1PGame;
+#endif
                 sc1PGameStartScene();
 
                 if (gSCManagerSceneData.spgame_stage != nSC1PGameStageBonus3)
@@ -552,6 +563,12 @@ skip_main_stages:
         syDmaLoadOverlay(&dSC1PManagerObjectsOverlay);
         syDmaLoadOverlay(&dSC1PManager1PGameOverlay);
 
+#ifdef PORT
+        /* sc1PChallenger on exit (sc1pchallenger.c:353) sets scene_curr to
+         * nSCKindTitle; restore the 1P-Game scene so the controller-input
+         * gameplay gate fires during challenger battles too. */
+        gSCManagerSceneData.scene_curr = nSCKind1PGame;
+#endif
         sc1PGameStartScene();
 
         if (gSCManagerSceneData.is_reset != FALSE)

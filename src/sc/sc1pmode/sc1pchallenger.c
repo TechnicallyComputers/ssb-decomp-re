@@ -6,6 +6,7 @@
 #ifdef PORT
 #include <sys/audio.h>
 extern void *func_800269C0_275C0(u16 id);
+extern float port_widescreen_clip_x_scale(void);
 #endif
 
 
@@ -244,6 +245,19 @@ void sc1PChallengerMakeFighter(s32 fkind)
     DObjGetStruct(fighter_gobj)->translate.vec.f.x = 610.0F;
     DObjGetStruct(fighter_gobj)->translate.vec.f.y = -550.0F;
     DObjGetStruct(fighter_gobj)->translate.vec.f.z = 0.0F;
+#ifdef PORT
+    /* Widescreen: pre-divide world-x by clip_x_scale so the 3D silhouette
+     * (which gets AdjXForAspectRatio compression) lands inside the dark 2D
+     * fillRect drawn at authored 4:3 NDC by sc1PChallengerDecalsProcDisplay.
+     * Same pattern as mnPlayers1PGameMakeFighter. */
+    {
+        f32 scale = port_widescreen_clip_x_scale();
+        if (scale > 0.0F && scale < 1.0F)
+        {
+            DObjGetStruct(fighter_gobj)->translate.vec.f.x /= scale;
+        }
+    }
+#endif
     
     DObjGetStruct(fighter_gobj)->scale.vec.f.x = dSCSubsysFighterScales[fkind];
     DObjGetStruct(fighter_gobj)->scale.vec.f.y = dSCSubsysFighterScales[fkind];

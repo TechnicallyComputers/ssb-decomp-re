@@ -4220,7 +4220,7 @@ void ftMainUpdateHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
         {
             commonpart = &((FTCommonPartContainer*)PORT_RESOLVE(fp->attr->commonparts_container))->commonparts[0];
         }
-        else if (FTPARTS_GET_DOBJDESC(&((FTCommonPartContainer*)PORT_RESOLVE(attr->commonparts_container))->commonparts[1])[hiddenpart->root_joint_id - nFTPartsJointCommonStart].dl != NULL)
+        else if (!PORT_REF_IS_NULL(FTPARTS_GET_DOBJDESC(&((FTCommonPartContainer*)PORT_RESOLVE(attr->commonparts_container))->commonparts[1])[hiddenpart->root_joint_id - nFTPartsJointCommonStart].dl))
         {
             commonpart = &((FTCommonPartContainer*)PORT_RESOLVE(attr->commonparts_container))->commonparts[1];
         }
@@ -4807,6 +4807,19 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
             }
             dobjdesc = FTPARTS_GET_DOBJDESC(&((FTCommonPartContainer*)PORT_RESOLVE(attr->commonparts_container))->commonparts[fp->detail_curr - nFTPartsDetailStart]);
 
+#ifdef PORT
+            /* NULL-check on token-resolved dobjdesc. If either of the two
+             * token resolutions in the chain above (attr->commonparts
+             * _container OR commonparts[detail]->dobjdesc) returns NULL —
+             * because the fighter's file was loaded in a prior scene
+             * whose arena has been recycled but its global p_file_*
+             * pointer is still being read — the loop below dereferences
+             * dobjdesc->id on a small invalid address and SIGSEGVs at
+             * fault_addr=0x0. The per-slot RelocPointerTable correctly
+             * returns NULL for arena-allocated stale tokens; this
+             * consumer check turns that NULL into a clean skip. */
+            if (dobjdesc != NULL)
+#endif
             for (i = nFTPartsJointCommonStart; dobjdesc->id != DOBJ_ARRAY_MAX; i++, dobjdesc++)
             {
                 joint = fp->joints[i];

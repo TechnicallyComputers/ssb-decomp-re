@@ -197,7 +197,23 @@ void itBoxContainerSmashMakeEffect(Vec3f *pos)
             gcAddGObjDisplay(effect_gobj, gcDrawDObjTreeForGObj, 11, GOBJ_PRIORITY_DEFAULT, ~0);
 
 #ifdef PORT
-            dl = (Gfx*) ((*(uintptr_t*) ((uintptr_t)*dITBoxItemDesc.p_file + dITBoxItemDesc.o_attributes) - (intptr_t)llITCommonDataBoxDataStart) + (intptr_t)llITCommonDataBoxEffectDisplayList);
+            /* PORT FIX (stale-DL family): the original IDO expression reads the
+             * pointer at `*p_file + o_attributes` as `*(uintptr_t*)`. On N64
+             * that's 4 bytes; on LP64 the same cast reads 8, splicing a u32
+             * relocation token together with 4 adjacent bytes — the result is
+             * a token-shaped value that the GFX dispatcher later treats as a
+             * raw Gfx*, crashing when those slots have been generation-bumped
+             * after a scene-arena recycle. Read the token as u32, PORT_RESOLVE
+             * it to the host pointer of DataStart, then apply the same offset
+             * arithmetic; bail to NULL if the token is stale so the caller's
+             * `if (dobj->dv != NULL)` guard skips emission cleanly. */
+            {
+                u32 _attr_token = *(u32*)((uintptr_t)*dITBoxItemDesc.p_file + dITBoxItemDesc.o_attributes);
+                void *_resolved = PORT_RESOLVE(_attr_token);
+                dl = (_resolved != NULL)
+                    ? (Gfx*)(((uintptr_t)_resolved - (intptr_t)llITCommonDataBoxDataStart) + (intptr_t)llITCommonDataBoxEffectDisplayList)
+                    : NULL;
+            }
 #else
             dl = (Gfx*) ((*(uintptr_t*) ((uintptr_t)*dITBoxItemDesc.p_file + dITBoxItemDesc.o_attributes) - (intptr_t)&llITCommonDataBoxDataStart) + (intptr_t)&llITCommonDataBoxEffectDisplayList);
 #endif

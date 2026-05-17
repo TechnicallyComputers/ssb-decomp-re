@@ -340,7 +340,11 @@ static void gcLogSuspiciousDLPointer(const char *issue, DObj *dobj, unsigned lon
     void *draw_dl = (void*)draw_dl_raw;
     void *resolved_dl = NULL;
 
-    if ((draw_dl == NULL) || (draw_dl_raw >= 0x10000ULL))
+    /* Stale-DL hunt: real host pointers on Linux brk are >= 0x10000000.
+     * Token-shaped or low-offset values < 0x10000000 are suspect; widening
+     * from the original 0x10000 (64KB) threshold catches stale tokens like
+     * 0x30392d that the dispatcher silently treats as raw pointers. */
+    if ((draw_dl == NULL) || (draw_dl_raw >= 0x10000000ULL))
     {
         return;
     }
@@ -1920,6 +1924,21 @@ void gcDrawMObjForDObj(DObj *dobj, Gfx **dl_head)
         }
         gSPEndDisplayList(branch_dl++);
     }
+#ifdef PORT
+    /* Final terminator for the branch_dl region. Each per-MObj section
+     * already ends with gSPEndDisplayList above, but the region as a
+     * whole has no closing terminator after the for-loop. If a stale
+     * parent DL emits `gsSPDisplayList(0x0E + N)` with N falling past
+     * the last per-MObj G_ENDDL (e.g. a fighter-file static DL with an
+     * offset baked for a different scene's seg 0xE layout), the walker
+     * lands in uninitialized heap bytes and walks until it hits an
+     * unmapped page — the variant-5 crash family in
+     * docs/bugs/linux_stale_scene_data_family_2026-05-11.md.
+     *
+     * Append one G_ENDDL here so the walker terminates safely even when
+     * the entry offset is past the intended per-MObj boundaries. */
+    gSPEndDisplayList(branch_dl++);
+#endif
     gSYTaskmanGraphicsHeap.ptr = (void*) branch_dl;
 }
 
@@ -2067,15 +2086,15 @@ void gcDrawDObjDLLinks(DObj *dobj, DObjDLLink *dl_link)
         num = gcPrepDObjMatrix(&gSYTaskmanDLHeads[dl_link->list_id], dobj);
         dl_end = gSYTaskmanDLHeads[dl_link->list_id];
 
-        if (dl_link->dl != NULL)
+        if (!PORT_REF_IS_NULL(dl_link->dl))
         {
             ptr = gSYTaskmanGraphicsHeap.ptr;
 
             gcDrawMObjForDObj(dobj, &gSYTaskmanDLHeads[dl_link->list_id]);
 #ifdef PORT
-            gcLogSuspiciousDLPointer("dl-link", dobj, (unsigned long long)dl_link->dl, dl_link->list_id, dl_link);
+            gcLogSuspiciousDLPointer("dl-link", dobj, (unsigned long long)PORT_REF_TOKEN(dl_link->dl), dl_link->list_id, dl_link);
 #endif
-            gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE(dl_link->dl));
+            gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE_GFX(dl_link->dl));
 
             if (num != 0)
             {
@@ -2106,7 +2125,7 @@ void gcDrawDObjDLLinks(DObj *dobj, DObjDLLink *dl_link)
                 break;
             }
 #endif
-            if (dl_link->dl != NULL)
+            if (!PORT_REF_IS_NULL(dl_link->dl))
             {
                 Gfx *dl_curr = dl_start;
 
@@ -2119,9 +2138,9 @@ void gcDrawDObjDLLinks(DObj *dobj, DObjDLLink *dl_link)
                     gSPSegment(gSYTaskmanDLHeads[dl_link->list_id]++, 0xE, ptr);
                 }
 #ifdef PORT
-                gcLogSuspiciousDLPointer("dl-link-copy", dobj, (unsigned long long)dl_link->dl, dl_link->list_id, dl_link);
+                gcLogSuspiciousDLPointer("dl-link-copy", dobj, (unsigned long long)PORT_REF_TOKEN(dl_link->dl), dl_link->list_id, dl_link);
 #endif
-                gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE(dl_link->dl));
+                gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE_GFX(dl_link->dl));
 
                 if (num != 0)
                 {
@@ -2216,7 +2235,7 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
                     break;
                 }
 #endif
-                if (dl_link->dl != NULL)
+                if (!PORT_REF_IS_NULL(dl_link->dl))
                 {
                     while (sGCCurrentDL != sGCForwardDLs[dl_link->list_id])
                     {
@@ -2234,7 +2253,7 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
                         else gSPSegment(gSYTaskmanDLHeads[dl_link->list_id]++, 0xE, ptr);
                     }
                 set_display_list:
-                    gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE(dl_link->dl));
+                    gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE_GFX(dl_link->dl));
                 }
                 dl_link++;
             }
@@ -2316,11 +2335,11 @@ void unref_800147E0(GObj *gobj)
         }
         gGCScaleX = 1.0F;
 
-        if (dist_dl->dl != NULL)
+        if (!PORT_REF_IS_NULL(dist_dl->dl))
         {
             num = gcPrepDObjMatrix(gSYTaskmanDLHeads, dobj);
             gcDrawMObjForDObj(dobj, gSYTaskmanDLHeads);
-            gSPDisplayList(gSYTaskmanDLHeads[0]++, PORT_RESOLVE(dist_dl->dl));
+            gSPDisplayList(gSYTaskmanDLHeads[0]++, PORT_RESOLVE_GFX(dist_dl->dl));
 
             if (num != 0)
             {
@@ -2412,10 +2431,10 @@ void unref_80014A84(GObj *gobj)
             }
             num = gcPrepDObjMatrix(gSYTaskmanDLHeads, dobj);
 
-            if ((dist_dl->dl != NULL) && !(dobj->flags & DOBJ_FLAG_NOTEXTURE))
+            if (!PORT_REF_IS_NULL(dist_dl->dl) && !(dobj->flags & DOBJ_FLAG_NOTEXTURE))
             {
                 gcDrawMObjForDObj(dobj, gSYTaskmanDLHeads);
-                gSPDisplayList(gSYTaskmanDLHeads[0]++, PORT_RESOLVE(dist_dl->dl));
+                gSPDisplayList(gSYTaskmanDLHeads[0]++, PORT_RESOLVE_GFX(dist_dl->dl));
             }
             if (dobj->child != NULL)
             {
@@ -2466,7 +2485,7 @@ void unref_80014C38(GObj *gobj)
             { 
                 dist_dl_link++;
             }
-            gcDrawDObjDLLinks(dobj, PORT_RESOLVE(dist_dl_link->dl_link));
+            gcDrawDObjDLLinks(dobj, PORT_RESOLVE_DOBJ_DLLINK(dist_dl_link->dl_link));
         }
     }
 }
@@ -2500,7 +2519,7 @@ void func_80014CD0(DObj *dobj)
         {
             while (dl_link->list_id != ARRAY_COUNT(gSYTaskmanDLHeads))
             {
-                if (dl_link->dl != NULL)
+                if (!PORT_REF_IS_NULL(dl_link->dl))
                 {
                     while (sGCCurrentDL != sGCForwardDLs[dl_link->list_id])
                     {
@@ -2518,7 +2537,7 @@ void func_80014CD0(DObj *dobj)
                         else gSPSegment(gSYTaskmanDLHeads[dl_link->list_id]++, 0xE, ptr);
                     }
                 set_display_list:
-                    gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE(dl_link->dl));
+                    gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE_GFX(dl_link->dl));
                 }
                 dl_link++;
             }
@@ -2591,7 +2610,7 @@ void unref_80014FFC(GObj *gobj)
                 sGCDetailLevel++;
                 dist_dl_link++;
             }
-            dl_link = PORT_RESOLVE(dist_dl_link->dl_link);
+            dl_link = PORT_RESOLVE_DOBJ_DLLINK(dist_dl_link->dl_link);
             dl = sGCCurrentDL;
             num = gcPrepDObjMatrix(&sGCCurrentDL, dobj);
 
@@ -2599,7 +2618,7 @@ void unref_80014FFC(GObj *gobj)
             {
                 while (dl_link->list_id != ARRAY_COUNT(gSYTaskmanDLHeads))
                 {
-                    if (dl_link->dl != NULL)
+                    if (!PORT_REF_IS_NULL(dl_link->dl))
                     {
                         while (sGCCurrentDL != sGCForwardDLs[dl_link->list_id])
                         {
@@ -2617,7 +2636,7 @@ void unref_80014FFC(GObj *gobj)
                             else gSPSegment(gSYTaskmanDLHeads[dl_link->list_id]++, 0xE, ptr);
                         }
                     set_display_list:
-                        gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE(dl_link->dl));
+                        gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE_GFX(dl_link->dl));
                     }
                     dl_link++;
                 }
@@ -2748,11 +2767,11 @@ void func_80015520(DObj *dobj)
         {
             while (multi_list->id != ARRAY_COUNT(gSYTaskmanDLHeads))
             {
-                if (multi_list->dl2 != NULL)
+                if (!PORT_REF_IS_NULL(multi_list->dl2))
                 {
-                    if (multi_list->dl1 != NULL)
+                    if (!PORT_REF_IS_NULL(multi_list->dl1))
                     {
-                        gSPDisplayList(gSYTaskmanDLHeads[multi_list->id]++, PORT_RESOLVE(multi_list->dl1));
+                        gSPDisplayList(gSYTaskmanDLHeads[multi_list->id]++, PORT_RESOLVE_GFX(multi_list->dl1));
                     }
                     while (sGCCurrentDL != sGCForwardDLs[multi_list->id])
                     {
@@ -2770,7 +2789,7 @@ void func_80015520(DObj *dobj)
                         else gSPSegment(gSYTaskmanDLHeads[multi_list->id]++, 0xE, ptr);
                     }
                 set_display_list:
-                    gSPDisplayList(gSYTaskmanDLHeads[multi_list->id]++, PORT_RESOLVE(multi_list->dl2));
+                    gSPDisplayList(gSYTaskmanDLHeads[multi_list->id]++, PORT_RESOLVE_GFX(multi_list->dl2));
                 }
                 multi_list++;
             }
@@ -2904,10 +2923,10 @@ void unref_80015A58(GObj *gobj)
             }
             num = gcPrepDObjMatrix(gSYTaskmanDLHeads, dobj);
 
-            if ((dist_dl->dl != NULL) && !(dobj->flags & DOBJ_FLAG_NOTEXTURE))
+            if (!PORT_REF_IS_NULL(dist_dl->dl) && !(dobj->flags & DOBJ_FLAG_NOTEXTURE))
             {
                 gcDrawMObjForDObj(dobj, gSYTaskmanDLHeads);
-                gSPDisplayList(gSYTaskmanDLHeads[0]++, PORT_RESOLVE(dist_dl->dl));
+                gSPDisplayList(gSYTaskmanDLHeads[0]++, PORT_RESOLVE_GFX(dist_dl->dl));
             }
             if (dobj->child != NULL)
             {
@@ -2966,11 +2985,11 @@ void func_80015C0C(DObj *dobj)
         {
             while (multi_list->id != ARRAY_COUNT(gSYTaskmanDLHeads))
             {
-                if (multi_list->dl2 != NULL) 
+                if (!PORT_REF_IS_NULL(multi_list->dl2)) 
                 {
-                    if (multi_list->dl1 != NULL)
+                    if (!PORT_REF_IS_NULL(multi_list->dl1))
                     { 
-                        gSPDisplayList(gSYTaskmanDLHeads[multi_list->id]++, PORT_RESOLVE(multi_list->dl1));
+                        gSPDisplayList(gSYTaskmanDLHeads[multi_list->id]++, PORT_RESOLVE_GFX(multi_list->dl1));
                     }
                     while (sGCCurrentDL != sGCForwardDLs[multi_list->id]) 
                     {
@@ -2988,7 +3007,7 @@ void func_80015C0C(DObj *dobj)
                         else gSPSegment(gSYTaskmanDLHeads[multi_list->id]++, 0xE, ptr);
                     }
                 set_display_list:
-                    gSPDisplayList(gSYTaskmanDLHeads[multi_list->id]++, PORT_RESOLVE(multi_list->dl2));
+                    gSPDisplayList(gSYTaskmanDLHeads[multi_list->id]++, PORT_RESOLVE_GFX(multi_list->dl2));
                 }
                 multi_list++;
             }
@@ -3061,7 +3080,7 @@ void unref_80015F6C(GObj *gobj)
                 dist_dl_link++;
                 sGCDetailLevel++;
             }
-            dl_link = PORT_RESOLVE(dist_dl_link->dl_link);
+            dl_link = PORT_RESOLVE_DOBJ_DLLINK(dist_dl_link->dl_link);
             dl = sGCCurrentDL;
             num = gcPrepDObjMatrix(&sGCCurrentDL, dobj);
 
@@ -3069,7 +3088,7 @@ void unref_80015F6C(GObj *gobj)
             {
                 while (dl_link->list_id != ARRAY_COUNT(gSYTaskmanDLHeads))
                 {
-                    if (dl_link->dl != NULL)
+                    if (!PORT_REF_IS_NULL(dl_link->dl))
                     {
                         while (sGCCurrentDL != sGCForwardDLs[dl_link->list_id])
                         {
@@ -3087,7 +3106,7 @@ void unref_80015F6C(GObj *gobj)
                             else gSPSegment(gSYTaskmanDLHeads[dl_link->list_id]++, 0xE, ptr);
                         }
                     set_display_list:
-                        gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE(dl_link->dl));
+                        gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE_GFX(dl_link->dl));
                     }
                     dl_link++;
                 }

@@ -853,7 +853,7 @@ void ftParamSetModelPartID(GObj *fighter_gobj, s32 joint_id, s32 modelpart_id)
                     if
                     (
                         (fp->detail_curr == nFTPartsDetailHigh) ||
-                        (FTPARTS_GET_DOBJDESC(&commonparts_container->commonparts[1])[joint_id - nFTPartsJointCommonStart].dl == NULL)
+                        PORT_REF_IS_NULL(FTPARTS_GET_DOBJDESC(&commonparts_container->commonparts[1])[joint_id - nFTPartsJointCommonStart].dl)
                     )
                     {
                         detail_id = 0;
@@ -864,7 +864,7 @@ void ftParamSetModelPartID(GObj *fighter_gobj, s32 joint_id, s32 modelpart_id)
                     detail_p_mobjsubs = FTPARTS_GET_MOBJSUBS(&commonparts_container->commonparts[detail_id]);
                     detail_p_costume_matanim_joints = FTPARTS_GET_COSTUME_MATANIM_JOINTS(&commonparts_container->commonparts[detail_id]);
 
-                    joint->dl = PORT_RESOLVE(detail_dobjdesc[joint_id - nFTPartsJointCommonStart].dl);
+                    joint->dl = PORT_RESOLVE_GFX(detail_dobjdesc[joint_id - nFTPartsJointCommonStart].dl);
 
                     if (detail_p_mobjsubs != NULL)
                     {
@@ -967,7 +967,7 @@ void ftParamResetModelPartAll(GObj *fighter_gobj)
                         if
                         (
                             (fp->detail_curr == nFTPartsDetailHigh) ||
-                            (FTPARTS_GET_DOBJDESC(&commonparts_container->commonparts[1])[i].dl == NULL)
+                            PORT_REF_IS_NULL(FTPARTS_GET_DOBJDESC(&commonparts_container->commonparts[1])[i].dl)
                         )
                         {
                             detail_id = 0;
@@ -978,7 +978,7 @@ void ftParamResetModelPartAll(GObj *fighter_gobj)
                         detail_p_mobjsubs = FTPARTS_GET_MOBJSUBS(&commonparts_container->commonparts[detail_id]);
                         detail_p_costume_matanim_joints = FTPARTS_GET_COSTUME_MATANIM_JOINTS(&commonparts_container->commonparts[detail_id]);
 
-                        joint->dl = PORT_RESOLVE(detail_dobjdesc[i].dl);
+                        joint->dl = PORT_RESOLVE_GFX(detail_dobjdesc[i].dl);
 
                         if (detail_p_mobjsubs != NULL)
                         {
@@ -1122,7 +1122,7 @@ void ftParamInitAllParts(GObj *fighter_gobj, s32 costume, s32 shade)
                     if
                     (
                         (fp->detail_curr == nFTPartsDetailHigh) ||
-                        (FTPARTS_GET_DOBJDESC(&commonparts_container->commonparts[1])[i].dl == NULL)
+                        PORT_REF_IS_NULL(FTPARTS_GET_DOBJDESC(&commonparts_container->commonparts[1])[i].dl)
                     )
                     {
                         detail_id = 0;

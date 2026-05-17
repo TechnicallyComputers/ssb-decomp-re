@@ -2555,9 +2555,9 @@ void gcSetupCommonDObjs(GObj *gobj, DObjDesc *dobjdesc, DObj **dobjs)
 
         if (id != 0)
         {
-            dobj = array_dobjs[id] = gcAddChildForDObj(array_dobjs[id - 1], PORT_RESOLVE(dobjdesc->dl));
+            dobj = array_dobjs[id] = gcAddChildForDObj(array_dobjs[id - 1], PORT_RESOLVE_GFX(dobjdesc->dl));
         }
-        else dobj = array_dobjs[0] = gcAddDObjForGObj(gobj, PORT_RESOLVE(dobjdesc->dl));
+        else dobj = array_dobjs[0] = gcAddDObjForGObj(gobj, PORT_RESOLVE_GFX(dobjdesc->dl));
 
         if (dobjdesc->id & 0xF000)
         {
@@ -2728,15 +2728,40 @@ void gcSetupCustomDObjs(GObj *gobj, DObjDesc *dobjdesc, DObj **dobjs, u8 tk1, u8
     {
         array_dobjs[i] = NULL;
     }
-    while (dobjdesc->id != ARRAY_COUNT(array_dobjs)) 
+    while (dobjdesc->id != ARRAY_COUNT(array_dobjs))
     {
         id = dobjdesc->id & 0xFFF;
 
+#ifdef PORT
+        /* NULL-check on token-resolved DL pointer. Required when
+         * `*effect_desc->file_head` is stale (e.g. gFTManagerCommonFile,
+         * which is arena-allocated and may briefly point at recycled
+         * memory between port_taskman_evict_arena_caches() and the next
+         * scene's ftManagerAllocFighter reload). Reading dobjdesc->dl
+         * from that window gives garbage bytes interpreted as a token;
+         * PORT_RESOLVE rejects it (the per-slot RelocPointerTable
+         * invalidates arena tokens correctly) and returns NULL. Bailing
+         * here also stops the array_dobjs[] chain from advancing on
+         * garbage `id` values that would otherwise crash gcAddChild
+         * ForDObj with a NULL parent (fault_addr=0x20 = parent->child). */
+        {
+            void *resolved_dl = PORT_RESOLVE_GFX(dobjdesc->dl);
+            if (resolved_dl == NULL && !PORT_REF_IS_NULL(dobjdesc->dl)) {
+                return;
+            }
+            if (id != 0) {
+                dobj = array_dobjs[id] = gcAddChildForDObj(array_dobjs[id - 1], resolved_dl);
+            } else {
+                dobj = array_dobjs[0] = gcAddDObjForGObj(gobj, resolved_dl);
+            }
+        }
+#else
         if (id != 0)
         {
-            dobj = array_dobjs[id] = gcAddChildForDObj(array_dobjs[id - 1], PORT_RESOLVE(dobjdesc->dl));
+            dobj = array_dobjs[id] = gcAddChildForDObj(array_dobjs[id - 1], PORT_RESOLVE_GFX(dobjdesc->dl));
         }
-        else dobj = array_dobjs[0] = gcAddDObjForGObj(gobj, PORT_RESOLVE(dobjdesc->dl));
+        else dobj = array_dobjs[0] = gcAddDObjForGObj(gobj, PORT_RESOLVE_GFX(dobjdesc->dl));
+#endif
 
         if (dobjdesc->id & 0xF000)
         {
@@ -2774,9 +2799,9 @@ void gcSetupCustomDObjsWithMObj(GObj *gobj, DObjDesc *dobjdesc, MObjSub ***p_mob
 
         if (id != 0)
         {
-            dobj = array_dobjs[id] = gcAddChildForDObj(array_dobjs[id - 1], PORT_RESOLVE(dobjdesc->dl));
+            dobj = array_dobjs[id] = gcAddChildForDObj(array_dobjs[id - 1], PORT_RESOLVE_GFX(dobjdesc->dl));
         }
-        else dobj = array_dobjs[0] = gcAddDObjForGObj(gobj, PORT_RESOLVE(dobjdesc->dl));
+        else dobj = array_dobjs[0] = gcAddDObjForGObj(gobj, PORT_RESOLVE_GFX(dobjdesc->dl));
         
         if (dobjdesc->id & 0xF000) 
         {

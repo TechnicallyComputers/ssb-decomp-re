@@ -27,6 +27,14 @@ extern void port_log(const char *fmt, ...);
 #include "port_log.h"
 #include "port_scene_heap.h"
 _Static_assert(sizeof(uintptr_t) == 8, "PORT build requires 64-bit uintptr_t");
+
+/* PORT scene arena. Allocated once in syTaskmanStartTask, recycled across
+ * every scene transition. File-scope so port-side diag and cache code can
+ * classify a pointer as in-arena vs reloc-file vs unknown without round-
+ * tripping through the taskman API. See docs/bugs/dl_link_stale_pointer
+ * _guard_2026-05-09.md for the recycle rationale. */
+void *gPortSceneHeap = NULL;
+const size_t gPortSceneHeapSize = 16 * 1024 * 1024;
 #endif
 
 // externs
@@ -1331,27 +1339,36 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 	 * the symptom universally; this band-aid prevents the crash on Linux
 	 * where the allocator is unforgiving. */
 	{
-		static const size_t kPortHeapSize = 16 * 1024 * 1024;
-		static void *sPortHeap = NULL;
-		if (sPortHeap == NULL)
+		if (gPortSceneHeap == NULL)
 		{
-			sPortHeap = malloc(kPortHeapSize);
-			if (sPortHeap == NULL)
+			gPortSceneHeap = malloc(gPortSceneHeapSize);
+			if (gPortSceneHeap == NULL)
 			{
 				port_log("SSB64: syTaskmanStartTask — failed to allocate PORT heap size=0x%llx\n",
-				         (unsigned long long)kPortHeapSize);
+				         (unsigned long long)gPortSceneHeapSize);
 				while (TRUE);
 			}
+			/* Register the scene arena range with the DL-range registry so
+			 * gfx_step can detect walks that escape the arena. Once-only
+			 * because the arena is recycled, never freed. */
+			extern void port_dl_range_register(const void *base, size_t size, const char *label);
+			port_dl_range_register(gPortSceneHeap, gPortSceneHeapSize, "scene_arena");
 		}
 		else
 		{
 			extern void port_taskman_evict_arena_caches(const void *base, size_t size);
-			port_taskman_evict_arena_caches(sPortHeap, kPortHeapSize);
+			port_taskman_evict_arena_caches(gPortSceneHeap, gPortSceneHeapSize);
 		}
+<<<<<<< HEAD
 		memset(sPortHeap, 0, kPortHeapSize);
 		tsetup->scene_setup.arena_start = sPortHeap;
 		tsetup->scene_setup.arena_size = (u32)kPortHeapSize;
 		gPortSceneHeap = sPortHeap;
+=======
+		memset(gPortSceneHeap, 0, gPortSceneHeapSize);
+		tsetup->scene_setup.arena_start = gPortSceneHeap;
+		tsetup->scene_setup.arena_size = (u32)gPortSceneHeapSize;
+>>>>>>> caae085e1868b907b0195f1c3b8d3d5cae84eab6
 	}
 #endif
 	syTaskmanInitGeneralHeap(tsetup->scene_setup.arena_start, tsetup->scene_setup.arena_size);

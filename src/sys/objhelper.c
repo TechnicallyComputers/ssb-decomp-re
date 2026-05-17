@@ -413,14 +413,14 @@ void unref_8000B618(GObj *gobj, DObjTraDesc *dobjtra, DObj **dobjs)
             (
                 array_dobjs[dobjtra->id - 1],
 #ifdef PORT
-                PORT_RESOLVE(dobjtra->dl)
+                PORT_RESOLVE_GFX(dobjtra->dl)
 #else
                 dobjtra->dl
 #endif
             );
         }
 #ifdef PORT
-        else dobj = array_dobjs[0] = gcAddDObjRpyD(gobj, PORT_RESOLVE(dobjtra->dl));
+        else dobj = array_dobjs[0] = gcAddDObjRpyD(gobj, PORT_RESOLVE_GFX(dobjtra->dl));
 #else
         else dobj = array_dobjs[0] = gcAddDObjRpyD(gobj, dobjtra->dl);
 #endif

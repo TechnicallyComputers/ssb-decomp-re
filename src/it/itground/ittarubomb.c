@@ -153,7 +153,20 @@ void itTaruBombContainerSmashMakeEffect(Vec3f *pos)
             gcAddGObjDisplay(effect_gobj, gcDrawDObjTreeForGObj, 11, GOBJ_PRIORITY_DEFAULT, ~0);
 
 #ifdef PORT
-            dl = (Gfx*) ((*(uintptr_t*)((uintptr_t)*dITTaruBombItemDesc.p_file + dITTaruBombItemDesc.o_attributes) - (uintptr_t)llGRBonus3MapTaruBombDataStart) + (uintptr_t)llGRBonus3MapTaruBombEffectDisplayList);
+            /* PORT FIX (stale-DL family — same as itbox.c:200): u32 reloc token
+             * field at `*p_file + o_attributes` must be read as u32 and
+             * resolved via PORT_RESOLVE; reading as `*(uintptr_t*)` on LP64
+             * splices the token together with 4 adjacent bytes and the
+             * resulting token-shaped value flows into gSPDisplayList w1,
+             * crashing the GFX dispatcher when the slot has been generation-
+             * bumped after a scene-arena recycle. */
+            {
+                u32 _attr_token = *(u32*)((uintptr_t)*dITTaruBombItemDesc.p_file + dITTaruBombItemDesc.o_attributes);
+                void *_resolved = PORT_RESOLVE(_attr_token);
+                dl = (_resolved != NULL)
+                    ? (Gfx*)(((uintptr_t)_resolved - (uintptr_t)llGRBonus3MapTaruBombDataStart) + (uintptr_t)llGRBonus3MapTaruBombEffectDisplayList)
+                    : NULL;
+            }
 #else
             dl = (Gfx*) ((*(uintptr_t*)((uintptr_t)*dITTaruBombItemDesc.p_file + dITTaruBombItemDesc.o_attributes) - (uintptr_t)&llGRBonus3MapTaruBombDataStart) + (uintptr_t)&llGRBonus3MapTaruBombEffectDisplayList);
 #endif

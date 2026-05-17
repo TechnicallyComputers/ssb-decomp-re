@@ -209,6 +209,15 @@ void syControllerUpdateGlobalData(void)
             // and overruns would clobber the next field on LP64 with the
             // same fingerprint as past per-player-array bugs (see
             // docs/bugs/per_gkind_table_inishie_short).
+            // Classic mode (1P): sc1pintro.c on exit clobbers scene_curr to
+            // nSCKindTitle before returning to sc1pmanager, which then calls
+            // sc1PGameStartScene() without ever restoring it. sc1pchallenger.c
+            // does the same. Both paths are patched in sc1pmanager.c
+            // (PORT-only) to set scene_curr = nSCKind1PGame right before
+            // sc1PGameStartScene, so this gate sees the intended value during
+            // classic-mode fighter / challenger / Bonus3 stages.
+            // nSCKind1PBonusStage (Bonus1/Bonus2 from classic or menu) is set
+            // explicitly at sc1pmanager.c:396 and mnplayers1pbonus.c:2792.
             u8 scene = gSCManagerSceneData.scene_curr;
             sb32 in_gameplay = (scene == nSCKindVSBattle
                                 || scene == nSCKind1PGame
