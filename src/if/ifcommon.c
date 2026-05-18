@@ -14,7 +14,9 @@ extern void syAudioSetBGMVolume(u32, u32);
 
 #ifdef PORT
 #include <stddef.h>
+#include <sys/objman.h>
 #include <sys/scheduler.h>
+extern sb32 syNetPeerIsVSSessionActive(void);
 extern void func_800266A0_272A0(void);
 extern s32 func_80026594_27194(void);
 extern s32 func_800264A4_270A4(void);
@@ -2048,6 +2050,81 @@ void ifCommonPlayerTagMakeInterface(void)
     }
 }
 
+#ifdef PORT
+/* The interface link list is heterogeneous (stocks, tags, timers, player arrows,
+ * the item-pickup arrow HUD, ...). Each entry's user_data.p is typed for its
+ * specific HUD class. The pickup-arrow HUD is the only one whose user_data.p is
+ * an ITStruct*; treating any other interface GObj as such reads garbage at
+ * struct offsets and faults. Filter by proc_display so we only touch the HUDs
+ * we own. */
+static sb32 ifCommonItemArrowItemGobjOnList(GObj *item_gobj)
+{
+    GObj *cur;
+
+    if (item_gobj == NULL)
+    {
+        return FALSE;
+    }
+    for (cur = gGCCommonLinks[nGCCommonLinkIDItem]; cur != NULL; cur = cur->link_next)
+    {
+        if (cur == item_gobj)
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+static sb32 ifCommonItemArrowIsLiveIp(ITStruct *ip)
+{
+    GObj *item_gobj;
+
+    if (ip == NULL)
+    {
+        return FALSE;
+    }
+    item_gobj = ip->item_gobj;
+    if (ifCommonItemArrowItemGobjOnList(item_gobj) == FALSE)
+    {
+        return FALSE;
+    }
+    return (itGetStruct(item_gobj) == ip);
+}
+
+void ifCommonItemArrowPruneStaleInterfaces(void)
+{
+    GObj *gobj;
+    GObj *next_gobj;
+
+    for (gobj = gGCCommonLinks[nGCCommonLinkIDInterface]; gobj != NULL; gobj = next_gobj)
+    {
+        ITStruct *ip;
+
+        next_gobj = gobj->link_next;
+        if (gobj->proc_display != ifCommonItemArrowProcDisplay)
+        {
+            continue;
+        }
+        ip = itGetStruct(gobj);
+        if (ip == NULL)
+        {
+            gcEjectGObj(gobj);
+            continue;
+        }
+        if (ip->arrow_gobj != gobj)
+        {
+            gcEjectGObj(gobj);
+            continue;
+        }
+        if (ifCommonItemArrowIsLiveIp(ip) == FALSE)
+        {
+            ip->arrow_gobj = NULL;
+            gcEjectGObj(gobj);
+        }
+    }
+}
+#endif
+
 // 0x80111D64
 void ifCommonItemArrowProcDisplay(GObj *interface_gobj)
 {
@@ -2056,12 +2133,42 @@ void ifCommonItemArrowProcDisplay(GObj *interface_gobj)
     f32 x;
     f32 y;
     Vec3f pos;
+#ifdef PORT
+    DObj *item_dobj;
+
+    if (ip == NULL)
+    {
+        gcEjectGObj(interface_gobj);
+        return;
+    }
+    if (ip->arrow_gobj != interface_gobj)
+    {
+        gcEjectGObj(interface_gobj);
+        return;
+    }
+    if (ifCommonItemArrowIsLiveIp(ip) == FALSE)
+    {
+        ip->arrow_gobj = NULL;
+        gcEjectGObj(interface_gobj);
+        return;
+    }
+#endif
 
     if ((ip->is_allow_pickup) && (ip->arrow_timer >= 15))
     {
         sobj = SObjGetStruct(interface_gobj);
-
+#ifdef PORT
+        item_dobj = DObjGetStruct(ip->item_gobj);
+        if (item_dobj == NULL)
+        {
+            ip->arrow_gobj = NULL;
+            gcEjectGObj(interface_gobj);
+            return;
+        }
+        pos = item_dobj->translate.vec.f;
+#else
         pos = DObjGetStruct(ip->item_gobj)->translate.vec.f;
+#endif
 
         pos.y += ip->coll_data.map_coll.top + 100.0F;
 
@@ -2645,6 +2752,13 @@ void ifCommonTimerFuncRun(GObj *interface_gobj)
     u32 time_update;
     s32 i;
 
+#ifdef PORT
+    /* Netplay advances time_passed from authoritative sim tick; wall-clock tics diverge across peers. */
+    if (syNetPeerIsVSSessionActive() != FALSE)
+    {
+        return;
+    }
+#endif
     if (sIFCommonTimerIsStarted != FALSE)
     {
         time_update = sySchedulerGetTicCount();

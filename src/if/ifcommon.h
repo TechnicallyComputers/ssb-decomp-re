@@ -60,6 +60,9 @@ extern void ifCommonPlayerTagMakeInterface(void);
 extern void ifCommonItemArrowProcDisplay(GObj *interface_gobj);
 extern GObj* ifCommonItemArrowMakeInterface(ITStruct *ip);
 extern void ifCommonItemArrowSetAttr(void);
+#ifdef PORT
+extern void ifCommonItemArrowPruneStaleInterfaces(void);
+#endif
 extern void ifCommonAnnounceThread(GObj *interface_gobj);
 extern void ifCommonAnnounceSetAttr(GObj *interface_gobj, s32 file_id, IFACharacter *character, s32 sprite_count);
 extern void ifCommonAnnounceGoMakeInterface(void);
