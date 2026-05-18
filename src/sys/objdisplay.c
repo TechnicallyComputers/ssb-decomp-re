@@ -8,6 +8,7 @@
 #include "libc/math.h"
 #ifdef PORT
 #include "port_log.h"
+#include "port_scene_heap.h"
 #include <stdbool.h>
 #include <stdlib.h>
 #ifdef _MSC_VER
@@ -369,6 +370,34 @@ static void gcLogSuspiciousDLPointer(const char *issue, DObj *dobj, unsigned lon
         );
     }
     sGCDLPointerWarningCount++;
+}
+
+/* If dl_link points at recycled/zero arena memory, clear it so we do not
+ * spin 64 entries or OOB-index gSYTaskmanDLHeads (Linux glibc scene heap). */
+static void gcInvalidateStaleDObjDLLink(DObj *dobj, DObjDLLink **dl_link)
+{
+    if ((dl_link == NULL) || (*dl_link == NULL) || portDObjDLLinkChainLooksValid(*dl_link))
+    {
+        return;
+    }
+
+    {
+        static u32 sStaleDLLinkClearSpamFrame = 0xFFFFFFFFu;
+
+        if (sStaleDLLinkClearSpamFrame != dSYTaskmanFrameCount)
+        {
+            sStaleDLLinkClearSpamFrame = dSYTaskmanFrameCount;
+            port_log(
+                "SSB64: gcDrawDObj: invalid DObjDLLink chain dobj=%p dl_link=%p root=%p frame=%u — clearing\n",
+                (void *)dobj,
+                (void *)*dl_link,
+                (void *)dobj->dl_link,
+                (unsigned)dSYTaskmanFrameCount);
+        }
+    }
+
+    *dl_link = NULL;
+    dobj->dl_link = NULL;
 }
 #endif
 
@@ -2066,6 +2095,11 @@ void gcDrawDObjDLLinks(DObj *dobj, DObjDLLink *dl_link)
     if ((dl_link != NULL) && (dobj->flags == DOBJ_FLAG_NONE))
     {
 #ifdef PORT
+        gcInvalidateStaleDObjDLLink(dobj, &dl_link);
+        if (dl_link == NULL)
+        {
+            return;
+        }
         /* PORT defensive guard: bail before indexing arrays if list_id is
          * OOB. See gcDrawDObjTreeDLLinks for the stale-dl_link rationale. */
         if ((u32)dl_link->list_id > (u32)ARRAY_COUNT(gSYTaskmanDLHeads))
@@ -2206,6 +2240,11 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
         if ((dl_link != NULL) && !(dobj->flags & DOBJ_FLAG_NOTEXTURE))
         {
 #ifdef PORT
+            gcInvalidateStaleDObjDLLink(dobj, &dl_link);
+            if (dl_link == NULL)
+            {
+                goto draw_dllink_children;
+            }
             walk_count = 0;
 #endif
             while (dl_link->list_id != ARRAY_COUNT(gSYTaskmanDLHeads))
@@ -2258,6 +2297,9 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
                 dl_link++;
             }
         }
+#ifdef PORT
+    draw_dllink_children:
+#endif
         if (dobj->child != NULL)
         {
             gcDrawDObjTreeDLLinks(dobj->child);

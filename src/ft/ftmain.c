@@ -1302,6 +1302,12 @@ void ftMainRunUpdateColAnim(GObj *fighter_gobj)
 void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
+#ifdef PORT
+    if ((fighter_gobj == NULL) || (this_fp == NULL))
+    {
+        return;
+    }
+#endif
     FTStruct *other_fp;
     FTAttributes *this_attr;
     FTAttributes *other_attr;
@@ -1333,6 +1339,14 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         {
         case nFTPlayerKindMan:
             controller = this_fp->input.controller;
+#ifdef PORT
+            if (controller == NULL)
+            {
+                pl->stick_range.x = pl->stick_range.y = 0;
+                pl->button_hold = pl->button_tap = pl->button_release = 0;
+                break;
+            }
+#endif
             button_hold = controller->button_hold;
 
             if (button_hold & R_TRIG)
@@ -1559,10 +1573,26 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             ftParamResetStatUpdateColAnim(fighter_gobj);
         }
     }
+#ifdef PORT
+    if ((this_fp->item_gobj != NULL) && (this_fp->status_id != nFTCommonStatusLightGet))
+    {
+        ITStruct *item_ip = itGetStruct(this_fp->item_gobj);
+
+        if (item_ip == NULL)
+        {
+            this_fp->item_gobj = NULL;
+        }
+        else if (item_ip->kind == nITKindHammer)
+        {
+            ftHammerUpdateStats(fighter_gobj);
+        }
+    }
+#else
     if ((this_fp->item_gobj != NULL) && (this_fp->status_id != nFTCommonStatusLightGet) && (itGetStruct(this_fp->item_gobj)->kind == nITKindHammer))
     {
         ftHammerUpdateStats(fighter_gobj);
     }
+#endif
     if (this_fp->shuffle_tics != 0)
     {
         this_fp->shuffle_tics--;
@@ -1603,6 +1633,10 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
 
         if ((this_fp->ga == nMPKineticsGround) && !(this_fp->is_jostle_ignore))
         {
+#ifdef PORT
+            if (this_fp->attr != NULL)
+#endif
+            {
             other_gobj = gGCCommonLinks[nGCCommonLinkIDFighter];
 
             is_check_self = FALSE;
@@ -1611,6 +1645,13 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             {
                 other_fp = ftGetStruct(other_gobj);
 
+#ifdef PORT
+                if (other_fp == NULL)
+                {
+                    other_gobj = other_gobj->link_next;
+                    continue;
+                }
+#endif
                 if ((fighter_gobj != other_gobj) && (other_fp->capture_gobj == NULL))
                 {
                     if ((other_fp->ga == nMPKineticsGround) && (this_fp->coll_data.floor_line_id == other_fp->coll_data.floor_line_id))
@@ -1618,6 +1659,18 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
                         this_attr = this_fp->attr;
                         other_attr = other_fp->attr;
 
+#ifdef PORT
+                        if ((this_attr == NULL) || (other_attr == NULL))
+                        {
+                            other_gobj = other_gobj->link_next;
+                            continue;
+                        }
+                        if ((DObjGetStruct(fighter_gobj) == NULL) || (DObjGetStruct(other_gobj) == NULL))
+                        {
+                            other_gobj = other_gobj->link_next;
+                            continue;
+                        }
+#endif
                         this_jostle = this_fp->attr->jostle_width;
 
                         jostle_dist_x = (DObjGetStruct(fighter_gobj)->translate.vec.f.x + (this_attr->jostle_x * this_fp->lr)) - (DObjGetStruct(other_gobj)->translate.vec.f.x + (other_attr->jostle_x * other_fp->lr));
@@ -1654,6 +1707,9 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             {
                 this_fp->physics.vel_jostle_z = ((DObjGetStruct(fighter_gobj)->translate.vec.f.z < 0.0F) ? +1 : -1) * 3.0F;
             }
+#ifdef PORT
+            }
+#endif
         }
     }
     this_fp->coll_data.vel_push.x = this_fp->coll_data.vel_push.y = this_fp->coll_data.vel_push.z = 0.0F;
@@ -4137,7 +4193,28 @@ void ftMainProcParams(GObj *fighter_gobj)
             break;
 
         case TRUE:
+#ifdef PORT
+            if ((fp->item_gobj != NULL) && (fp->is_item_show))
+            {
+                ITStruct *item_ip = itGetStruct(fp->item_gobj);
+
+                if (item_ip == NULL)
+                {
+                    fp->item_gobj = NULL;
+                    break;
+                }
+                if (item_ip->kind != nITKindSword)
+                {
+                    break;
+                }
+            }
+            else
+            {
+                break;
+            }
+#else
             if ((fp->item_gobj != NULL) && (fp->is_item_show) && (itGetStruct(fp->item_gobj)->kind == nITKindSword))
+#endif
             {
                 s32 unused;
                 Mtx44f mtx;

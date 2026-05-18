@@ -3,11 +3,15 @@
 #include <it/item.h>
 #include <wp/weapon.h>
 #include <sc/scene.h>
+#include <sys/utils.h>
 #include <reloc_data.h>
 extern void *func_800269C0_275C0(u16 id);
 #ifdef PORT
 /* For the defensive NULL-file_head guard's one-shot warning. */
 extern void port_log(const char *fmt, ...);
+/* Effect jitter is cosmetic; in netplay it must not advance gameplay RNG during rollback/resim. */
+#define syUtilsRandFloat syUtilsRandFloatCosmetic
+#define syUtilsRandIntRange syUtilsRandIntRangeCosmetic
 #endif
 
 // // // // // // // // // // // //

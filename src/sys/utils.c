@@ -15,6 +15,10 @@
 // Linear Congruential Generator based on values from Microsoft Visual/Quick C/C++
 s32 sSYUtilsRandomSeed     = 1;
 s32 *sSYUtilsRandomSeedPtr = &sSYUtilsRandomSeed;
+#ifdef PORT
+s32 sSYUtilsCosmeticRandomSeed = 1;
+extern sb32 syNetRollbackIsActive(void);
+#endif
 
 s32 sSYUtilsQSortItemSize = 0;
 s32 (*sSYUtilsQSortFuncCompare)(const void*, const void*) = NULL;
@@ -221,6 +225,51 @@ s32 syUtilsRandIntRange(s32 range)
     return syUtilsRandUShort() * range / 65536;
 #endif
 }
+
+#ifdef PORT
+void syUtilsResetCosmeticRandomSeed(s32 seed)
+{
+    sSYUtilsCosmeticRandomSeed = seed;
+}
+
+static u16 syUtilsRandUShortFromSeed(s32 *seedptr)
+{
+    u32 step = ((u32)*seedptr * 214013u) + 2531011u;
+
+    *seedptr = (s32)step;
+    return (u16)(step >> 16);
+}
+
+u16 syUtilsRandUShortCosmetic(void)
+{
+    if (syNetRollbackIsActive() == FALSE)
+    {
+        return syUtilsRandUShort();
+    }
+    return syUtilsRandUShortFromSeed(&sSYUtilsCosmeticRandomSeed);
+}
+
+f32 syUtilsRandFloatCosmetic(void)
+{
+    u16 value;
+
+    if (syNetRollbackIsActive() == FALSE)
+    {
+        return syUtilsRandFloat();
+    }
+    value = syUtilsRandUShortFromSeed(&sSYUtilsCosmeticRandomSeed);
+    return value / 65536.0F;
+}
+
+s32 syUtilsRandIntRangeCosmetic(s32 range)
+{
+    if (syNetRollbackIsActive() == FALSE)
+    {
+        return syUtilsRandIntRange(range);
+    }
+    return (s32)((u32)syUtilsRandUShortFromSeed(&sSYUtilsCosmeticRandomSeed) * (u32)range / 65536u);
+}
+#endif
 
 u8 syUtilsRandTimeUChar(void)
 {

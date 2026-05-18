@@ -27,14 +27,6 @@ extern void port_log(const char *fmt, ...);
 #include "port_log.h"
 #include "port_scene_heap.h"
 _Static_assert(sizeof(uintptr_t) == 8, "PORT build requires 64-bit uintptr_t");
-
-/* PORT scene arena. Allocated once in syTaskmanStartTask, recycled across
- * every scene transition. File-scope so port-side diag and cache code can
- * classify a pointer as in-arena vs reloc-file vs unknown without round-
- * tripping through the taskman API. See docs/bugs/dl_link_stale_pointer
- * _guard_2026-05-09.md for the recycle rationale. */
-void *gPortSceneHeap = NULL;
-const size_t gPortSceneHeapSize = 16 * 1024 * 1024;
 #endif
 
 // externs
@@ -1359,16 +1351,9 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 			extern void port_taskman_evict_arena_caches(const void *base, size_t size);
 			port_taskman_evict_arena_caches(gPortSceneHeap, gPortSceneHeapSize);
 		}
-<<<<<<< HEAD
-		memset(sPortHeap, 0, kPortHeapSize);
-		tsetup->scene_setup.arena_start = sPortHeap;
-		tsetup->scene_setup.arena_size = (u32)kPortHeapSize;
-		gPortSceneHeap = sPortHeap;
-=======
 		memset(gPortSceneHeap, 0, gPortSceneHeapSize);
 		tsetup->scene_setup.arena_start = gPortSceneHeap;
 		tsetup->scene_setup.arena_size = (u32)gPortSceneHeapSize;
->>>>>>> caae085e1868b907b0195f1c3b8d3d5cae84eab6
 	}
 #endif
 	syTaskmanInitGeneralHeap(tsetup->scene_setup.arena_start, tsetup->scene_setup.arena_size);

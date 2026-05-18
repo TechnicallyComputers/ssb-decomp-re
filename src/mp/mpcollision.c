@@ -6,6 +6,7 @@
 #include <sys/debug.h>
 
 #ifdef PORT
+#include <stdlib.h>
 extern void portFixupStructU16(void *base, unsigned int byte_offset, unsigned int num_words);
 extern void portFixupStructU32(void *base, unsigned int byte_offset, unsigned int num_words);
 extern void port_log(const char *fmt, ...);
@@ -3965,6 +3966,66 @@ void mpCollisionInitLineIDsAll(void)
     }
 }
 
+// Pass-1 BSWAP32 leaves u8 layer_mask at struct offset 68 in the padding byte; undo here.
+static void mpCollisionFixLayerMask(MPGroundData *ground_data)
+{
+    unsigned int lmask_off;
+    u8 mask_before_fixup;
+    u8 swapped_high_byte;
+
+    if (ground_data == NULL)
+    {
+        return;
+    }
+
+    lmask_off = (unsigned int)((uintptr_t)&ground_data->layer_mask - (uintptr_t)ground_data);
+    mask_before_fixup = ground_data->layer_mask;
+    swapped_high_byte = ((const u8 *)ground_data)[(lmask_off & ~3U) + 3U];
+    portFixupStructU32(ground_data, lmask_off & ~3U, 1);
+
+    {
+        char *diag = getenv("SSB64_LAYER_MASK_DIAG");
+
+        if ((diag != NULL) && (diag[0] != '\0') && (diag[0] != '0'))
+        {
+            port_log(
+                "[ground] layer_mask fix before=%u after=%u swapped_byte=%u gkind=%d\n",
+                (unsigned int)mask_before_fixup,
+                (unsigned int)ground_data->layer_mask,
+                (unsigned int)swapped_high_byte,
+                (gSCManagerBattleState != NULL) ? (int)gSCManagerBattleState->gkind : -1);
+        }
+    }
+}
+
+// Runtime read: use fixed struct field; if fixup was skipped, recover from the swapped u32 tail byte.
+u8 mpCollisionGetLayerMask(const MPGroundData *ground_data)
+{
+    u8 mask;
+    unsigned int lmask_off;
+    u8 swapped_high_byte;
+
+    if (ground_data == NULL)
+    {
+        return 0;
+    }
+
+    mask = ground_data->layer_mask;
+    if (mask != 0)
+    {
+        return mask;
+    }
+
+    lmask_off = (unsigned int)((uintptr_t)&ground_data->layer_mask - (uintptr_t)ground_data);
+    swapped_high_byte = ((const u8 *)ground_data)[(lmask_off & ~3U) + 3U];
+    if (swapped_high_byte != 0)
+    {
+        return swapped_high_byte;
+    }
+
+    return mask;
+}
+
 // 0x800FC284
 void mpCollisionFixGroundDataLayout(MPGroundData *ground_data)
 {
@@ -3974,11 +4035,10 @@ void mpCollisionFixGroundDataLayout(MPGroundData *ground_data)
         unsigned int bounds_off = (unsigned int)((uintptr_t)&ground_data->camera_bound_top - (uintptr_t)ground_data);
         unsigned int team_off   = (unsigned int)((uintptr_t)&ground_data->alt_warning - (uintptr_t)ground_data);
         unsigned int end_off    = (unsigned int)((uintptr_t)(&ground_data->zoom_end + 1) - (uintptr_t)ground_data);
-        unsigned int lmask_off  = (unsigned int)((uintptr_t)&ground_data->layer_mask - (uintptr_t)ground_data);
 
         portFixupStructU16(ground_data, bounds_off, 4);
         portFixupStructU16(ground_data, team_off, (end_off - team_off + 3) / 4);
-        portFixupStructU32(ground_data, lmask_off & ~3U, 1);
+        mpCollisionFixLayerMask(ground_data);
 
         // SYColorRGB fog_color (3 bytes) + u8 fog_alpha + SYColorRGB emblem_colors[GMCOMMON_PLAYERS_MAX]
         // + s32 unused are packed bytes that pass1 BSWAP32 scrambles word-by-word. Reverse each

@@ -1,4 +1,7 @@
 #include <gr/ground.h>
+#ifdef PORT
+#include <mp/mpcollision.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -190,7 +193,7 @@ GObj* grDisplayMakeGeometryLayer(MPGroundDesc *gr_desc, s32 gr_desc_id, DObj **d
     }
     ground_gobj = gcMakeGObjSPAfter(nGCCommonKindGroundDisplay, NULL, nGCCommonLinkIDGroundDisplay, GOBJ_PRIORITY_DEFAULT);
 
-    if (gMPCollisionGroundData->layer_mask & (1 << gr_desc_id))
+    if (mpCollisionGetLayerMask(gMPCollisionGroundData) & (1 << gr_desc_id))
     {
         proc_display = dGRDisplayDescs[gr_desc_id].sec_proc_display;
     }

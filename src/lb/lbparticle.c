@@ -1,10 +1,14 @@
 #include <string.h>
 #include <lb/library.h>
 #include <sys/matrix.h>
+#include <sys/utils.h>
 #include <ef/efdef.h>
 
 #ifdef PORT
 extern float port_widescreen_clip_x_scale(void);
+/* Particle generator variance is visual-only; keep it off the gameplay RNG stream in netplay. */
+#define syUtilsRandFloat syUtilsRandFloatCosmetic
+#define syUtilsRandIntRange syUtilsRandIntRangeCosmetic
 #endif
 
 extern u16 gSYSinTable[0x800];

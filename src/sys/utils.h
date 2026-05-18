@@ -17,6 +17,10 @@ extern f32 __cosf(f32);
 #ifdef PORT
 extern void syUtilsSetRandomSeed(s32 seed);
 extern s32 syUtilsRandSeed(void);
+extern void syUtilsResetCosmeticRandomSeed(s32 seed);
+extern u16 syUtilsRandUShortCosmetic(void);
+extern f32 syUtilsRandFloatCosmetic(void);
+extern s32 syUtilsRandIntRangeCosmetic(s32 range);
 #endif
 extern void syUtilsSetRandomSeedPtr(s32 *seedptr);
 extern u16 syUtilsRandUShort(void);

@@ -88,6 +88,7 @@ extern s32 mpCollisionAllocLinesGetCountTotal();
 extern void mpCollisionInitLineIDsAll();
 #ifdef PORT
 extern void mpCollisionFixGroundDataLayout(MPGroundData *ground_data);
+extern u8 mpCollisionGetLayerMask(const MPGroundData *ground_data);
 #endif
 extern void mpCollisionInitGroundData();
 extern void mpCollisionSetPlayBGM();

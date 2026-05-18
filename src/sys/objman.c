@@ -1592,6 +1592,11 @@ void gcEjectDObj(DObj *dobj)
 		current_mobj = next_mobj;
 	}
 
+#ifdef PORT
+	/* Clear display union so recycled DObjs never keep a dangling dl_link/dv. */
+	dobj->dv = NULL;
+#endif
+
 	gcSetDObjPrevAlloc(dobj);
 }
 
