@@ -1841,6 +1841,13 @@ GObj* gcMakeGObjBefore(u32 id, void (*func_run)(GObj*), GObj *link_gobj)
  * double-ejecting a freed gobj — which corrupts the free list and
  * surfaces later as a zombie pointer deref. */
 #define GOBJ_PORT_EJECTED_SENTINEL 0xFE
+#ifdef PORT
+#include <sys/objman_gcport.h>
+#include <sys/netinput.h>
+#include <sys/netpeer.h>
+
+static sb32 gcPortGObjEjectTraceEnabled(void);
+#endif
 void gcEjectGObj(GObj *gobj)
 {
 	if ((gobj == NULL) || (gobj == gGCCurrentCommon))
@@ -1864,12 +1871,25 @@ void gcEjectGObj(GObj *gobj)
 	}
 
 	/* PORT crash-diag: log eject so we can correlate with a later crash. */
-	port_log("SSB64: gcEjectGObj ENTER gobj=%p id=%u kind=%u link_id=%u dl_link_id=%u "
-	         "gpr_head=%p obj=%p link_next=%p link_prev=%p\n",
-	         (void*)gobj, gobj->id, (unsigned)gobj->obj_kind,
-	         (unsigned)gobj->link_id, (unsigned)gobj->dl_link_id,
-	         (void*)gobj->gobjproc_head, gobj->obj,
-	         (void*)gobj->link_next, (void*)gobj->link_prev);
+#ifdef PORT
+	if (gcPortGObjEjectTraceEnabled() != FALSE)
+	{
+		port_log("SSB64: gcEjectGObj ENTER sim_tick=%u gobj=%p id=%u kind=%u link_id=%u dl_link_id=%u "
+		         "gpr_head=%p obj=%p link_next=%p link_prev=%p\n",
+		         (unsigned int)syNetInputGetTick(), (void *)gobj, gobj->id, (unsigned)gobj->obj_kind,
+		         (unsigned)gobj->link_id, (unsigned)gobj->dl_link_id, (void *)gobj->gobjproc_head, gobj->obj,
+		         (void *)gobj->link_next, (void *)gobj->link_prev);
+		gcPortRecordGObjEject(gobj);
+	}
+	else
+#endif
+	{
+		port_log("SSB64: gcEjectGObj ENTER gobj=%p id=%u kind=%u link_id=%u dl_link_id=%u "
+		         "gpr_head=%p obj=%p link_next=%p link_prev=%p\n",
+		         (void *)gobj, gobj->id, (unsigned)gobj->obj_kind, (unsigned)gobj->link_id,
+		         (unsigned)gobj->dl_link_id, (void *)gobj->gobjproc_head, gobj->obj, (void *)gobj->link_next,
+		         (void *)gobj->link_prev);
+	}
 
 	gcEndProcessAll(gobj);
 
@@ -2541,3 +2561,230 @@ void gcSetupObjman(GCSetup *setup)
 
 	dGCCurrentStatus = nGCStatusSystem;
 }
+
+#ifdef PORT
+#include <sys/objman_gcport.h>
+#include <sys/netinput.h>
+#include <sys/netpeer.h>
+#include <ft/fighter.h>
+#include <ft/ftdef.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define GCPORT_FNV_SEED 2166136261U
+
+typedef struct GCPortGObjEjectRecord
+{
+	u32 sim_tick;
+	u32 gobj_id;
+	u8 link_id;
+	u8 obj_kind;
+} GCPortGObjEjectRecord;
+
+static GCPortGObjEjectRecord sGCPortGObjEjectRing[64];
+static u32 sGCPortGObjEjectRingCap = GCPORT_GOBJ_EJECT_RING_DEFAULT;
+static u32 sGCPortGObjEjectRingWrite;
+static sb32 sGCPortGObjEjectTraceCache = -999;
+
+static u32 gcPortFnvAccumulateU32(u32 hash, u32 value)
+{
+	hash ^= value;
+	hash *= 16777619U;
+	return hash;
+}
+
+static sb32 gcPortGObjEjectTraceEnabled(void)
+{
+	const char *e;
+
+	if (sGCPortGObjEjectTraceCache != -999)
+	{
+		return (sGCPortGObjEjectTraceCache != 0) ? TRUE : FALSE;
+	}
+	e = getenv("SSB64_NETPLAY_GOBJ_EJECT_TRACE");
+	sGCPortGObjEjectTraceCache = ((e != NULL) && (e[0] != '\0') && (strtol(e, NULL, 10) != 0L)) ? 1 : 0;
+	if (sGCPortGObjEjectTraceCache != 0)
+	{
+		const char *ring_env = getenv("SSB64_NETPLAY_GOBJ_EJECT_RING");
+		long ring_n;
+
+		ring_n = ((ring_env != NULL) && (ring_env[0] != '\0')) ? strtol(ring_env, NULL, 10) : (long)GCPORT_GOBJ_EJECT_RING_DEFAULT;
+		if (ring_n < 4L)
+		{
+			ring_n = 4L;
+		}
+		if (ring_n > (long)ARRAY_COUNT(sGCPortGObjEjectRing))
+		{
+			ring_n = (long)ARRAY_COUNT(sGCPortGObjEjectRing);
+		}
+		sGCPortGObjEjectRingCap = (u32)ring_n;
+	}
+	return (sGCPortGObjEjectTraceCache != 0) ? TRUE : FALSE;
+}
+
+void gcPortRecordGObjEject(const GObj *gobj)
+{
+	GCPortGObjEjectRecord *rec;
+
+	if ((gobj == NULL) || (gcPortGObjEjectTraceEnabled() == FALSE) || (syNetPeerIsVSSessionActive() == FALSE))
+	{
+		return;
+	}
+	rec = &sGCPortGObjEjectRing[sGCPortGObjEjectRingWrite % sGCPortGObjEjectRingCap];
+	rec->sim_tick = syNetInputGetTick();
+	rec->gobj_id = gobj->id;
+	rec->link_id = gobj->link_id;
+	rec->obj_kind = gobj->obj_kind;
+	sGCPortGObjEjectRingWrite++;
+}
+
+void gcPortDumpGObjEjectRing(const char *tag, u32 load_tick)
+{
+	u32 i;
+	u32 count;
+	u32 start;
+
+	if (gcPortGObjEjectTraceEnabled() == FALSE)
+	{
+		return;
+	}
+	count = sGCPortGObjEjectRingWrite;
+	if (count > sGCPortGObjEjectRingCap)
+	{
+		count = sGCPortGObjEjectRingCap;
+	}
+	start = (sGCPortGObjEjectRingWrite >= count) ? (sGCPortGObjEjectRingWrite - count) : 0U;
+	port_log("SSB64: gcEjectGObj RING_DUMP tag=%s load_tick=%u entries=%u cap=%u\n", (tag != NULL) ? tag : "?",
+		 load_tick, count, sGCPortGObjEjectRingCap);
+	for (i = 0; i < count; i++)
+	{
+		const GCPortGObjEjectRecord *rec =
+		    &sGCPortGObjEjectRing[(start + i) % sGCPortGObjEjectRingCap];
+
+		port_log("SSB64: gcEjectGObj RING[%u] sim_tick=%u id=%u link_id=%u kind=%u\n", i, rec->sim_tick,
+			 rec->gobj_id, (unsigned int)rec->link_id, (unsigned int)rec->obj_kind);
+	}
+}
+
+void gcPortGcRunAllTraversalFingerprintEx(u32 *gch, u32 *ngobj, u32 *ngobj_run, u32 *nproc_run)
+{
+	s32 i;
+	GObj *gobj;
+	GObjProcess *gobjproc;
+	u32 hash = GCPORT_FNV_SEED;
+	u32 gobj_count = 0U;
+	u32 gobj_run_count = 0U;
+	u32 proc_run_count = 0U;
+
+	for (i = 0; i < (s32)ARRAY_COUNT(gGCCommonLinks); i++)
+	{
+		for (gobj = gGCCommonLinks[i]; gobj != NULL; gobj = gobj->link_next)
+		{
+			u32 fold = GCPORT_FNV_SEED;
+			s32 player = -1;
+
+			gobj_count++;
+			fold = gcPortFnvAccumulateU32(fold, (u32)i);
+			fold = gcPortFnvAccumulateU32(fold, gobj->id);
+			fold = gcPortFnvAccumulateU32(fold, (u32)gobj->obj_kind);
+			fold = gcPortFnvAccumulateU32(fold, (u32)gobj->link_id);
+			fold = gcPortFnvAccumulateU32(fold, (u32)(gobj->flags & GOBJ_FLAG_NORUN));
+			if ((i == nGCCommonLinkIDFighter) && (gobj->obj != NULL))
+			{
+				FTStruct *fp = ftGetStruct(gobj);
+
+				if (fp != NULL)
+				{
+					player = fp->player;
+					fold = gcPortFnvAccumulateU32(fold, (u32)fp->player);
+					fold = gcPortFnvAccumulateU32(fold, (u32)fp->fkind);
+				}
+			}
+			hash ^= fold;
+			hash = gcPortFnvAccumulateU32(hash, (u32)((player >= 0) ? (u32)player : 0xFFU));
+			if (!(gobj->flags & GOBJ_FLAG_NORUN) && (gobj->func_run != NULL))
+			{
+				gobj_run_count++;
+			}
+		}
+	}
+	for (i = (s32)ARRAY_COUNT(sGCProcessQueue) - 1; i >= 0; i--)
+	{
+		for (gobjproc = sGCProcessQueue[i]; gobjproc != NULL; gobjproc = gobjproc->priority_next)
+		{
+			if (gobjproc->is_paused == FALSE)
+			{
+				proc_run_count++;
+			}
+		}
+	}
+	if (gch != NULL)
+	{
+		*gch = hash;
+	}
+	if (ngobj != NULL)
+	{
+		*ngobj = gobj_count;
+	}
+	if (ngobj_run != NULL)
+	{
+		*ngobj_run = gobj_run_count;
+	}
+	if (nproc_run != NULL)
+	{
+		*nproc_run = proc_run_count;
+	}
+}
+
+u32 gcPortHashGcRunAllTraversalFingerprint(void)
+{
+	u32 gch;
+
+	gcPortGcRunAllTraversalFingerprintEx(&gch, NULL, NULL, NULL);
+	return gch;
+}
+
+void gcPortSnprintGcRunAllTraversalHeadPairs(char *buf, size_t bufsize, int max_pairs)
+{
+	s32 i;
+	GObj *gobj;
+	int pairs = 0;
+	size_t pos = 0U;
+
+	if ((buf == NULL) || (bufsize == 0U))
+	{
+		return;
+	}
+	buf[0] = '\0';
+	if (max_pairs <= 0)
+	{
+		return;
+	}
+	for (i = 0; i < (s32)ARRAY_COUNT(gGCCommonLinks); i++)
+	{
+		for (gobj = gGCCommonLinks[i]; gobj != NULL; gobj = gobj->link_next)
+		{
+			int n;
+
+			if (pairs >= max_pairs)
+			{
+				return;
+			}
+			n = snprintf(buf + pos, (pos < bufsize) ? (bufsize - pos) : 0U, "%sL%d:g%u", (pairs > 0) ? "," : "",
+				     (int)i, gobj->id);
+			if (n <= 0)
+			{
+				return;
+			}
+			pos += (size_t)n;
+			if (pos >= bufsize)
+			{
+				buf[bufsize - 1U] = '\0';
+				return;
+			}
+			pairs++;
+		}
+	}
+}
+#endif /* PORT */
