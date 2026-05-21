@@ -1,5 +1,9 @@
 #include <ft/fighter.h>
 
+#ifdef PORT
+#include <it/itmain.h>
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //           FUNCTIONS           //
@@ -27,6 +31,12 @@ void ftCommonWaitSetStatus(GObj *fighter_gobj)
         {
             mpCommonSetFighterGround(fp);
         }
+#ifdef PORT
+        if (fp->item_gobj == NULL)
+        {
+            itMainSweepOrphanItemOwnersForFighter(fighter_gobj);
+        }
+#endif
         ftMainSetStatus(fighter_gobj, nFTCommonStatusWait, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
 
         fp->is_special_interrupt = TRUE;

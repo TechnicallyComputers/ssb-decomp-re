@@ -348,6 +348,18 @@ void itMainDestroyItem(GObj *item_gobj)
 
         ftParamSetHammerParams(ip->owner_gobj);
     }
+#ifdef PORT
+    else if (ip->owner_gobj != NULL)
+    {
+        FTStruct *fp = ftGetStruct(ip->owner_gobj);
+
+        if ((fp != NULL) && (fp->item_gobj == item_gobj))
+        {
+            fp->item_gobj = NULL;
+        }
+        itMainDetachOrphanHoldDisplay(item_gobj);
+    }
+#endif
     else if ((ip->kind < nITKindGroundMonsterStart) || (ip->kind > nITKindGroundMonsterEnd))
     {
         efManagerDustExpandLargeMakeEffect(&DObjGetStruct(item_gobj)->translate.vec.f);
@@ -555,6 +567,62 @@ void itMainSetFighterHold(GObj *item_gobj, GObj *fighter_gobj)
 
     ip->pickup_wait = ITEM_PICKUP_WAIT_DEFAULT;
 }
+
+#ifdef PORT
+void itMainDetachOrphanHoldDisplay(GObj *item_gobj)
+{
+    ITStruct *ip;
+    GObj *fighter_gobj;
+    FTStruct *fp;
+
+    if (item_gobj == NULL)
+    {
+        return;
+    }
+    ip = itGetStruct(item_gobj);
+    if (ip == NULL)
+    {
+        return;
+    }
+    fighter_gobj = ip->owner_gobj;
+    if (fighter_gobj != NULL)
+    {
+        fp = ftGetStruct(fighter_gobj);
+        if ((fp != NULL) && (fp->item_gobj == item_gobj))
+        {
+            fp->item_gobj = NULL;
+        }
+        ip->owner_gobj = NULL;
+    }
+    if (ip->is_hold == FALSE)
+    {
+        if (item_gobj->obj != NULL)
+        {
+            lbCommonEjectTreeDObj(DObjGetStruct(item_gobj));
+            item_gobj->obj = NULL;
+        }
+    }
+}
+
+void itMainSweepOrphanItemOwnersForFighter(GObj *fighter_gobj)
+{
+    GObj *item_gobj;
+
+    if (fighter_gobj == NULL)
+    {
+        return;
+    }
+    for (item_gobj = gGCCommonLinks[nGCCommonLinkIDItem]; item_gobj != NULL; item_gobj = item_gobj->link_next)
+    {
+        ITStruct *ip = itGetStruct(item_gobj);
+
+        if ((ip != NULL) && (ip->owner_gobj == fighter_gobj) && (ip->is_hold == FALSE))
+        {
+            itMainDetachOrphanHoldDisplay(item_gobj);
+        }
+    }
+}
+#endif
 
 // 0x80172E74
 void itMainSetGroundAllowPickup(GObj *item_gobj) // Airborne item becomes grounded?

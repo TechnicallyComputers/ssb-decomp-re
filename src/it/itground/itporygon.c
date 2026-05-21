@@ -100,6 +100,7 @@ sb32 itPorygonCommonProcUpdate(GObj *item_gobj)
 
     if (dobj->anim_wait == AOBJ_ANIM_NULL)
     {
+        grYamabukiGateClearMonsterGObj();
         grYamabukiGateSetClosedWait();
 
         return TRUE;

@@ -80,6 +80,18 @@ void grYamabukiGateMakeMonster(void)
     Vec3f vel;
     s32 mapobj;
     s32 item_id;
+    GObj *prior_monster_gobj;
+
+    prior_monster_gobj = gGRCommonStruct.yamabuki.monster_gobj;
+
+    if (prior_monster_gobj != NULL)
+    {
+        if (itGetStruct(prior_monster_gobj) != NULL)
+        {
+            return;
+        }
+        grYamabukiGateClearMonsterGObj();
+    }
 
     gGRCommonStruct.yamabuki.gate_status = nGRYamabukiGateStatusOpen;
     gGRCommonStruct.yamabuki.gate_noentry = FALSE;

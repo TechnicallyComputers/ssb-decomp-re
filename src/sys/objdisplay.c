@@ -2073,8 +2073,24 @@ void gcDrawDObjTree(DObj *this_dobj)
 // 0x80014038
 void gcDrawDObjTreeForGObj(GObj *gobj) 
 {
+#ifdef PORT
+    DObj *dobj;
+
+    if (gobj == NULL)
+    {
+        return;
+    }
+    dobj = DObjGetStruct(gobj);
+    if (dobj == NULL)
+    {
+        return;
+    }
+    gGCScaleX = 1.0F;
+    gcDrawDObjTree(dobj);
+#else
     gGCScaleX = 1.0F;
     gcDrawDObjTree(DObjGetStruct(gobj));
+#endif
 }
 
 // 0x80014068

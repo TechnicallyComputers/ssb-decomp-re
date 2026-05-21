@@ -55,6 +55,11 @@ void itMainSetFighterThrow(GObj *item_gobj, Vec3f *vel, f32 throw_mul, sb32 is_s
 // Run item's pickup routine
 void itMainSetFighterHold(GObj *item_gobj, GObj *fighter_gobj);
 
+#ifdef PORT
+void itMainDetachOrphanHoldDisplay(GObj *item_gobj);
+void itMainSweepOrphanItemOwnersForFighter(GObj *fighter_gobj);
+#endif
+
 // Make item grounded, clear player variables and make it possible to pick up
 void itMainSetGroundAllowPickup(GObj *item_gobj);
 

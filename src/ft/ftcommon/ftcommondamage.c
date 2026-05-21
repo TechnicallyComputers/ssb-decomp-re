@@ -2,6 +2,7 @@
 #include <it/item.h>
 #ifdef PORT
 #include <if/ifscreenflash.h>
+#include <it/itmain.h>
 #endif
 
 extern alSoundEffect* func_800269C0_275C0(u16);
@@ -666,6 +667,12 @@ void ftCommonDamageGotoDamageStatus(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#ifdef PORT
+    if (fp->item_gobj == NULL)
+    {
+        itMainSweepOrphanItemOwnersForFighter(fighter_gobj);
+    }
+#endif
     if (fp->is_cliff_hold)
     {
         fp->cliffcatch_wait = FTCOMMON_CLIFF_CATCH_WAIT;

@@ -171,6 +171,7 @@ sb32 itMarumineExplodeProcUpdate(GObj *item_gobj)
 
     if (ip->multi == ITMARUMINE_EXPLODE_LIFETIME)
     {
+        grYamabukiGateClearMonsterGObj();
         grYamabukiGateSetClosedWait();
 
         return TRUE;
