@@ -117,12 +117,22 @@ void ftCommonThrownReleaseThrownUpdateStats(GObj *fighter_gobj, s32 lr, s32 scri
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
     GObj *capture_gobj = this_fp->capture_gobj;
-    FTStruct *capture_fp = ftGetStruct(capture_gobj);
+    FTStruct *capture_fp;
     FTThrowHitDesc *ft_throw;
     f32 knockback_final;
     s32 damage;
     f32 knockback_resist;
     f32 knockback_calc;
+
+    if (capture_gobj == NULL)
+    {
+        return;
+    }
+    capture_fp = ftGetStruct(capture_gobj);
+    if ((capture_fp == NULL) || (capture_fp->throw_desc == NULL))
+    {
+        return;
+    }
 
     knockback_resist = (this_fp->knockback_resist_status < this_fp->knockback_resist_passive) ? this_fp->knockback_resist_passive : this_fp->knockback_resist_status;
 

@@ -11,12 +11,35 @@
 void ftCommonCapturePulledRotateScale(GObj *fighter_gobj, Vec3f *this_pos, Vec3f *rotate)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
-    FTStruct *capture_fp = ftGetStruct(this_fp->capture_gobj);
+    FTStruct *capture_fp;
+    DObj *attach_dobj;
 #if defined(REGION_US)
     DObj *joint = DObjGetStruct(fighter_gobj)->child;
     Mtx44f mtx;
 
-    func_ovl0_800C9A38(mtx, capture_fp->joints[capture_fp->attr->joint_itemheavy_id]);
+#ifdef PORT
+    if (this_fp->capture_gobj == NULL)
+    {
+        if (this_pos != NULL)
+        {
+            *this_pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
+        }
+        return;
+    }
+#endif
+    capture_fp = ftGetStruct(this_fp->capture_gobj);
+    attach_dobj = capture_fp->joints[capture_fp->attr->joint_itemheavy_id];
+#ifdef PORT
+    if (attach_dobj == NULL)
+    {
+        if (this_pos != NULL)
+        {
+            *this_pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
+        }
+        return;
+    }
+#endif
+    func_ovl0_800C9A38(mtx, attach_dobj);
     func_ovl2_800EDA0C(mtx, rotate);
 
     this_pos->x = (-joint->translate.vec.f.x * DObjGetStruct(fighter_gobj)->scale.vec.f.x);
@@ -28,8 +51,30 @@ void ftCommonCapturePulledRotateScale(GObj *fighter_gobj, Vec3f *this_pos, Vec3f
     FTParts *ftparts;
     DObj *joint = DObjGetStruct(fighter_gobj)->child;
 
-    func_ovl2_800EDBA4(capture_fp->joints[capture_fp->attr->joint_itemheavy_id]);
-    ftparts = capture_fp->joints[capture_fp->attr->joint_itemheavy_id]->user_data.p;
+#ifdef PORT
+    if (this_fp->capture_gobj == NULL)
+    {
+        if (this_pos != NULL)
+        {
+            *this_pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
+        }
+        return;
+    }
+#endif
+    capture_fp = ftGetStruct(this_fp->capture_gobj);
+    attach_dobj = capture_fp->joints[capture_fp->attr->joint_itemheavy_id];
+#ifdef PORT
+    if (attach_dobj == NULL)
+    {
+        if (this_pos != NULL)
+        {
+            *this_pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
+        }
+        return;
+    }
+#endif
+    func_ovl2_800EDBA4(attach_dobj);
+    ftparts = attach_dobj->user_data.p;
     func_ovl2_800EDA0C(ftparts->mtx_translate, rotate);
 
     this_pos->x = (-joint->translate.vec.f.x * DObjGetStruct(fighter_gobj)->scale.vec.f.x);

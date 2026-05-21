@@ -56,6 +56,7 @@ void itMainSetFighterThrow(GObj *item_gobj, Vec3f *vel, f32 throw_mul, sb32 is_s
 void itMainSetFighterHold(GObj *item_gobj, GObj *fighter_gobj);
 
 #ifdef PORT
+sb32 itMainItemHasOrphanHoldDisplay(GObj *item_gobj);
 void itMainDetachOrphanHoldDisplay(GObj *item_gobj);
 void itMainSweepOrphanItemOwnersForFighter(GObj *fighter_gobj);
 #endif

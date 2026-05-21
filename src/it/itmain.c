@@ -569,38 +569,72 @@ void itMainSetFighterHold(GObj *item_gobj, GObj *fighter_gobj)
 }
 
 #ifdef PORT
+sb32 itMainItemHasOrphanHoldDisplay(GObj *item_gobj)
+{
+    ITStruct *ip;
+    GObj *fighter_gobj;
+    FTStruct *fp;
+    DObj *wrapper;
+    DObj *attach_joint;
+
+    if (item_gobj == NULL)
+    {
+        return FALSE;
+    }
+    ip = itGetStruct(item_gobj);
+    if ((ip == NULL) || (ip->is_hold != FALSE) || (ip->owner_gobj == NULL))
+    {
+        return FALSE;
+    }
+    fighter_gobj = ip->owner_gobj;
+    fp = ftGetStruct(fighter_gobj);
+    if (fp == NULL)
+    {
+        return FALSE;
+    }
+    wrapper = DObjGetStruct(item_gobj);
+    if (wrapper == NULL)
+    {
+        return FALSE;
+    }
+    attach_joint = (DObj *)wrapper->user_data.p;
+    if (attach_joint == NULL)
+    {
+        return FALSE;
+    }
+    if (attach_joint == fp->joints[fp->attr->joint_itemheavy_id])
+    {
+        return TRUE;
+    }
+    if (attach_joint == fp->joints[fp->attr->joint_itemlight_id])
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+
 void itMainDetachOrphanHoldDisplay(GObj *item_gobj)
 {
     ITStruct *ip;
     GObj *fighter_gobj;
     FTStruct *fp;
 
-    if (item_gobj == NULL)
+    if (itMainItemHasOrphanHoldDisplay(item_gobj) == FALSE)
     {
         return;
     }
     ip = itGetStruct(item_gobj);
-    if (ip == NULL)
-    {
-        return;
-    }
     fighter_gobj = ip->owner_gobj;
-    if (fighter_gobj != NULL)
+    fp = ftGetStruct(fighter_gobj);
+    if ((fp != NULL) && (fp->item_gobj == item_gobj))
     {
-        fp = ftGetStruct(fighter_gobj);
-        if ((fp != NULL) && (fp->item_gobj == item_gobj))
-        {
-            fp->item_gobj = NULL;
-        }
-        ip->owner_gobj = NULL;
+        fp->item_gobj = NULL;
     }
-    if (ip->is_hold == FALSE)
+    ip->owner_gobj = NULL;
+    if (item_gobj->obj != NULL)
     {
-        if (item_gobj->obj != NULL)
-        {
-            lbCommonEjectTreeDObj(DObjGetStruct(item_gobj));
-            item_gobj->obj = NULL;
-        }
+        lbCommonEjectTreeDObj(DObjGetStruct(item_gobj));
+        item_gobj->obj = NULL;
     }
 }
 
@@ -614,9 +648,7 @@ void itMainSweepOrphanItemOwnersForFighter(GObj *fighter_gobj)
     }
     for (item_gobj = gGCCommonLinks[nGCCommonLinkIDItem]; item_gobj != NULL; item_gobj = item_gobj->link_next)
     {
-        ITStruct *ip = itGetStruct(item_gobj);
-
-        if ((ip != NULL) && (ip->owner_gobj == fighter_gobj) && (ip->is_hold == FALSE))
+        if (itMainItemHasOrphanHoldDisplay(item_gobj) != FALSE)
         {
             itMainDetachOrphanHoldDisplay(item_gobj);
         }
