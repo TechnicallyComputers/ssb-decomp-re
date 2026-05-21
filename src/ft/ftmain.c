@@ -4734,6 +4734,12 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     }
     if (!(flags & FTSTATUS_PRESERVE_SLOPECONTOUR))
     {
+        /* Match SetSlopeContour(0) motion events: zero stale full-body tilt when
+         * leaving a slope-contoured state without the motion-script event path. */
+        if (fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL)
+        {
+            DObjGetStruct(fighter_gobj)->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
+        }
         fp->slope_contour = 0;
     }
     fp->coll_data.ignore_line_id = -1;

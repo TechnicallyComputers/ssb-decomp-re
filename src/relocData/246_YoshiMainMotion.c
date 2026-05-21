@@ -1339,6 +1339,7 @@ FTThrowHitDesc dYoshiMainMotion_0x16F8[] = {
 
 u32 dYoshiMainMotion_0x1730[] = {
 	ftMotionCommandSetThrow((u32)dYoshiMainMotion_0x16F8),
+	ftMotionCommandSetSlopeContour(0),
 	ftMotionCommandWaitAsync(18),
 	ftMotionCommandMakeAttackColl(0, 0, 31, 1, 1, 0, 300, 0, 100, 0, 361, 100, 0, 3, 0, 1, 0, 0),
 	ftMotionPlayFGM(nSYAudioFGMYoshiSpecialNTongue),

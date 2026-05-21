@@ -2588,6 +2588,7 @@ u32 dKirbyMainMotion_0x1D04[] = {
 #else
 u32 dKirbyMainMotion_0x1CCC[] = {
 	ftMotionCommandSetThrow((u32)dKirbyMainMotion_0x1C94),
+	ftMotionCommandSetSlopeContour(0),
 	ftMotionCommandSetFlag0(1),
 	ftMotionCommandMakeRumble(0, 7),
 	ftMotionCommandMakeAttackColl(0, 0, 0, 1, 1, 0, 290, 0, 240, 200, 361, 100, 0, 3, 0, 0, 0, 0),
@@ -3268,6 +3269,7 @@ u32 dKirbyMainMotion_0x2214[] = {
 #else
 u32 dKirbyMainMotion_0x21D8[] = {
 	ftMotionCommandSetThrow((u32)dKirbyMainMotion_0x21A0),
+	ftMotionCommandSetSlopeContour(0),
 	ftMotionCommandWaitAsync(18),
 	ftMotionCommandSubroutine(dKirbyMainMotion_0x218C),
 	ftMotionCommandMakeAttackColl(0, 0, 30, 1, 1, 0, 300, 0, 100, 0, 361, 100, 0, 3, 0, 1, 0, 0),
