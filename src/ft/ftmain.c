@@ -6,6 +6,10 @@
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
 extern void port_dump_backtrace(void);
+#if defined(SSB64_NETMENU)
+// Required for Netplay rollback snapshotting support
+#include <sys/netfighterphase.h>
+#endif
 #endif
 #include <sys/controller.h>
 
@@ -1302,11 +1306,12 @@ void ftMainRunUpdateColAnim(GObj *fighter_gobj)
 void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     if ((fighter_gobj == NULL) || (this_fp == NULL))
     {
         return;
     }
+    syNetFighterPhaseOnInterruptVeryStart(fighter_gobj);
 #endif
     FTStruct *other_fp;
     FTAttributes *this_attr;
@@ -1471,6 +1476,9 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         {
             this_fp->hold_stick_y = FTINPUT_STICKBUFFER_TICS_MAX;
         }
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetFighterPhaseOnInterruptAfterInputControl(fighter_gobj);
+#endif
     }
     if (this_fp->tics_since_last_z < FTINPUT_ZTRIGLAST_TICS_MAX)
     {
@@ -1713,6 +1721,9 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         }
     }
     this_fp->coll_data.vel_push.x = this_fp->coll_data.vel_push.y = this_fp->coll_data.vel_push.z = 0.0F;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetFighterPhaseOnParamsEnd(fighter_gobj);
+#endif
 }
 
 // 0x800E1CF0
@@ -5174,6 +5185,73 @@ void ftMainRebindStatusProcs(GObj *fighter_gobj)
     else
     {
         fp->proc_update = NULL;
+    }
+}
+
+/*
+ * Post-rollback visual-only path: resolve figatree for current status/motion and re-attach
+ * at the fighter GObj anim_frame. Does not run proc_status, motion events, or joint defaults.
+ */
+void ftMainRefreshFigatreeVisual(GObj *fighter_gobj)
+{
+    FTStruct *fp;
+    FTMotionDescArray *script_array;
+    FTMotionDesc *motion_desc;
+    s32 status_id;
+    s32 motion_id;
+    DObj *topn_child;
+
+    if (fighter_gobj == NULL)
+    {
+        return;
+    }
+    fp = ftGetStruct(fighter_gobj);
+    if ((fp == NULL) || (fp->joints[nFTPartsJointTopN] == NULL))
+    {
+        return;
+    }
+    topn_child = fp->joints[nFTPartsJointTopN]->child;
+    if (topn_child == NULL)
+    {
+        return;
+    }
+
+    status_id = fp->status_id;
+    if (status_id >= FTSTAT_CHARDATA_START)
+    {
+        status_id -= FTSTAT_CHARDATA_START;
+    }
+    if (status_id >= FTSTAT_OPENING2_START)
+    {
+        script_array = fp->data->submotion;
+    }
+    else
+    {
+        script_array = fp->data->mainmotion;
+    }
+
+    motion_id = fp->motion_id;
+    if ((script_array != NULL) && (motion_id != -1) && (motion_id != -2))
+    {
+        motion_desc = &script_array->motion_desc[motion_id];
+        if (motion_desc->anim_desc.flags.is_use_shieldpose)
+        {
+            fp->figatree = (void *)((intptr_t)motion_desc->anim_file_id + (uintptr_t)fp->data->p_file_shieldpose);
+        }
+        else if (motion_desc->anim_file_id != 0)
+        {
+            lbRelocGetForceExternHeapFile(motion_desc->anim_file_id, (void *)fp->figatree_heap);
+            fp->figatree = fp->figatree_heap;
+        }
+        else
+        {
+            fp->figatree = NULL;
+        }
+    }
+
+    if (fp->figatree != NULL)
+    {
+        lbCommonAddFighterPartsFigatree(topn_child, fp->figatree, fighter_gobj->anim_frame);
     }
 }
 #endif
