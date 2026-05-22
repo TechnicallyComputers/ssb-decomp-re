@@ -15,6 +15,11 @@ void wpManagerSetPrevStructAlloc(WPStruct* wp);
 // Get group index for weapon and increment global group count
 u32 wpManagerGetGroupID();
 
+#ifdef PORT
+u32 wpManagerAssignInstanceId(void);
+void wpManagerResetInstanceIds(void);
+#endif
+
 // Create new weapon
 GObj* wpManagerMakeWeapon(GObj* parent_gobj, WPDesc* wp_desc, Vec3f* spawn_pos, u32 flags);
 

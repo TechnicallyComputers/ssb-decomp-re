@@ -4,6 +4,8 @@
 #include <reloc_data.h>
 #ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
+#include <sys/netrollbacksnapshot.h>
+#include <wp/wpdef.h>
 #endif
 
 // // // // // // // // // // // //
@@ -359,6 +361,12 @@ void itFFlowerShootFlame(GObj *fighter_gobj, Vec3f *pos, s32 index, s32 ammo_sub
     vel.y = __sinf(angle[index]) * ITFFLOWER_AMMO_VEL;
     vel.z = 0.0F;
 
+#ifdef PORT
+    if (syNetRbSnapHeldItemWeaponNeedsSpawn(fighter_gobj, nWPKindFFlowerFlame, pos, &vel) == FALSE)
+    {
+        return;
+    }
+#endif
     itFFlowerWeaponFlameMakeWeapon(fighter_gobj, pos, &vel);
 
     ip->multi -= ammo_sub;

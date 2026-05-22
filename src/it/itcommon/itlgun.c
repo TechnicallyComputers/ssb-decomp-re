@@ -2,6 +2,10 @@
 #include <wp/weapon.h>
 #include <ft/fighter.h>
 #include <reloc_data.h>
+#ifdef PORT
+#include <sys/netrollbacksnapshot.h>
+#include <wp/wpdef.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -371,6 +375,12 @@ void itLGunMakeAmmo(GObj *fighter_gobj, Vec3f *pos)
 {
     ITStruct *ip = itGetStruct(ftGetStruct(fighter_gobj)->item_gobj);
 
+#ifdef PORT
+    if (syNetRbSnapHeldItemWeaponNeedsSpawn(fighter_gobj, nWPKindLGunAmmo, pos, NULL) == FALSE)
+    {
+        return;
+    }
+#endif
     itLGunWeaponAmmoMakeWeapon(fighter_gobj, pos);
 
     ip->multi--;

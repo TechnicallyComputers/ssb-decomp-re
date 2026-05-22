@@ -217,6 +217,10 @@ struct WPStruct
 
     u32 group_id;                       // Weapon's group, identical group IDs => hitbox victim records are linked together with other weapons sharing the same ID?
 
+#ifdef PORT
+    u32 instance_id;                  // Unique per spawn (rollback snapshot identity; GObj id is always nGCCommonKindWeapon)
+#endif
+
     s32 lifetime;                       // Weapon's duration in frames
 
     ub32 is_camera_follow : 1;          // Camera will attempt to follow the weapon

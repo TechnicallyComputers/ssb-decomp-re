@@ -3,6 +3,9 @@
 #ifdef PORT
 #include <ft/ftcommon/ftcommonfunctions.h>
 #include <sys/netrollbacksnapshot.h>
+#include <wp/wpvars.h>
+
+extern wpSamusChargeShotAttributes dWPSamusChargeShotWeaponAttributes[];
 #endif
 
 // // // // // // // // // // // //
@@ -19,6 +22,37 @@ static sb32 ftSamusSpecialNPortChargeShotIsCharging(WPStruct *wp)
 		return FALSE;
 	}
 	return (wp->weapon_vars.charge_shot.is_release == FALSE) ? TRUE : FALSE;
+}
+
+static void ftSamusSpecialNPortRefreshChargeShotGfx(FTStruct *fp)
+{
+	GObj *charge_gobj;
+	WPStruct *wp;
+	f32 scale;
+
+	if (fp == NULL)
+	{
+		return;
+	}
+	charge_gobj = fp->status_vars.samus.specialn.charge_gobj;
+	if (charge_gobj == NULL)
+	{
+		return;
+	}
+	wp = wpGetStruct(charge_gobj);
+	if ((wp == NULL) || (wp->kind != nWPKindChargeShot))
+	{
+		return;
+	}
+	if (wp->weapon_vars.charge_shot.is_release != FALSE)
+	{
+		return;
+	}
+	wp->weapon_vars.charge_shot.charge_size = fp->passive_vars.samus.charge_level;
+	scale = dWPSamusChargeShotWeaponAttributes[wp->weapon_vars.charge_shot.charge_size].gfx_size /
+	        WPCHARGESHOT_GFX_SIZE_DIV;
+	DObjGetStruct(charge_gobj)->scale.vec.f.x = scale;
+	DObjGetStruct(charge_gobj)->scale.vec.f.y = scale;
 }
 
 static void ftSamusSpecialNPortValidateCoupledCharge(FTStruct *fp)
@@ -55,6 +89,29 @@ static void ftSamusSpecialNPortSetStatusWait(GObj *fighter_gobj)
 {
 	ftSamusSpecialNPortCleanupChargeShots(fighter_gobj);
 	ftCommonWaitSetStatus(fighter_gobj);
+}
+
+static void ftSamusSpecialNPortEnsureCoupledChargeShot(GObj *fighter_gobj)
+{
+	FTStruct *fp = ftGetStruct(fighter_gobj);
+	Vec3f pos;
+
+	ftSamusSpecialNPortValidateCoupledCharge(fp);
+	if (fp->status_vars.samus.specialn.charge_gobj == NULL)
+	{
+		fp->status_vars.samus.specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+	}
+	if (fp->status_vars.samus.specialn.charge_gobj == NULL)
+	{
+		ftSamusSpecialNGetChargeShotPosition(fp, &pos);
+		fp->status_vars.samus.specialn.charge_gobj =
+		    wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.samus.charge_level, FALSE);
+	}
+	if (fp->status_vars.samus.specialn.charge_gobj != NULL)
+	{
+		syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.samus.specialn.charge_gobj);
+		ftSamusSpecialNPortRefreshChargeShotGfx(fp);
+	}
 }
 #endif
 
@@ -186,6 +243,9 @@ void ftSamusSpecialNLoopProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#ifdef PORT
+    ftSamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
+#endif
     fp->status_vars.samus.specialn.charge_int--;
 
     if (fp->status_vars.samus.specialn.charge_int == 0)
@@ -264,13 +324,10 @@ void ftSamusSpecialNLoopProcMap(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    ftSamusSpecialNSetChargeShotPosition(fp);
 #ifdef PORT
-    if (fp->status_vars.samus.specialn.charge_gobj != NULL)
-    {
-        syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.samus.specialn.charge_gobj);
-    }
+    ftSamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
 #endif
+    ftSamusSpecialNSetChargeShotPosition(fp);
     mpCommonProcFighterOnEdge(fighter_gobj, ftSamusSpecialAirNEndSetStatus);
 }
 
@@ -287,17 +344,9 @@ void ftSamusSpecialNLoopSetStatus(GObj *fighter_gobj)
 
     ftSamusSpecialNGetChargeShotPosition(fp, &pos);
 #ifdef PORT
-    if (fp->status_vars.samus.specialn.charge_gobj == NULL)
-    {
-        fp->status_vars.samus.specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
-    }
-    if (fp->status_vars.samus.specialn.charge_gobj == NULL)
-#endif
-    {
-        fp->status_vars.samus.specialn.charge_gobj = wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.samus.charge_level, FALSE);
-    }
-#ifdef PORT
-    syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.samus.specialn.charge_gobj);
+    ftSamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
+#else
+    fp->status_vars.samus.specialn.charge_gobj = wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.samus.charge_level, FALSE);
 #endif
 }
 

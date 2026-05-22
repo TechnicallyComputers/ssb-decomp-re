@@ -4,6 +4,7 @@
 #include <ssb_types.h>
 #include <sys/objdef.h>
 #include <it/itdef.h>
+#include <wp/wptypes.h>
 
 extern sb32 itDogasDisappearProcUpdate(GObj *item_gobj);
 extern void itDogasDisappearSetStatus(GObj *item_gobj);
@@ -16,5 +17,6 @@ extern sb32 itDogasCommonProcMap(GObj *item_gobj);
 extern GObj* itDogasMakeItem(GObj *parent_gobj, Vec3f *pos, Vec3f *vel, u32 flags);
 extern sb32 itDogasWeaponSmogProcUpdate(GObj *weapon_gobj);
 extern GObj* itDogasWeaponSmogMakeWeapon(GObj *item_gobj, Vec3f *pos, Vec3f *vel);
+extern WPDesc dITDogasWeaponSmogWeaponDesc;
 
 #endif

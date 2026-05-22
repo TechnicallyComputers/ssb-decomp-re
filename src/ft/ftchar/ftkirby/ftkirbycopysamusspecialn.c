@@ -3,6 +3,9 @@
 #ifdef PORT
 #include <ft/ftcommon/ftcommonfunctions.h>
 #include <sys/netrollbacksnapshot.h>
+#include <wp/wpvars.h>
+
+extern wpSamusChargeShotAttributes dWPSamusChargeShotWeaponAttributes[];
 #endif
 
 // // // // // // // // // // // //
@@ -40,6 +43,37 @@ static void ftKirbyCopySamusSpecialNPortValidateCoupledCharge(FTStruct *fp)
 	}
 }
 
+static void ftKirbyCopySamusSpecialNPortRefreshChargeShotGfx(FTStruct *fp)
+{
+	GObj *charge_gobj;
+	WPStruct *wp;
+	f32 scale;
+
+	if (fp == NULL)
+	{
+		return;
+	}
+	charge_gobj = fp->status_vars.kirby.copysamus_specialn.charge_gobj;
+	if (charge_gobj == NULL)
+	{
+		return;
+	}
+	wp = wpGetStruct(charge_gobj);
+	if ((wp == NULL) || (wp->kind != nWPKindChargeShot))
+	{
+		return;
+	}
+	if (wp->weapon_vars.charge_shot.is_release != FALSE)
+	{
+		return;
+	}
+	wp->weapon_vars.charge_shot.charge_size = fp->passive_vars.samus.charge_level;
+	scale = dWPSamusChargeShotWeaponAttributes[wp->weapon_vars.charge_shot.charge_size].gfx_size /
+	        WPCHARGESHOT_GFX_SIZE_DIV;
+	DObjGetStruct(charge_gobj)->scale.vec.f.x = scale;
+	DObjGetStruct(charge_gobj)->scale.vec.f.y = scale;
+}
+
 static void ftKirbyCopySamusSpecialNPortCleanupChargeShots(GObj *fighter_gobj)
 {
 	ftKirbyCopySamusSpecialNDestroyChargeShot(fighter_gobj);
@@ -55,6 +89,29 @@ static void ftKirbyCopySamusSpecialNPortSetStatusWait(GObj *fighter_gobj)
 {
 	ftKirbyCopySamusSpecialNPortCleanupChargeShots(fighter_gobj);
 	ftCommonWaitSetStatus(fighter_gobj);
+}
+
+static void ftKirbyCopySamusSpecialNPortEnsureCoupledChargeShot(GObj *fighter_gobj)
+{
+	FTStruct *fp = ftGetStruct(fighter_gobj);
+	Vec3f pos;
+
+	ftKirbyCopySamusSpecialNPortValidateCoupledCharge(fp);
+	if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
+	{
+		fp->status_vars.kirby.copysamus_specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+	}
+	if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
+	{
+		ftKirbyCopySamusSpecialNGetChargeShotPosition(fp, &pos);
+		fp->status_vars.kirby.copysamus_specialn.charge_gobj =
+		    wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.kirby.copysamus_charge_level, 0);
+	}
+	if (fp->status_vars.kirby.copysamus_specialn.charge_gobj != NULL)
+	{
+		syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.kirby.copysamus_specialn.charge_gobj);
+		ftKirbyCopySamusSpecialNPortRefreshChargeShotGfx(fp);
+	}
 }
 #endif
 
@@ -186,6 +243,9 @@ void ftKirbyCopySamusSpecialNLoopProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#ifdef PORT
+    ftKirbyCopySamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
+#endif
     fp->status_vars.kirby.copysamus_specialn.charge_int--;
 
     if (fp->status_vars.kirby.copysamus_specialn.charge_int == 0)
@@ -266,13 +326,10 @@ void ftKirbyCopySamusSpecialNLoopProcMap(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    ftKirbyCopySamusSpecialNSetChargeShotPosition(fp);
 #ifdef PORT
-    if (fp->status_vars.kirby.copysamus_specialn.charge_gobj != NULL)
-    {
-        syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.kirby.copysamus_specialn.charge_gobj);
-    }
+    ftKirbyCopySamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
 #endif
+    ftKirbyCopySamusSpecialNSetChargeShotPosition(fp);
     mpCommonProcFighterOnEdge(fighter_gobj, ftKirbyCopySamusSpecialAirNEndSetStatus);
 }
 
@@ -289,17 +346,9 @@ void ftKirbyCopySamusSpecialNLoopSetStatus(GObj *fighter_gobj)
 
     ftKirbyCopySamusSpecialNGetChargeShotPosition(fp, &pos);
 #ifdef PORT
-    if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
-    {
-        fp->status_vars.kirby.copysamus_specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
-    }
-    if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
-#endif
-    {
-        fp->status_vars.kirby.copysamus_specialn.charge_gobj = wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.kirby.copysamus_charge_level, 0);
-    }
-#ifdef PORT
-    syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.kirby.copysamus_specialn.charge_gobj);
+    ftKirbyCopySamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
+#else
+    fp->status_vars.kirby.copysamus_specialn.charge_gobj = wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.kirby.copysamus_charge_level, 0);
 #endif
 }
 

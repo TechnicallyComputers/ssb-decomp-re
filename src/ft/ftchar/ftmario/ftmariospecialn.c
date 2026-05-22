@@ -1,5 +1,8 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#ifdef PORT
+#include <sys/netrollbacksnapshot.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -16,6 +19,9 @@ void ftMarioSpecialNProcUpdate(GObj *fighter_gobj)
 // 0x80155E64
 void ftMarioSpecialNProcAccessory(GObj *fighter_gobj)
 {
+#ifdef PORT
+    syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
+#else
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     s32 fireball_item_id; // 0 = Mario, 1 = Luigi
@@ -52,6 +58,7 @@ void ftMarioSpecialNProcAccessory(GObj *fighter_gobj)
         }
         wpMarioFireballMakeWeapon(fighter_gobj, &pos, fireball_item_id);
     }
+#endif
 }
 
 // 0x80155F04
@@ -96,6 +103,9 @@ void ftMarioSpecialNInitStatusVars(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     fp->motion_vars.flags.flag0 = FALSE;
+#ifdef PORT
+    fp->motion_vars.flags.flag1 = 0;
+#endif
     fp->proc_accessory = ftMarioSpecialNProcAccessory;
 }
 

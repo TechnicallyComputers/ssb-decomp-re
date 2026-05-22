@@ -1,5 +1,8 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#ifdef PORT
+#include <sys/netrollbacksnapshot.h>
+#endif
 // // // // // // // // // // // //
 //                               //
 //             MACROS            //
@@ -24,6 +27,9 @@ void ftKirbyCopyMarioSpecialNProcUpdate(GObj *fighter_gobj)
 // 0x801569D4
 void ftKirbyCopyMarioSpecialNProcAccessory(GObj *fighter_gobj)
 {
+#ifdef PORT
+    syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
+#else
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     s32 fireball_kind;
@@ -59,6 +65,7 @@ void ftKirbyCopyMarioSpecialNProcAccessory(GObj *fighter_gobj)
         }
         wpMarioFireballMakeWeapon(fighter_gobj, &pos, fireball_kind);
     }
+#endif
 }
 
 // 0x80156A74
@@ -105,6 +112,9 @@ void ftKirbyCopyMarioSpecialNInitStatusVars(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     fp->motion_vars.flags.flag0 = 0;
+#ifdef PORT
+    fp->motion_vars.flags.flag1 = 0;
+#endif
     fp->proc_accessory = ftKirbyCopyMarioSpecialNProcAccessory;
 }
 

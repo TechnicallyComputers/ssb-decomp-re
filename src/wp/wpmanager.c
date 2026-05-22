@@ -23,6 +23,10 @@ s32 sWPManagerDisplayMode;
 // 0x8018CFF8
 u32 sWPManagerGroupID;
 
+#ifdef PORT
+static u32 sWPManagerInstanceID = 1U;
+#endif
+
 // 0x8018CFFC
 u8 sWPManagerPad0x8018CFFC[52];
 
@@ -88,6 +92,24 @@ u32 wpManagerGetGroupID()
     }
     return group_id;
 }
+
+#ifdef PORT
+u32 wpManagerAssignInstanceId(void)
+{
+    u32 instance_id = sWPManagerInstanceID++;
+
+    if (sWPManagerInstanceID == 0U)
+    {
+        sWPManagerInstanceID++;
+    }
+    return instance_id;
+}
+
+void wpManagerResetInstanceIds(void)
+{
+    sWPManagerInstanceID = 1U;
+}
+#endif
 
 // 0x801655C8
 GObj* wpManagerMakeWeapon(GObj *parent_gobj, WPDesc *wp_desc, Vec3f *spawn_pos, u32 flags)
@@ -266,6 +288,10 @@ GObj* wpManagerMakeWeapon(GObj *parent_gobj, WPDesc *wp_desc, Vec3f *spawn_pos, 
     wp->is_camera_follow = FALSE;
 
     wp->group_id = 0;
+
+#ifdef PORT
+    wp->instance_id = wpManagerAssignInstanceId();
+#endif
 
     wp->is_static_damage = FALSE;
 
