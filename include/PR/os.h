@@ -1059,7 +1059,9 @@ extern "C"
 
 	/* Printf */
 
+#if !defined(PORT)
 	extern int sprintf(char* s, const char* fmt, ...);
+#endif
 	extern void osSyncPrintf(const char* fmt, ...);
 	extern void osAsyncPrintf(const char* fmt, ...);
 	extern int osSyncGetChars(char* buf);
