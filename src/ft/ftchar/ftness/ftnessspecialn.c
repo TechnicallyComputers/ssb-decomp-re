@@ -1,5 +1,9 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#ifdef PORT
+#include <sys/netrollbacksnapshot.h>
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //             MACROS            //
@@ -15,8 +19,23 @@
 // // // // // // // // // // // //
 
 // 0x80153950
+void ftNessSpecialNProcUpdate(GObj *fighter_gobj)
+{
+#ifdef PORT
+    if (syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE)
+    {
+        syNetRbSnapTrySpawnPKFireFromAccessory(fighter_gobj);
+    }
+#endif
+    ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
+}
+
+// 0x80153950
 void ftNessSpecialNProcAccessory(GObj *fighter_gobj) // PK Fire setup
 {
+#ifdef PORT
+    syNetRbSnapTrySpawnPKFireFromAccessory(fighter_gobj);
+#else
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     Vec3f vel;
@@ -52,6 +71,7 @@ void ftNessSpecialNProcAccessory(GObj *fighter_gobj) // PK Fire setup
         }
         wpNessPKFireMakeWeapon(fighter_gobj, &pos, &vel, angle); // Spawn PK Fire
     }
+#endif
 }
 
 // 0x80153AC0
@@ -98,6 +118,7 @@ void ftNessSpecialNInitStatusVars(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     fp->motion_vars.flags.flag0 = FALSE;
+    fp->motion_vars.flags.flag1 = FALSE;
     fp->proc_accessory = ftNessSpecialNProcAccessory;
 }
 

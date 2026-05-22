@@ -6,6 +6,10 @@
 #include <wp/wpdef.h>
 
 extern void wpNessPKThunderHeadSetDestroyTrails(GObj *weapon_gobj, sb32 is_destroy);
+extern void wpNessPKThunderHeadOrphanTrailReference(GObj *orphan_gobj);
+extern void wpNessPKThunderPreDestroyWeapon(GObj *weapon_gobj);
+extern sb32 wpNessPKThunderGObjIsLiveWeapon(GObj *gobj);
+extern sb32 wpNessPKThunderGObjIsLiveEffect(GObj *gobj);
 extern void wpNessPKThunderTrailUpdatePositions(GObj *weapon_gobj);
 extern void wpNessPKThunderHeadMakeTrail(GObj *weapon_gobj, s32 trail_id);
 extern sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj);

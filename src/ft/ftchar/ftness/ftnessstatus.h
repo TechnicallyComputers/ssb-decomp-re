@@ -140,7 +140,7 @@ FTStatusDesc dFTNessSpecialStatusDescs[/* */] =
 		nFTStatusAttackIDSpecialN,			// Status attack ID
 
 		//////////////////////// Process Callbacks /////////////////////////////
-		ftAnimEndSetWait,		// Proc Update
+		ftNessSpecialNProcUpdate,		// Proc Update
 		NULL,									// Proc Interrupt
 		ftPhysicsApplyGroundVelFriction,	    // Proc Physics
 		ftNessSpecialNProcMap					// Proc Map
@@ -160,7 +160,7 @@ FTStatusDesc dFTNessSpecialStatusDescs[/* */] =
 		nFTStatusAttackIDSpecialN,			// Status attack ID
 
 		//////////////////////// Process Callbacks /////////////////////////////
-		ftAnimEndSetFall,		// Proc Update
+		ftNessSpecialNProcUpdate,		// Proc Update
 		NULL,									// Proc Interrupt
 		ftPhysicsApplyAirVelFriction,			// Proc Physics
 		ftNessSpecialAirNProcMap				// Proc Map

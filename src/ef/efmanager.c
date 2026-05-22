@@ -2,6 +2,7 @@
 #include <ft/fighter.h>
 #include <it/item.h>
 #include <wp/weapon.h>
+#include <wp/wpness/wpnesspkthunder.h>
 #include <sc/scene.h>
 #include <sys/utils.h>
 #include <reloc_data.h>
@@ -5072,8 +5073,34 @@ GObj* efManagerNessPKThunderTrailMakeEffect(GObj *fighter_gobj)
     FTStruct *fp;
     EFStruct *ep;
     WPStruct *wp;
+    GObj *head_gobj;
+    s32 effect_slot;
 
+    if (fighter_gobj == NULL)
+    {
+        return NULL;
+    }
     fp = ftGetStruct(fighter_gobj);
+    if (fp == NULL)
+    {
+        return NULL;
+    }
+    head_gobj = fp->status_vars.ness.specialhi.pkthunder_gobj;
+    if (wpNessPKThunderGObjIsLiveWeapon(head_gobj) == FALSE)
+    {
+        return NULL;
+    }
+    wp = wpGetStruct(head_gobj);
+    if (wp == NULL)
+    {
+        return NULL;
+    }
+    effect_slot = ARRAY_COUNT(wp->weapon_vars.pkthunder.trail_gobj) - 1;
+    if ((wp->weapon_vars.pkthunder.trail_gobj[effect_slot] != NULL) &&
+        (wpNessPKThunderGObjIsLiveEffect(wp->weapon_vars.pkthunder.trail_gobj[effect_slot]) != FALSE))
+    {
+        return wp->weapon_vars.pkthunder.trail_gobj[effect_slot];
+    }
 
     effect_gobj = efManagerMakeEffectNoForce(&dEFManagerNessPKThunderTrailEffectDesc);
 
@@ -5088,9 +5115,7 @@ GObj* efManagerNessPKThunderTrailMakeEffect(GObj *fighter_gobj)
 
     DObjGetStruct(effect_gobj)->translate.vec.f.z = 0.0F;
 
-    wp = wpGetStruct(fp->status_vars.ness.specialhi.pkthunder_gobj);
-
-    wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(wp->weapon_vars.pkthunder.trail_gobj) - 1] = effect_gobj;
+    wp->weapon_vars.pkthunder.trail_gobj[effect_slot] = effect_gobj;
 
     efManagerNessPKThunderTrailProcUpdate(effect_gobj);
 
@@ -5122,8 +5147,23 @@ GObj* efManagerNessPKReflectTrailMakeEffect(GObj *weapon_gobj)
     GObj *effect_gobj;
     WPStruct *wp;
     EFStruct *ep;
+    s32 effect_slot;
 
+    if (wpNessPKThunderGObjIsLiveWeapon(weapon_gobj) == FALSE)
+    {
+        return NULL;
+    }
     wp = wpGetStruct(weapon_gobj);
+    if (wp == NULL)
+    {
+        return NULL;
+    }
+    effect_slot = ARRAY_COUNT(wp->weapon_vars.pkthunder.trail_gobj) - 1;
+    if ((wp->weapon_vars.pkthunder.trail_gobj[effect_slot] != NULL) &&
+        (wpNessPKThunderGObjIsLiveEffect(wp->weapon_vars.pkthunder.trail_gobj[effect_slot]) != FALSE))
+    {
+        return wp->weapon_vars.pkthunder.trail_gobj[effect_slot];
+    }
 
     effect_gobj = efManagerMakeEffectNoForce(&dEFManagerNessPKReflectTrailEffectDesc);
 

@@ -1,5 +1,8 @@
 #include <wp/weapon.h>
 #include <ft/fighter.h>
+#ifdef PORT
+#include <wp/wpness/wpnesspkthunder.h>
+#endif
 
 extern void func_80026738_27338(alSoundEffect*);
 extern alSoundEffect* func_800269C0_275C0(u16);
@@ -73,6 +76,12 @@ void wpMainDestroyWeapon(GObj *weapon_gobj) // Destroy weapon?
 {
     WPStruct *wp = wpGetStruct(weapon_gobj);
 
+#ifdef PORT
+    if (wp != NULL)
+    {
+        wpNessPKThunderPreDestroyWeapon(weapon_gobj);
+    }
+#endif
     wpMainStopFGM(wp);                  // Stop weapon's SFX
     wpManagerSetPrevStructAlloc(wp);    // Eject weapon's user_data from memory?
     gcEjectGObj(weapon_gobj);           // Eject GObj from memory?

@@ -38,6 +38,7 @@ void ftCommonCapturePulledRotateScale(GObj *fighter_gobj, Vec3f *this_pos, Vec3f
         }
         return;
     }
+    ftParamInvalidateFighterTransformFromRoot(this_fp->capture_gobj);
 #endif
     func_ovl0_800C9A38(mtx, attach_dobj);
     func_ovl2_800EDA0C(mtx, rotate);
@@ -107,7 +108,21 @@ void ftCommonCapturePulledProcMap(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
     GObj *capture_gobj = this_fp->capture_gobj;
-    FTStruct *capture_fp = ftGetStruct(capture_gobj);
+    FTStruct *capture_fp;
+
+#ifdef PORT
+    if (capture_gobj == NULL)
+    {
+        return;
+    }
+#endif
+    capture_fp = ftGetStruct(capture_gobj);
+#ifdef PORT
+    if (capture_fp == NULL)
+    {
+        return;
+    }
+#endif
     Vec3f *this_pos = &DObjGetStruct(fighter_gobj)->translate.vec.f;
     Vec3f capture_pos;
     f32 dist_y;

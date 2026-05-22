@@ -16,6 +16,7 @@ extern void ftNessAppearWaitSetStatus(GObj* fighter_gobj);
 extern void ftNessAppearEndSetStatus(GObj* fighter_gobj);
 
 // SpecialN / SpecialAirN
+extern void ftNessSpecialNProcUpdate(GObj* fighter_gobj);
 extern void ftNessSpecialNProcAccessory(GObj* fighter_gobj);
 extern void ftNessSpecialNProcMap(GObj* fighter_gobj);
 extern void ftNessSpecialAirNProcMap(GObj* fighter_gobj);

@@ -1,5 +1,9 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#include <wp/wpness/wpnesspkthunder.h>
+#ifdef PORT
+#include <sys/netrollbacksnapshot.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -17,6 +21,36 @@
 //           FUNCTIONS           //
 //                               //
 // // // // // // // // // // // //
+
+#ifdef PORT
+static void ftNessSpecialHiPortCleanupPKThunder(GObj *fighter_gobj)
+{
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+    GObj *pkthunder_gobj;
+    WPStruct *wp;
+
+    if (fp == NULL)
+    {
+        return;
+    }
+    pkthunder_gobj = fp->status_vars.ness.specialhi.pkthunder_gobj;
+    if (pkthunder_gobj != NULL)
+    {
+        if (wpNessPKThunderGObjIsLiveWeapon(pkthunder_gobj) != FALSE)
+        {
+            wp = wpGetStruct(pkthunder_gobj);
+            if (wp != NULL)
+            {
+                wp->weapon_vars.pkthunder.status = nWPNessPKThunderStatusDestroy;
+                wpNessPKThunderHeadSetDestroyTrails(pkthunder_gobj, TRUE);
+            }
+            wpMainDestroyWeapon(pkthunder_gobj);
+        }
+        fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
+    }
+    syNetRbSnapCullOwnedPKThunderForFighter(fighter_gobj, NULL);
+}
+#endif
 
 // 0x80153C50
 void ftNessSpecialHiDecThunderTimers(FTStruct *fp)
@@ -40,6 +74,18 @@ void ftNessSpecialHiMakePKThunder(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     Vec3f vel;
+
+    if (fp->joints[FTNESS_PKTHUNDER_SPAWN_JOINT] == NULL)
+    {
+        return;
+    }
+#ifdef PORT
+    /* InitStatusVars already tears down the prior throw; always spawn a fresh head here.
+     * Reacquire/skip-spawn caused cross-peer divergence on the second UP+B (dedup picked
+     * different live heads between forward sim and rollback resim). */
+    syNetRbSnapCullOwnedPKThunderForFighter(fighter_gobj, NULL);
+    fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
+#endif
 
     pos.x = 0.0F;
     pos.y = 0.0F;
@@ -79,6 +125,13 @@ sb32 ftNessSpecialHiCheckCollidePKThunder(GObj *fighter_gobj)
     {
         return FALSE;
     }
+#ifdef PORT
+    if (wpNessPKThunderGObjIsLiveWeapon(pkthunder_gobj) == FALSE)
+    {
+        fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
+        return FALSE;
+    }
+#endif
     ip = wpGetStruct(pkthunder_gobj);
 
     ft_pos_x = DObjGetStruct(fighter_gobj)->translate.vec.f.x;
@@ -179,13 +232,33 @@ void ftNessSpecialHiStartSwitchStatusAir(GObj *fighter_gobj)
 // 0x80153FCC
 void ftNessSpecialHiInitStatusVars(GObj *fighter_gobj)
 {
-    FTStruct *fp = ftGetStruct(fighter_gobj);
+    FTStruct *fp;
 
+#ifdef PORT
+    ftNessSpecialHiPortCleanupPKThunder(fighter_gobj);
+#endif
+    fp = ftGetStruct(fighter_gobj);
+    if (fp == NULL)
+    {
+        return;
+    }
+    fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
     fp->status_vars.ness.specialhi.pkjibaku_delay = FTNESS_PKJIBAKU_DELAY;
     fp->status_vars.ness.specialhi.pkthunder_end_delay = FTNESS_PKTHUNDER_END_DELAY;
     fp->status_vars.ness.specialhi.pkthunder_gravity_delay = FTNESS_PKTHUNDER_GRAVITY_DELAY;
     fp->passive_vars.ness.is_thunder_destroy = FALSE;
     fp->passive_vars.ness.pkthunder_trail_id = 0;
+#ifdef PORT
+    {
+        s32 ti;
+
+        for (ti = 0; ti < FTNESS_PKTHUNDER_TRAIL_POS_COUNT; ti++)
+        {
+            fp->passive_vars.ness.pkthunder_trail_x[ti] = 0;
+            fp->passive_vars.ness.pkthunder_trail_y[ti] = 0;
+        }
+    }
+#endif
 }
 
 // 0x80153FF0
@@ -199,10 +272,15 @@ void ftNessSpecialHiStartSetStatus(GObj *fighter_gobj)
 // 0x80154030
 void ftNessSpecialAirHiStartSetStatus(GObj *fighter_gobj)
 {
-    FTStruct *fp = ftGetStruct(fighter_gobj);
+    FTStruct *fp;
 
     ftNessSpecialHiInitStatusVars(fighter_gobj);
 
+    fp = ftGetStruct(fighter_gobj);
+    if (fp == NULL)
+    {
+        return;
+    }
     fp->physics.vel_air.y = 0.0F;
     fp->physics.vel_air.x /= 2;
 
@@ -216,6 +294,21 @@ void ftNessSpecialHiUpdatePKThunder(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     GObj *weapon_gobj = fp->status_vars.ness.specialhi.pkthunder_gobj;
 
+#ifdef PORT
+    if ((weapon_gobj != NULL) && (wpNessPKThunderGObjIsLiveWeapon(weapon_gobj) == FALSE))
+    {
+        fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
+        weapon_gobj = NULL;
+    }
+    if (weapon_gobj == NULL)
+    {
+        weapon_gobj = syNetRbSnapReacquirePKThunderHeadForFighter(fighter_gobj);
+        if (weapon_gobj != NULL)
+        {
+            fp->status_vars.ness.specialhi.pkthunder_gobj = weapon_gobj;
+        }
+    }
+#endif
     if (weapon_gobj == NULL)
     {
         fp->passive_vars.ness.is_thunder_destroy |= TRUE;
@@ -312,6 +405,19 @@ void ftNessSpecialHiHoldSwitchStatusAir(GObj *fighter_gobj)
 void ftNessSpecialHiHoldInitStatusVars(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+#ifdef PORT
+    s32 ti;
+
+    /* Fresh head spawn below; zero stale trail ring from the prior throw (ground/air hold
+     * switches skip InitStatusVars and can otherwise leave mismatched passive history). */
+    fp->passive_vars.ness.is_thunder_destroy = FALSE;
+    fp->passive_vars.ness.pkthunder_trail_id = 0;
+    for (ti = 0; ti < FTNESS_PKTHUNDER_TRAIL_POS_COUNT; ti++)
+    {
+        fp->passive_vars.ness.pkthunder_trail_x[ti] = 0;
+        fp->passive_vars.ness.pkthunder_trail_y[ti] = 0;
+    }
+#endif
 
     ftNessSpecialHiMakePKThunder(fighter_gobj);
 
@@ -387,6 +493,9 @@ void ftNessSpecialHiClearProcDamage(GObj *fighter_gobj)
 // 0x80154518
 void ftNessSpecialHiEndSetStatus(GObj *fighter_gobj)
 {
+#ifdef PORT
+    ftNessSpecialHiPortCleanupPKThunder(fighter_gobj);
+#endif
     ftNessSpecialHiClearProcDamage(fighter_gobj);
     ftMainSetStatus(fighter_gobj, nFTNessStatusSpecialHiEnd, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftMainPlayAnimEventsAll(fighter_gobj);
@@ -395,6 +504,9 @@ void ftNessSpecialHiEndSetStatus(GObj *fighter_gobj)
 // 0x80154558
 void ftNessSpecialAirHiEndSetStatus(GObj *fighter_gobj)
 {
+#ifdef PORT
+    ftNessSpecialHiPortCleanupPKThunder(fighter_gobj);
+#endif
     ftNessSpecialHiClearProcDamage(fighter_gobj);
     ftMainSetStatus(fighter_gobj, nFTNessStatusSpecialAirHiEnd, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftMainPlayAnimEventsAll(fighter_gobj);
@@ -716,7 +828,16 @@ void ftNessSpecialHiJibakuSwitchStatusAir(GObj *fighter_gobj)
 // 0x80154DBC
 void ftNessSpecialHiJibakuInitStatusVars(GObj *fighter_gobj)
 {
-    FTStruct *fp = ftGetStruct(fighter_gobj);
+    FTStruct *fp;
+
+#ifdef PORT
+    ftNessSpecialHiPortCleanupPKThunder(fighter_gobj);
+#endif
+    fp = ftGetStruct(fighter_gobj);
+    if (fp == NULL)
+    {
+        return;
+    }
 
     fp->status_vars.ness.specialhi.pkjibaku_anim_length = FTNESS_PKJIBAKU_ANIM_LENGTH;
 

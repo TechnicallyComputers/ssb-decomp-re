@@ -22,7 +22,10 @@
 void ftPikachuSpecialNProcUpdate(GObj *fighter_gobj)
 {
 #ifdef PORT
-    if (syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE)
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+
+    if ((syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+        ((fp != NULL) && (fp->proc_accessory == NULL)))
     {
         syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
     }
@@ -34,7 +37,10 @@ void ftPikachuSpecialNProcUpdate(GObj *fighter_gobj)
 void ftPikachuSpecialAirNProcUpdate(GObj *fighter_gobj)
 {
 #ifdef PORT
-    if (syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE)
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+
+    if ((syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+        ((fp != NULL) && (fp->proc_accessory == NULL)))
     {
         syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
     }
@@ -92,6 +98,14 @@ void ftPikachuSpecialAirNSwitchStatusGround(GObj *fighter_gobj)
     mpCommonSetFighterGround(fp);
     ftMainSetStatus(fighter_gobj, nFTPikachuStatusSpecialN, fighter_gobj->anim_frame, 1.0F, FTPIKACHU_SPECIALN_STATUS_FLAGS);
 
+#ifdef PORT
+    /* Preserve throw latch after spawn; only clear stale latch when landing before jolt frame. */
+    if ((fighter_gobj->anim_frame < 21.0F) &&
+        (syNetRbSnapThunderJoltOwnedByFighter(fighter_gobj) == FALSE))
+    {
+        fp->motion_vars.flags.flag1 = 0;
+    }
+#endif
     fp->proc_accessory = ftPikachuSpecialNProcAccessory;
 }
 
@@ -104,6 +118,14 @@ void ftPikachuSpecialNSwitchStatusAir(GObj *fighter_gobj)
     ftMainSetStatus(fighter_gobj, nFTPikachuStatusSpecialAirN, fighter_gobj->anim_frame, 1.0F, FTPIKACHU_SPECIALN_STATUS_FLAGS);
     ftPhysicsClampAirVelXMax(fp);
 
+#ifdef PORT
+    /* Preserve throw latch after spawn; only clear stale latch when landing before jolt frame. */
+    if ((fighter_gobj->anim_frame < 21.0F) &&
+        (syNetRbSnapThunderJoltOwnedByFighter(fighter_gobj) == FALSE))
+    {
+        fp->motion_vars.flags.flag1 = 0;
+    }
+#endif
     fp->proc_accessory = ftPikachuSpecialNProcAccessory;
 }
 

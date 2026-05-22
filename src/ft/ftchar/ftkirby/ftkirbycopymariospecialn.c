@@ -32,7 +32,10 @@
 void ftKirbyCopyMarioSpecialNProcUpdate(GObj *fighter_gobj)
 {
 #ifdef PORT
-    if (syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE)
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+
+    if ((syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+        ((fp != NULL) && (fp->proc_accessory == NULL)))
     {
         syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
     }

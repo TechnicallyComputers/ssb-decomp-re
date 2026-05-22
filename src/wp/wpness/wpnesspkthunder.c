@@ -1,6 +1,7 @@
 #include <wp/weapon.h>
 #include <ft/fighter.h>
 #include <ef/effect.h>
+#include <sys/objman.h>
 #include <reloc_data.h>
 
 // // // // // // // // // // // //
@@ -127,43 +128,163 @@ WPDesc dWPNessPKReflectTrailWeaponDesc =
 //                               //
 // // // // // // // // // // // //
 
+sb32 wpNessPKThunderGObjIsLiveWeapon(GObj *gobj)
+{
+    GObj *current;
+
+    if (gobj == NULL)
+    {
+        return FALSE;
+    }
+    for (current = gGCCommonLinks[nGCCommonLinkIDWeapon]; current != NULL; current = current->link_next)
+    {
+        if (current == gobj)
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+sb32 wpNessPKThunderGObjIsLiveEffect(GObj *gobj)
+{
+    GObj *current;
+
+    if (gobj == NULL)
+    {
+        return FALSE;
+    }
+    for (current = gGCCommonLinks[nGCCommonLinkIDEffect]; current != NULL; current = current->link_next)
+    {
+        if (current == gobj)
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+void wpNessPKThunderHeadOrphanTrailReference(GObj *orphan_gobj)
+{
+    GObj *weapon_gobj;
+    s32 i;
+
+    if (orphan_gobj == NULL)
+    {
+        return;
+    }
+    for (weapon_gobj = gGCCommonLinks[nGCCommonLinkIDWeapon]; weapon_gobj != NULL;
+         weapon_gobj = weapon_gobj->link_next)
+    {
+        WPStruct *head_wp = wpGetStruct(weapon_gobj);
+
+        if ((head_wp == NULL) || (head_wp->kind != nWPKindPKThunderHead))
+        {
+            continue;
+        }
+        for (i = 0; i < ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj); i++)
+        {
+            if (head_wp->weapon_vars.pkthunder.trail_gobj[i] == orphan_gobj)
+            {
+                head_wp->weapon_vars.pkthunder.trail_gobj[i] = NULL;
+            }
+        }
+    }
+}
+
+void wpNessPKThunderPreDestroyWeapon(GObj *weapon_gobj)
+{
+    WPStruct *wp;
+    FTStruct *fp;
+    GObj *owner_gobj;
+
+    if (weapon_gobj == NULL)
+    {
+        return;
+    }
+    wp = wpGetStruct(weapon_gobj);
+    if (wp == NULL)
+    {
+        return;
+    }
+    if (wp->kind == nWPKindPKThunderHead)
+    {
+        owner_gobj = wp->owner_gobj;
+        wp->weapon_vars.pkthunder.status = nWPNessPKThunderStatusDestroy;
+        wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
+        if (owner_gobj != NULL)
+        {
+            fp = ftGetStruct(owner_gobj);
+            if ((fp != NULL) && (fp->status_vars.ness.specialhi.pkthunder_gobj == weapon_gobj))
+            {
+                fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
+            }
+        }
+    }
+    else if (wp->kind == nWPKindPKThunderTrail)
+    {
+        wpNessPKThunderHeadOrphanTrailReference(weapon_gobj);
+    }
+}
+
 // 0x8016AD30
 void wpNessPKThunderHeadSetDestroyTrails(GObj *weapon_gobj, sb32 is_destroy)
 {
-    GObj *gobj;
+    GObj *trail_gobj;
+    GObj *effect_gobj;
     FTStruct *fp;
     WPStruct *head_wp, *trail_wp;
     EFStruct *ep;
     s32 i;
 
+    if (weapon_gobj == NULL)
+    {
+        return;
+    }
     head_wp = wpGetStruct(weapon_gobj);
+    if (head_wp == NULL)
+    {
+        return;
+    }
 
     if (!(head_wp->weapon_vars.pkthunder.status & nWPNessPKThunderStatusDestroy))
     {
         fp = ftGetStruct(head_wp->owner_gobj);
 
-        if (fp->player_num == head_wp->player_num)
+        if ((fp != NULL) && (fp->player_num == head_wp->player_num))
         {
             fp->passive_vars.ness.is_thunder_destroy |= is_destroy;
         }
     }
-    fp = ftGetStruct(head_wp->owner_gobj);
 
     for (i = 0; i < (ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1); i++)
     {
-        if (head_wp->weapon_vars.pkthunder.trail_gobj[i] != NULL)
+        trail_gobj = head_wp->weapon_vars.pkthunder.trail_gobj[i];
+        if (trail_gobj == NULL)
         {
-            trail_wp = wpGetStruct(head_wp->weapon_vars.pkthunder.trail_gobj[i]);
-            trail_wp->weapon_vars.pkthunder_trail.status = nWPNessPKThunderStatusDestroy;
-
-            head_wp->weapon_vars.pkthunder.trail_gobj[i] = NULL;
+            continue;
         }
+        if (wpNessPKThunderGObjIsLiveWeapon(trail_gobj) != FALSE)
+        {
+            trail_wp = wpGetStruct(trail_gobj);
+            if (trail_wp != NULL)
+            {
+                trail_wp->weapon_vars.pkthunder_trail.status = nWPNessPKThunderStatusDestroy;
+            }
+        }
+        head_wp->weapon_vars.pkthunder.trail_gobj[i] = NULL;
     }
-    if (head_wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1] != NULL)
+    effect_gobj = head_wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1];
+    if (effect_gobj != NULL)
     {
-        ep = efGetStruct(head_wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1]);
-        ep->effect_vars.pkthunder.status = nWPNessPKThunderStatusDestroy;
-
+        if (wpNessPKThunderGObjIsLiveEffect(effect_gobj) != FALSE)
+        {
+            ep = efGetStruct(effect_gobj);
+            if (ep != NULL)
+            {
+                ep->effect_vars.pkthunder.status = nWPNessPKThunderStatusDestroy;
+            }
+        }
         head_wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1] = NULL;
     }
 }
@@ -172,7 +293,17 @@ void wpNessPKThunderHeadSetDestroyTrails(GObj *weapon_gobj, sb32 is_destroy)
 void wpNessPKThunderTrailUpdatePositions(GObj *weapon_gobj)
 {
     WPStruct *wp = wpGetStruct(weapon_gobj);
-    FTStruct *fp = ftGetStruct(wp->owner_gobj);
+    FTStruct *fp;
+
+    if (wp->owner_gobj == NULL)
+    {
+        return;
+    }
+    fp = ftGetStruct(wp->owner_gobj);
+    if (fp == NULL)
+    {
+        return;
+    }
 
     if (fp->player_num == wp->player_num)
     {
@@ -216,7 +347,19 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
 
         return TRUE;
     }
+    if (wp->owner_gobj == NULL)
+    {
+        wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
+
+        return TRUE;
+    }
     fp = ftGetStruct(wp->owner_gobj);
+    if (fp == NULL)
+    {
+        wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
+
+        return TRUE;
+    }
 
     if (wp->weapon_vars.pkthunder.status & nWPNessPKThunderStatusCollide)
     {
@@ -240,6 +383,12 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
 
     if ((fp->status_id == nFTNessStatusSpecialHiHold) || (fp->status_id == nFTNessStatusSpecialAirHiHold))
     {
+#ifdef PORT
+        if (fp->status_vars.ness.specialhi.pkthunder_gobj != weapon_gobj)
+        {
+            fp->status_vars.ness.specialhi.pkthunder_gobj = weapon_gobj;
+        }
+#endif
         if ((ABS(fp->input.pl.stick_range.x) + ABS(fp->input.pl.stick_range.y)) > WPPKTHUNDER_TURN_STICK_THRESHOLD)
         {
             stick_angle.x = fp->input.pl.stick_range.x;
@@ -374,7 +523,15 @@ sb32 wpNessPKThunderTrailProcUpdate(GObj *weapon_gobj)
     {
         return TRUE;
     }
+    if (wp->owner_gobj == NULL)
+    {
+        return TRUE;
+    }
     fp = ftGetStruct(wp->owner_gobj);
+    if (fp == NULL)
+    {
+        return TRUE;
+    }
 
     trail_id = (fp->passive_vars.ness.pkthunder_trail_id - (wp->weapon_vars.pkthunder_trail.trail_id * 2)) - 2;
 
@@ -409,7 +566,17 @@ sb32 wpNessPKThunderTrailProcUpdate(GObj *weapon_gobj)
     }
     if ((wp->weapon_vars.pkthunder_trail.trail_id == (WPPKTHUNDER_PARTS_COUNT - 2)) && (wp->lifetime == WPPKTHUNDER_SPAWN_TRAIL_FRAME))
     {
-        efManagerNessPKThunderTrailMakeEffect(wp->owner_gobj);
+        GObj *head_gobj;
+
+        if (wpNessPKThunderGObjIsLiveWeapon(wp->owner_gobj) != FALSE)
+        {
+            fp = ftGetStruct(wp->owner_gobj);
+            head_gobj = (fp != NULL) ? fp->status_vars.ness.specialhi.pkthunder_gobj : NULL;
+            if (wpNessPKThunderGObjIsLiveWeapon(head_gobj) != FALSE)
+            {
+                efManagerNessPKThunderTrailMakeEffect(wp->owner_gobj);
+            }
+        }
     }
     wpMainDecLifeCheckExpire(wp);
 
@@ -461,7 +628,15 @@ GObj* wpNessPKThunderTrailMakeWeapon(GObj *head_gobj, Vec3f *pos, s32 trail_id)
     if (trail_id != 0)
     {
         head_gobj = head_wp->weapon_vars.pkthunder_trail.head_gobj;
+        if (head_gobj == NULL)
+        {
+            return NULL;
+        }
         head_wp = wpGetStruct(head_gobj);
+        if (head_wp == NULL)
+        {
+            return NULL;
+        }
     }
     trail_wp->weapon_vars.pkthunder_trail.head_gobj = head_gobj;
 
@@ -487,25 +662,52 @@ void wpNessPKReflectHeadMakeTrail(GObj *weapon_gobj, s32 trail_id)
 // 0x8016B6A0
 void wpNessPKReflectHeadSetDestroyTrails(GObj *weapon_gobj, s32 unused)
 {
+    GObj *trail_gobj;
+    GObj *effect_gobj;
     WPStruct *head_wp, *trail_wp;
     EFStruct *ep;
     s32 i;
 
+    (void)unused;
+
+    if (weapon_gobj == NULL)
+    {
+        return;
+    }
     head_wp = wpGetStruct(weapon_gobj);
+    if (head_wp == NULL)
+    {
+        return;
+    }
 
     for (i = 0; i < (ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1); i++)
     {
-        if (head_wp->weapon_vars.pkthunder.trail_gobj[i] != NULL)
+        trail_gobj = head_wp->weapon_vars.pkthunder.trail_gobj[i];
+        if (trail_gobj == NULL)
         {
-            trail_wp = wpGetStruct(head_wp->weapon_vars.pkthunder.trail_gobj[i]);
-            trail_wp->weapon_vars.pkthunder_trail.status = nWPNessPKThunderStatusDestroy;
-            head_wp->weapon_vars.pkthunder.trail_gobj[i] = NULL;
+            continue;
         }
+        if (wpNessPKThunderGObjIsLiveWeapon(trail_gobj) != FALSE)
+        {
+            trail_wp = wpGetStruct(trail_gobj);
+            if (trail_wp != NULL)
+            {
+                trail_wp->weapon_vars.pkthunder_trail.status = nWPNessPKThunderStatusDestroy;
+            }
+        }
+        head_wp->weapon_vars.pkthunder.trail_gobj[i] = NULL;
     }
-    if (head_wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1] != NULL)
+    effect_gobj = head_wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1];
+    if (effect_gobj != NULL)
     {
-        ep = efGetStruct(head_wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1]);
-        ep->effect_vars.pkthunder.status = nWPNessPKThunderStatusDestroy;
+        if (wpNessPKThunderGObjIsLiveEffect(effect_gobj) != FALSE)
+        {
+            ep = efGetStruct(effect_gobj);
+            if (ep != NULL)
+            {
+                ep->effect_vars.pkthunder.status = nWPNessPKThunderStatusDestroy;
+            }
+        }
         head_wp->weapon_vars.pkthunder.trail_gobj[ARRAY_COUNT(head_wp->weapon_vars.pkthunder.trail_gobj) - 1] = NULL;
     }
 }
@@ -626,8 +828,14 @@ sb32 wpNessPKReflectTrailProcUpdate(GObj *weapon_gobj)
     {
         return TRUE;
     }
-    // Game hangs on the following line when PK Thunder crash occurs (DObjGetStruct returns NULL)
-    // This happens because the program loses the reference to the old PK Thunder trail objects which are still accessing the head's DObj even after it's ejected
+    if (wp->weapon_vars.pkthunder_trail.head_gobj == NULL)
+    {
+        return TRUE;
+    }
+    if (DObjGetStruct(wp->weapon_vars.pkthunder_trail.head_gobj) == NULL)
+    {
+        return TRUE;
+    }
 
     DObjGetStruct(weapon_gobj)->translate.vec.f.x =
     (DObjGetStruct(wp->weapon_vars.pkthunder_trail.head_gobj)->translate.vec.f.x - (wp->physics.vel_air.x * (wp->weapon_vars.pkthunder_trail.trail_id + 1.5) * 2.0F));
@@ -641,7 +849,12 @@ sb32 wpNessPKReflectTrailProcUpdate(GObj *weapon_gobj)
     }
     if ((wp->weapon_vars.pkthunder_trail.trail_id == (WPPKTHUNDER_PARTS_COUNT - 2)) && (wp->lifetime == WPPKTHUNDER_SPAWN_TRAIL_FRAME))
     {
-        efManagerNessPKReflectTrailMakeEffect(wp->weapon_vars.pkthunder_trail.head_gobj);
+        GObj *head_gobj = wp->weapon_vars.pkthunder_trail.head_gobj;
+
+        if (wpNessPKThunderGObjIsLiveWeapon(head_gobj) != FALSE)
+        {
+            efManagerNessPKReflectTrailMakeEffect(head_gobj);
+        }
     }
     wpMainDecLifeCheckExpire(wp);
 

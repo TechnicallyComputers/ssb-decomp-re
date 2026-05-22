@@ -22,7 +22,10 @@
 void ftKirbyCopyPikachuSpecialNProcUpdate(GObj *fighter_gobj)
 {
 #ifdef PORT
-    if (syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE)
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+
+    if ((syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+        ((fp != NULL) && (fp->proc_accessory == NULL)))
     {
         syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
     }
@@ -34,7 +37,10 @@ void ftKirbyCopyPikachuSpecialNProcUpdate(GObj *fighter_gobj)
 void ftKirbyCopyPikachuSpecialAirNProcUpdate(GObj *fighter_gobj)
 {
 #ifdef PORT
-    if (syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE)
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+
+    if ((syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+        ((fp != NULL) && (fp->proc_accessory == NULL)))
     {
         syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
     }
@@ -95,6 +101,14 @@ void ftKirbyCopyPikachuSpecialAirNSwitchStatusGround(GObj *fighter_gobj)
     mpCommonSetFighterGround(fp);
     ftMainSetStatus(fighter_gobj, nFTKirbyStatusCopyPikachuSpecialN, fighter_gobj->anim_frame, 1.0F, FTKIRBY_COPYPIKACHU_SPECIALN_STATUS_FLAGS);
 
+#ifdef PORT
+    /* Preserve throw latch after spawn; only clear stale latch when landing before jolt frame. */
+    if ((fighter_gobj->anim_frame < 21.0F) &&
+        (syNetRbSnapThunderJoltOwnedByFighter(fighter_gobj) == FALSE))
+    {
+        fp->motion_vars.flags.flag1 = 0;
+    }
+#endif
     fp->proc_accessory = ftKirbyCopyPikachuSpecialNProcAccessory;
 }
 
@@ -107,6 +121,14 @@ void ftKirbyCopyPikachuSpecialNSwitchStatusAir(GObj *fighter_gobj)
     ftMainSetStatus(fighter_gobj, nFTKirbyStatusCopyPikachuSpecialAirN, fighter_gobj->anim_frame, 1.0F, FTKIRBY_COPYPIKACHU_SPECIALN_STATUS_FLAGS);
     ftPhysicsClampAirVelXMax(fp);
 
+#ifdef PORT
+    /* Preserve throw latch after spawn; only clear stale latch when landing before jolt frame. */
+    if ((fighter_gobj->anim_frame < 21.0F) &&
+        (syNetRbSnapThunderJoltOwnedByFighter(fighter_gobj) == FALSE))
+    {
+        fp->motion_vars.flags.flag1 = 0;
+    }
+#endif
     fp->proc_accessory = ftKirbyCopyPikachuSpecialNProcAccessory;
 }
 
