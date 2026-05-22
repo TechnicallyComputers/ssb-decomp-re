@@ -1,5 +1,9 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#ifdef PORT
+#include <sys/netrollbacksnapshot.h>
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //             MACROS            //
@@ -15,8 +19,35 @@
 // // // // // // // // // // // //
 
 // 0x801536C0
+void ftKirbyCopyPikachuSpecialNProcUpdate(GObj *fighter_gobj)
+{
+#ifdef PORT
+    if (syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE)
+    {
+        syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
+    }
+#endif
+    ftAnimEndSetWait(fighter_gobj);
+}
+
+// 0x801536C8
+void ftKirbyCopyPikachuSpecialAirNProcUpdate(GObj *fighter_gobj)
+{
+#ifdef PORT
+    if (syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE)
+    {
+        syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
+    }
+#endif
+    ftAnimEndSetFall(fighter_gobj);
+}
+
+// 0x801536C0
 void ftKirbyCopyPikachuSpecialNProcAccessory(GObj *fighter_gobj)
 {
+#ifdef PORT
+    syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
+#else
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     Vec3f vel;
@@ -41,6 +72,7 @@ void ftKirbyCopyPikachuSpecialNProcAccessory(GObj *fighter_gobj)
         wpPikachuThunderJoltAirMakeWeapon(fighter_gobj, &pos, &vel);
         ftParamCheckSetFighterColAnimID(fighter_gobj, nGMColAnimFighterPikachuSpecialN, 0);
     }
+#endif
 }
 
 // 0x801537B8
@@ -84,7 +116,9 @@ void ftKirbyCopyPikachuSpecialNInitStatusVars(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     fp->motion_vars.flags.flag0 = 0;
-
+#ifdef PORT
+    fp->motion_vars.flags.flag1 = 0;
+#endif
     fp->proc_accessory = ftKirbyCopyPikachuSpecialNProcAccessory;
 }
 

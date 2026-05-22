@@ -62,7 +62,7 @@ FTStatusDesc dFTPikachuSpecialStatusDescs[/* */] =
 		nFTStatusAttackIDSpecialN,				// Status attack ID
 
 		//////////////////////// Process Callbacks /////////////////////////////
-		ftAnimEndSetWait,						// Proc Update
+		ftPikachuSpecialNProcUpdate,				// Proc Update
 		NULL,									// Proc Interrupt
 		ftPhysicsApplyGroundVelFriction,	    // Proc Physics
 		ftPikachuSpecialNProcMap				// Proc Map
@@ -82,7 +82,7 @@ FTStatusDesc dFTPikachuSpecialStatusDescs[/* */] =
 		nFTStatusAttackIDSpecialN,				// Status attack ID
 
 		//////////////////////// Process Callbacks /////////////////////////////
-		ftAnimEndSetFall,						// Proc Update
+		ftPikachuSpecialAirNProcUpdate,			// Proc Update
 		NULL,									// Proc Interrupt
 		ftPhysicsApplyAirVelFriction,			// Proc Physics
 		ftPikachuSpecialAirNProcMap				// Proc Map

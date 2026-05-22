@@ -225,6 +225,8 @@ extern void ftKirbyCopyDonkeySpecialNStartSetStatus(GObj* fighter_gobj);
 extern void ftKirbyCopyDonkeySpecialAirNStartSetStatus(GObj* fighter_gobj);
 
 // CopyPikachuSpecialN
+extern void ftKirbyCopyPikachuSpecialNProcUpdate(GObj* fighter_gobj);
+extern void ftKirbyCopyPikachuSpecialAirNProcUpdate(GObj* fighter_gobj);
 extern void ftKirbyCopyPikachuSpecialNProcAccessory(GObj* fighter_gobj);
 extern void ftKirbyCopyPikachuSpecialNProcMap(GObj* fighter_gobj);
 extern void ftKirbyCopyPikachuSpecialAirNProcMap(GObj* fighter_gobj);

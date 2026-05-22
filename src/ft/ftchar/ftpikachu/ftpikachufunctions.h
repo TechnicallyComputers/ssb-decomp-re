@@ -7,6 +7,8 @@
 #include <mp/mpdef.h>
 
 // SpecialN / SpecialAirN
+extern void ftPikachuSpecialNProcUpdate(GObj* fighter_gobj);
+extern void ftPikachuSpecialAirNProcUpdate(GObj* fighter_gobj);
 extern void ftPikachuSpecialNProcAccessory(GObj* fighter_gobj);
 extern void ftPikachuSpecialNProcMap(GObj* fighter_gobj);
 extern void ftPikachuSpecialAirNProcMap(GObj* fighter_gobj);

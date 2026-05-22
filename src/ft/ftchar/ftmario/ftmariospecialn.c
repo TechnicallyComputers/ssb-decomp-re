@@ -10,9 +10,22 @@
 //                               //
 // // // // // // // // // // // //
 
+#ifdef PORT
+/*
+ * Shared by Mario and Luigi (and NMario / NLuigi / MMario): both use these callbacks
+ * from dFTMarioSpecialStatusDescs / dFTLuigiSpecialStatusDescs (same status IDs).
+ */
+#endif
+
 // 0x80155E40
 void ftMarioSpecialNProcUpdate(GObj *fighter_gobj)
 {
+#ifdef PORT
+    if (syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE)
+    {
+        syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
+    }
+#endif
     ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
 }
 

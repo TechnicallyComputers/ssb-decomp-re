@@ -660,7 +660,7 @@ FTStatusDesc dFTKirbySpecialStatusDescs[/* */] =
 		nFTStatusAttackIDSpecialNCopyPikachu,		// Status attack ID
 
 		//////////////////////// Process Callbacks /////////////////////////////
-		ftAnimEndSetWait,				// Proc Update
+		ftKirbyCopyPikachuSpecialNProcUpdate,				// Proc Update
 		NULL,											// Proc Interrupt
 		ftPhysicsApplyGroundVelFriction,				// Proc Physics
 		ftKirbyCopyPikachuSpecialNProcMap			// Proc Map
@@ -680,7 +680,7 @@ FTStatusDesc dFTKirbySpecialStatusDescs[/* */] =
 		nFTStatusAttackIDSpecialNCopyPikachu,		// Status attack ID
 
 		//////////////////////// Process Callbacks /////////////////////////////
-		ftAnimEndSetFall,				// Proc Update
+		ftKirbyCopyPikachuSpecialAirNProcUpdate,				// Proc Update
 		NULL,											// Proc Interrupt
 		ftPhysicsApplyAirVelFriction,					// Proc Physics
 		ftKirbyCopyPikachuSpecialAirNProcMap			// Proc Map

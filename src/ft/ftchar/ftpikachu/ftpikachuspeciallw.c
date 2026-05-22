@@ -1,5 +1,8 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#ifdef PORT
+#include <sys/netrollbacksnapshot.h>
+#endif
 // // // // // // // // // // // //
 //                               //
 //             MACROS            //
@@ -24,6 +27,17 @@ void ftPikachuSpecialLwMakeThunder(GObj *fighter_gobj)
     Vec3f pos;
     Vec3f vel;
 
+#ifdef PORT
+    if (gMPCollisionGroundData == NULL)
+    {
+        return;
+    }
+    if (fp->joints[FTPIKACHU_THUNDER_SPAWN_JOINT] == NULL)
+    {
+        return;
+    }
+#endif
+
     pos.x = 0.0F;
     pos.y = 0.0F;
     pos.z = 0.0F;
@@ -44,10 +58,14 @@ void ftPikachuSpecialLwStartUpdateThunder(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#ifdef PORT
+    syNetRbSnapTrySpawnThunderFromSpecialLw(fighter_gobj);
+#else
     if (fp->motion_vars.flags.flag0 != 0)
     {
         ftPikachuSpecialLwMakeThunder(fighter_gobj);
     }
+#endif
 }
 
 // 0x80151E74
@@ -101,6 +119,7 @@ void ftPikachuSpecialLwStartInitStatusVars(GObj *fighter_gobj)
     fp->motion_vars.flags.flag1 = 0;
     fp->motion_vars.flags.flag0 = 0;
 
+    fp->status_vars.pikachu.speciallw.thunder_gobj = NULL;
     fp->passive_vars.pikachu.is_thunder_destroy = FALSE;
 }
 
@@ -148,6 +167,15 @@ sb32 ftPikachuSpecialLwCheckCollideThunder(GObj *fighter_gobj)
     }
 
     wp = wpGetStruct(thunder_gobj);
+
+#ifdef PORT
+    if ((wp == NULL) || (wp->kind != nWPKindThunderHead))
+    {
+        fp->status_vars.pikachu.speciallw.thunder_gobj = NULL;
+        fp->passive_vars.pikachu.is_thunder_destroy |= TRUE;
+        return FALSE;
+    }
+#endif
 
     fj = DObjGetStruct(fighter_gobj);
     wj = DObjGetStruct(thunder_gobj);
@@ -264,9 +292,18 @@ void ftPikachuSpecialLwLoopUpdateThunder(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->motion_vars.flags.flag0 == 0)
+#ifdef PORT
+    if (fp->status_vars.pikachu.speciallw.thunder_gobj == NULL)
+#endif
     {
-        ftPikachuSpecialLwMakeThunder(fighter_gobj);
+        if (fp->motion_vars.flags.flag0 == 0)
+        {
+#ifdef PORT
+            syNetRbSnapTrySpawnThunderFromSpecialLw(fighter_gobj);
+            if (fp->status_vars.pikachu.speciallw.thunder_gobj == NULL)
+#endif
+            ftPikachuSpecialLwMakeThunder(fighter_gobj);
+        }
     }
     fp->motion_vars.flags.flag0 = 0;
 

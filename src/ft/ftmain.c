@@ -983,7 +983,12 @@ void ftMainPlayAnim(GObj *fighter_gobj)
 
     if (fp->anim_desc.flags.is_use_transn_joint)
     {
-        fp->anim_vel = fp->joints[nFTPartsJointTransN]->translate.vec.f;
+#ifdef PORT
+        if (fp->joints[nFTPartsJointTransN] != NULL)
+#endif
+        {
+            fp->anim_vel = fp->joints[nFTPartsJointTransN]->translate.vec.f;
+        }
     }
     ftParamUpdateAnimKeys(fighter_gobj);
     ftParamsUpdateFighterPartsTransform(fp->joints[nFTPartsJointTopN]);
@@ -4941,12 +4946,16 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
             if (fp->anim_desc.flags.is_use_transn_joint)
             {
                 joint = fp->joints[nFTPartsJointTransN];
-                
-                joint->translate.vec.f.x = joint->translate.vec.f.y = joint->translate.vec.f.z = 0.0F;
+#ifdef PORT
+                if (joint != NULL)
+#endif
+                {
+                    joint->translate.vec.f.x = joint->translate.vec.f.y = joint->translate.vec.f.z = 0.0F;
 
-                joint->rotate.vec.f.z = 0.0F;
+                    joint->rotate.vec.f.z = 0.0F;
 
-                joint->flags = DOBJ_FLAG_NONE;
+                    joint->flags = DOBJ_FLAG_NONE;
+                }
             }
             if (fp->anim_desc.flags.is_use_xrotn_joint)
             {
@@ -4987,15 +4996,19 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
             if (fp->anim_desc.flags.is_use_transn_joint)
             {
                 joint = fp->joints[nFTPartsJointTransN];
-
-                transn_parent = joint->parent;
-                transn_child = joint->child;
-                transn_parent->child = transn_child;
-                transn_child->parent = transn_parent;
-                transn_child->sib_next = joint;
-                joint->sib_prev = transn_child;
-                joint->parent = transn_child->parent;
-                joint->child = NULL;
+#ifdef PORT
+                if ((joint != NULL) && (joint->parent != NULL) && (joint->child != NULL))
+#endif
+                {
+                    transn_parent = joint->parent;
+                    transn_child = joint->child;
+                    transn_parent->child = transn_child;
+                    transn_child->parent = transn_parent;
+                    transn_child->sib_next = joint;
+                    joint->sib_prev = transn_child;
+                    joint->parent = transn_child->parent;
+                    joint->child = NULL;
+                }
             }
 
             if (fp->is_use_animlocks)

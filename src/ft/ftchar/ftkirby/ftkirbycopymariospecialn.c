@@ -9,8 +9,18 @@
 //                               //
 // // // // // // // // // // // //
 
-#define FTKIRBY_COPYMARIO_FIREBALL_CHECK_FTKIND(fp, id_true, id_false) \
-(((fp->passive_vars.kirby.copy_id == nFTKindMario) || (fp->passive_vars.kirby.copy_id == nFTKindNMario) || (fp->passive_vars.kirby.copy_id == nFTKindMMario)) ? id_true : id_false) \
+/*
+ * Kirby Copy Mario / Copy Luigi fireball SpecialN (one implementation; Luigi uses
+ * CopyLuigi status IDs and fireball index 1 via syNetRbSnapResolveFireballIndex).
+ */
+#define FTKIRBY_COPY_FIREBALL_IS_MARIO_KIND(copy_id) \
+    (((copy_id) == nFTKindMario) || ((copy_id) == nFTKindNMario) || ((copy_id) == nFTKindMMario))
+
+#define FTKIRBY_COPY_FIREBALL_IS_LUIGI_KIND(copy_id) \
+    (((copy_id) == nFTKindLuigi) || ((copy_id) == nFTKindNLuigi))
+
+#define FTKIRBY_COPYMARIO_FIREBALL_CHECK_FTKIND(fp, id_mario, id_luigi) \
+    (FTKIRBY_COPY_FIREBALL_IS_LUIGI_KIND((fp)->passive_vars.kirby.copy_id) ? (id_luigi) : (id_mario))
 
 // // // // // // // // // // // //
 //                               //
@@ -21,6 +31,12 @@
 // 0x801569B0
 void ftKirbyCopyMarioSpecialNProcUpdate(GObj *fighter_gobj)
 {
+#ifdef PORT
+    if (syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE)
+    {
+        syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
+    }
+#endif
     ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
 }
 
