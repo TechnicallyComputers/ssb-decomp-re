@@ -3,6 +3,7 @@
 #ifdef PORT
 extern char *getenv(const char *name);
 extern int atoi(const char *s);
+extern void port_coroutine_yield(void);
 #endif
 #endif
 #include <ft/fighter.h>
@@ -822,8 +823,10 @@ char dSCManagerBuildDate[/* */] = { "Dec 23 1998 18:06:24" };
 // 0x800A1980
 void scManagerRunLoop(sb32 arg)
 {
+#ifndef PORT
 	u16 *framebuffer;
 	uintptr_t end;
+#endif
 
 	syControllerSetStatusDelay(60);
 
@@ -844,35 +847,39 @@ void scManagerRunLoop(sb32 arg)
 	ftManagerSetupFileSize();
 	dSYAudioPublicSettings.unk31 = 72;
 
-#ifdef PORT
-	/* Audio is stubbed on PC — skip the spin-waits that would hang.
-	 * The audio thread would normally clear these flags. */
-	syAudioSetSettingsUpdated();
-	syAudioSetFXType(AL_FX_CUSTOM);
-	/* Skip framebuffer clear — no physical N64 framebuffers on PC.
-	 * Fast3D handles framebuffer management. */
-	port_log("SSB64: scManagerRunLoop — past audio/FB setup\n");
-	/* SRAM is backed by a real file in the user's app-data dir
-	 * (port_save.cpp). Load it so unlocks/options persist across runs
-	 * — without this the backup struct stays at defaults forever. */
-	lbBackupIsSramValid();
-	lbBackupApplyOptions();
-#else
+	/* Wait for the audio thread to finish its settings-update restart
+	 * (n_alClose -> portAudioLoadAssets -> syAudioMakeBGMPlayers -> clear
+	 * dSYAudioIsSettingsUpdated) before dispatching the first scene.
+	 * Skipping it lets syAudioPlayBGM race the restart: on JP the first
+	 * scene is nSCKindOpeningRoom immediately (no ~3 s nSCKindStartup to
+	 * mask it as on US), so syAudioStopBGMAll() wipes the queued BGM and
+	 * the attract music is silent. See
+	 * docs/bugs/jp_attract_music_settings_update_race_2026-05-18.md.
+	 * PORT swaps the N64 busy-spin for a cooperative yield — the same
+	 * idiom as the scautodemo / scvsbattle BGM waits. */
 	syAudioSetSettingsUpdated();
 
 	while (syAudioGetSettingsUpdated() != FALSE)
 	{
+#ifdef PORT
+		port_coroutine_yield();
+#endif
 		continue;
 	}
 	syAudioSetFXType(AL_FX_CUSTOM);
 
 	while (syAudioGetRestarting() != FALSE)
 	{
+#ifdef PORT
+		port_coroutine_yield();
+#endif
 		continue;
 	}
 	lbBackupIsSramValid();
 	lbBackupApplyOptions();
 
+#ifndef PORT
+	/* N64 only — no physical framebuffers on PC; Fast3D manages them. */
 	framebuffer = (u16*) gSYFramebufferSets;
 	end = 0x80400000;
 

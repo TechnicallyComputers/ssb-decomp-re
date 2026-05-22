@@ -1821,7 +1821,13 @@ sb32 func_ovl0_800C9F30(Mtx *mtx, DObj *dobj, Gfx **dls)
     return 0;
 }
 
-#if defined(REGION_US)
+/* PORT: US-only in the decomp's byte-matching builds, but referenced
+ * unconditionally by the function-pointer matrix table below (in both
+ * port-patches and upstream main). Region-agnostic render/matrix helper;
+ * `|| defined(PORT)` compiles it for the JP port without touching the
+ * decomp's own US/JP ROM builds. See
+ * docs/bugs/jp_us_only_funcs_called_unconditionally_2026-05-18.md */
+#if defined(REGION_US) || defined(PORT)
 // 0x800C9F70
 sb32 func_ovl0_800C9F70(Mtx *mtx, DObj *dobj, Gfx **dls)
 {
