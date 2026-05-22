@@ -1602,7 +1602,14 @@ f32 ftParamGetCommonKnockback(s32 percent_damage, s32 recent_damage, s32 hit_dam
     return knockback;
 }
 
-#if defined(REGION_US)
+/* PORT: US-only in the decomp's byte-matching builds, but the Barrel
+ * Cannon (Kongo Jungle) exists in JP gameplay too and this is a pure,
+ * region-agnostic knockback formula. `|| defined(PORT)` compiles it for
+ * the JP port without affecting the decomp's own US/JP ROM builds (PORT
+ * undefined there); the JP ROM build resolves this via
+ * symbols/jp_wip_linker.txt, a stub mechanism the port lacks. See
+ * docs/bugs/jp_us_only_funcs_called_unconditionally_2026-05-18.md */
+#if defined(REGION_US) || defined(PORT)
 // 0x800E9FC0 - Used by Barrel Cannon on Kongo Jungle
 f32 ftParamGetGroundHazardKnockback(s32 percent_damage, s32 recent_damage, s32 hit_damage, s32 knockback_weight, s32 knockback_scale, s32 knockback_base, f32 weight, s32 attack_handicap, s32 defend_handicap)
 {

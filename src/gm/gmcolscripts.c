@@ -1344,7 +1344,12 @@ static GMColScriptLink sGMColScriptLinks[] =
 	{ dGMColScriptsFighterKirbySpecialLwLow, 9, dGMColScriptsFighterKirbySpecialLwLow },
 	{ dGMColScriptsFighterPikachuAttackS4, 13, dGMColScriptsFighterPikachuAttackS4 },
 	{ dGMColScriptsFighterPikachuSpecialHiStartLoop, 7, dGMColScriptsFighterPikachuSpecialHiStartLoop },
+#if defined(REGION_US)
+	/* dGMColScriptsFighterPikachuSpecialHi exists only in the US build
+	 * (see its #if REGION_US definition and the matching guard in the
+	 * decomp's own script table above). JP has no such script. */
 	{ dGMColScriptsFighterPikachuSpecialHi, 6, dGMColScriptsFighterPikachuSpecialHi },
+#endif
 	{ dGMColScriptsFighterPikachuSpecialN, 17, dGMColScriptsFighterPikachuSpecialN },
 	{ dGMColScriptsFighterPikachuSpecialLwHit, 21, dGMColScriptsFighterPikachuSpecialLwHit },
 	{ dGMColScriptsFighterPikachuSpecialLwEnd, 9, dGMColScriptsFighterPikachuSpecialLwEnd },
