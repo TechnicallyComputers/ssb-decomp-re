@@ -1,11 +1,80 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#ifdef PORT
+#include <sys/netrollbacksnapshot.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
 //           FUNCTIONS           //
 //                               //
 // // // // // // // // // // // //
+
+#ifdef PORT
+static sb32 ftYoshiSpecialHiPortEggIsCharging(WPStruct *wp)
+{
+	if (wp == NULL)
+	{
+		return FALSE;
+	}
+	return ((wp->attack_coll.attack_state == nGMAttackStateOff) &&
+	        (wp->weapon_vars.egg_throw.is_throw == FALSE) && (wp->weapon_vars.egg_throw.is_spin == FALSE)) ?
+	           TRUE :
+	           FALSE;
+}
+
+static void ftYoshiSpecialHiPortValidateCoupledEgg(FTStruct *fp)
+{
+	WPStruct *wp;
+
+	if (fp == NULL)
+	{
+		return;
+	}
+	if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+	{
+		return;
+	}
+	wp = wpGetStruct(fp->status_vars.yoshi.specialhi.egg_gobj);
+	if (ftYoshiSpecialHiPortEggIsCharging(wp) == FALSE)
+	{
+		fp->status_vars.yoshi.specialhi.egg_gobj = NULL;
+	}
+}
+
+static void ftYoshiSpecialHiPortCleanupChargeEggs(GObj *fighter_gobj)
+{
+	FTStruct *fp = ftGetStruct(fighter_gobj);
+	WPStruct *wp;
+
+	if (fp == NULL)
+	{
+		return;
+	}
+	if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
+	{
+		wp = wpGetStruct(fp->status_vars.yoshi.specialhi.egg_gobj);
+		if (ftYoshiSpecialHiPortEggIsCharging(wp) != FALSE)
+		{
+			wpMainDestroyWeapon(fp->status_vars.yoshi.specialhi.egg_gobj);
+		}
+		fp->status_vars.yoshi.specialhi.egg_gobj = NULL;
+	}
+	syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, NULL);
+}
+
+static void ftYoshiSpecialHiPortSetStatusWait(GObj *fighter_gobj)
+{
+    ftYoshiSpecialHiPortCleanupChargeEggs(fighter_gobj);
+    ftCommonWaitSetStatus(fighter_gobj);
+}
+
+static void ftYoshiSpecialHiPortSetStatusFall(GObj *fighter_gobj)
+{
+    ftYoshiSpecialHiPortCleanupChargeEggs(fighter_gobj);
+    ftCommonFallSetStatus(fighter_gobj);
+}
+#endif
 
 // 0x8015E980
 void ftYoshiSpecialHiProcDamage(GObj *fighter_gobj)
@@ -32,9 +101,20 @@ void ftYoshiSpecialHiGetEggPosition(FTStruct *fp, Vec3f *pos)
 void ftYoshiSpecialHiUpdateEggVectors(FTStruct *fp)
 {
     Vec3f pos;
+    WPStruct *wp;
 
+#ifdef PORT
+    ftYoshiSpecialHiPortValidateCoupledEgg(fp);
+#endif
     if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
     {
+#ifdef PORT
+        wp = wpGetStruct(fp->status_vars.yoshi.specialhi.egg_gobj);
+        if (ftYoshiSpecialHiPortEggIsCharging(wp) == FALSE)
+        {
+            return;
+        }
+#endif
         ftYoshiSpecialHiGetEggPosition(fp, &pos);
 
         DObjGetStruct(fp->status_vars.yoshi.specialhi.egg_gobj)->translate.vec.f = pos;
@@ -54,6 +134,18 @@ void ftYoshiSpecialHiUpdateEggVars(GObj *fighter_gobj)
     {
         fp->motion_vars.flags.flag2 = 0;
 
+#ifdef PORT
+        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+        {
+            fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+        }
+        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+        {
+            ftYoshiSpecialHiGetEggPosition(fp, &pos);
+
+            fp->status_vars.yoshi.specialhi.egg_gobj = wpYoshiEggThrowMakeWeapon(fighter_gobj, &pos);
+        }
+#endif
         if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
         {
             wp = wpGetStruct(fp->status_vars.yoshi.specialhi.egg_gobj);
@@ -72,9 +164,21 @@ void ftYoshiSpecialHiUpdateEggVars(GObj *fighter_gobj)
     {
         fp->motion_vars.flags.flag2 = 0;
 
-        ftYoshiSpecialHiGetEggPosition(fp, &pos);
+#ifdef PORT
+        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+        {
+            fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+        }
+        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+#endif
+        {
+            ftYoshiSpecialHiGetEggPosition(fp, &pos);
 
-        fp->status_vars.yoshi.specialhi.egg_gobj = wpYoshiEggThrowMakeWeapon(fighter_gobj, &pos);
+            fp->status_vars.yoshi.specialhi.egg_gobj = wpYoshiEggThrowMakeWeapon(fighter_gobj, &pos);
+        }
+#ifdef PORT
+        syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
+#endif
     }
 }
 
@@ -94,7 +198,11 @@ void ftYoshiSpecialHiProcUpdate(GObj *fighter_gobj)
 {
     ftYoshiSpecialHiUpdateEggThrowForce(fighter_gobj);
     ftYoshiSpecialHiUpdateEggVars(fighter_gobj);
+#ifdef PORT
+    ftAnimEndCheckSetStatus(fighter_gobj, ftYoshiSpecialHiPortSetStatusWait);
+#else
     ftAnimEndCheckSetStatus(fighter_gobj, ftCommonWaitSetStatus);
+#endif
 }
 
 // 0x8015EB70
@@ -102,20 +210,50 @@ void ftYoshiSpecialAirHiProcUpdate(GObj *fighter_gobj)
 {
     ftYoshiSpecialHiUpdateEggThrowForce(fighter_gobj);
     ftYoshiSpecialHiUpdateEggVars(fighter_gobj);
+#ifdef PORT
+    ftAnimEndCheckSetStatus(fighter_gobj, ftYoshiSpecialHiPortSetStatusFall);
+#else
     ftAnimEndCheckSetStatus(fighter_gobj, ftCommonFallSetStatus);
+#endif
 }
 
 // 0x8015EBA8
 void ftYoshiSpecialHiProcPhysics(GObj *fighter_gobj)
 {
-    ftYoshiSpecialHiUpdateEggVectors(ftGetStruct(fighter_gobj));
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+
+#ifdef PORT
+    ftYoshiSpecialHiPortValidateCoupledEgg(fp);
+    if ((fp->status_vars.yoshi.specialhi.egg_gobj == NULL) && (fp->motion_vars.flags.flag1 == 0))
+    {
+        fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+    }
+    if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
+    {
+        syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
+    }
+#endif
+    ftYoshiSpecialHiUpdateEggVectors(fp);
     ftPhysicsApplyGroundVelFriction(fighter_gobj);
 }
 
 // 0x8015EBD4
 void ftYoshiSpecialAirHiProcPhysics(GObj *fighter_gobj)
 {
-    ftYoshiSpecialHiUpdateEggVectors(ftGetStruct(fighter_gobj));
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+
+#ifdef PORT
+    ftYoshiSpecialHiPortValidateCoupledEgg(fp);
+    if ((fp->status_vars.yoshi.specialhi.egg_gobj == NULL) && (fp->motion_vars.flags.flag1 == 0))
+    {
+        fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+    }
+    if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
+    {
+        syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
+    }
+#endif
+    ftYoshiSpecialHiUpdateEggVectors(fp);
     ftPhysicsApplyAirVelFriction(fighter_gobj);
 }
 

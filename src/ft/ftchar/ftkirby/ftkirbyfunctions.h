@@ -170,7 +170,7 @@ extern void ftKirbyCopyFoxSpecialNSetStatus(GObj* fighter_gobj);
 extern void ftKirbyCopyFoxSpecialAirNSetStatus(GObj* fighter_gobj);
 
 // CopySamusSpecialN
-extern void ftKirbyCopySamusSpecialNDestroyChargeShot(FTStruct* fp);
+extern void ftKirbyCopySamusSpecialNDestroyChargeShot(GObj* fighter_gobj);
 extern void ftKirbyCopySamusSpecialNProcDamage(GObj* fighter_gobj);
 extern void ftKirbyCopySamusSpecialNGetChargeShotPosition(FTStruct* fp, Vec3f* pos);
 extern void ftKirbyCopySamusSpecialNSetChargeShotPosition(FTStruct* fp);

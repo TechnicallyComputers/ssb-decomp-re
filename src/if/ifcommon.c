@@ -16,8 +16,6 @@ extern void syAudioSetBGMVolume(u32, u32);
 #include <stddef.h>
 #include <sys/objman.h>
 #include <sys/scheduler.h>
-#include <sys/netinput.h>
-#include <sys/netpause.h>
 extern sb32 syNetPeerIsVSSessionActive(void);
 extern void func_800266A0_272A0(void);
 extern s32 func_80026594_27194(void);
@@ -3177,6 +3175,15 @@ void ifCommonBattlePauseInitInterface(s32 player)
     sIFCommonBattlePausePlayer = player;
 
 #ifdef PORT
+    if (sIFCommonBattlePauseKindInterface == nIFPauseKindDefault)
+    {
+        GObj *pause_fighter_gobj = gSCManagerBattleState->players[player].fighter_gobj;
+
+        if (pause_fighter_gobj != NULL)
+        {
+            gGMCameraStruct.pzoom_fighter_gobj = pause_fighter_gobj;
+        }
+    }
     /* Silence per-fighter loop SFX (Samus's charge whoosh, etc.) before
      * the existing audio calls. The IDO/N64 pause path doesn't stop
      * these explicitly — it relies on the audio thread descheduling
@@ -3312,16 +3319,6 @@ void ifCommonBattleGoUpdateInterface(void)
     {
         if (gSYControllerDevices[player].button_tap & START_BUTTON)
         {
-#ifdef PORT
-            if (syNetPeerIsVSSessionActive() != FALSE)
-            {
-                if (syNetPauseRequestPauseFromGo(player) != FALSE)
-                {
-                    return;
-                }
-                continue;
-            }
-#endif
             if (gSCManagerBattleState->players[player].pkind != nFTPlayerKindNot)
             {
                 if ((gSCManagerBattleState->gkind != nGRKindBonus3) || (gSCManagerBattleState->players[player].pkind != nFTPlayerKindCom))
@@ -3380,13 +3377,6 @@ void ifCommonBattleGoUpdateInterface(void)
             return;
         }
     }
-#ifdef PORT
-    if ((syNetPeerIsVSSessionActive() != FALSE) &&
-        (syNetPauseShouldDeferBattleSim(syNetInputGetTick()) != FALSE))
-    {
-        return;
-    }
-#endif
     gcRunAll();
 }
 
@@ -3442,13 +3432,6 @@ void ifCommonBattlePauseUpdateInterface(void)
     {
         if (button_tap & START_BUTTON)
         {
-#ifdef PORT
-            if (syNetPeerIsVSSessionActive() != FALSE)
-            {
-                syNetPauseRequestUnpauseFromPause();
-                return;
-            }
-#endif
             ifCommonBattlePauseBeginUnpause();
 
             return;

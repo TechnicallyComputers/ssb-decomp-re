@@ -6,6 +6,8 @@
 #include <sys/rdp.h>
 #ifdef PORT
 #include <sys/debug.h>
+#include <sys/netpeer.h>
+#include <sc/scmanager.h>
 #endif
 // #include <sys/taskman.h>
 
@@ -745,6 +747,15 @@ sb32 gmCameraCheckPausePlayerOutBounds(Vec3f *pos)
 // 0x8010CAE0
 void gmCameraPlayerZoomFuncCamera(GObj *camera_gobj)
 {
+#ifdef PORT
+    if ((syNetPeerIsVSSessionActive() != FALSE) &&
+        (gSCManagerBattleState != NULL) &&
+        (gSCManagerBattleState->game_status == nSCBattleGameStatusPause))
+    {
+        gmCameraUpdatePlayerZoom(camera_gobj);
+        return;
+    }
+#endif
     if (gmCameraCheckPausePlayerOutBounds(&DObjGetStruct(gGMCameraStruct.pzoom_fighter_gobj)->translate.vec.f) != FALSE)
     {
         dGMCameraFuncList[gGMCameraStruct.status_default](camera_gobj);

@@ -6,7 +6,7 @@
 #include <ft/ftdef.h>
 
 // SpecialN / SpecialAirN
-extern void ftSamusSpecialNDestroyChargeShot(FTStruct* fp);
+extern void ftSamusSpecialNDestroyChargeShot(GObj* fighter_gobj);
 extern void ftSamusSpecialNProcDamage(GObj* fighter_gobj);
 extern void ftSamusSpecialNGetChargeShotPosition(FTStruct* fp, Vec3f* pos);
 extern void ftSamusSpecialNSetChargeShotPosition(FTStruct* fp);
