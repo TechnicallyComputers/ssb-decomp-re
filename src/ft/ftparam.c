@@ -2300,6 +2300,31 @@ void ftParamKirbyTryMakeMapStarEffect(GObj *fighter_gobj)
 }
 
 // 0x800EB528
+void ftParamInvalidateFighterTransformFromRoot(GObj *fighter_gobj)
+{
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+    DObj *dobj = fp->joints[nFTPartsJointTopN];
+    FTParts *parts;
+
+    while (dobj != NULL)
+    {
+        parts = ftGetParts(dobj);
+
+        if (parts != NULL)
+        {
+            parts->transform_update_mode = 0;
+            parts->unk_dobjtrans_word = 0;
+            parts->unk_dobjtrans_0x5 = 0;
+            parts->unk_dobjtrans_0x7 = 0;
+        }
+        if (dobj == DObjGetStruct(fighter_gobj))
+        {
+            break;
+        }
+        dobj = dobj->parent;
+    }
+}
+
 void ftParamsUpdateFighterPartsTransformAll(DObj *root_dobj)
 {
     DObj *parent_sibling;

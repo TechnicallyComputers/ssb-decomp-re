@@ -16,6 +16,8 @@ extern void syAudioSetBGMVolume(u32, u32);
 #include <stddef.h>
 #include <sys/objman.h>
 #include <sys/scheduler.h>
+#include <sys/netinput.h>
+#include <sys/netpause.h>
 extern sb32 syNetPeerIsVSSessionActive(void);
 extern void func_800266A0_272A0(void);
 extern s32 func_80026594_27194(void);
@@ -3190,6 +3192,113 @@ void ifCommonBattlePauseInitInterface(s32 player)
     ifCommonBattlePauseMakeInterface(player);
 }
 
+#ifdef PORT
+sb32 ifCommonBattlePausePlayerCanRequestPause(s32 player)
+{
+    GObj *fighter_gobj;
+    FTStruct *fp;
+
+    if (gSCManagerBattleState->players[player].pkind == nFTPlayerKindNot)
+    {
+        return TRUE;
+    }
+    if ((gSCManagerBattleState->gkind == nGRKindBonus3) &&
+        (gSCManagerBattleState->players[player].pkind == nFTPlayerKindCom))
+    {
+        return TRUE;
+    }
+    fighter_gobj = gSCManagerBattleState->players[player].fighter_gobj;
+
+    fp = ftGetStruct(fighter_gobj);
+
+    if ((fp->status_id == nFTCommonStatusSleep) && (ftCommonSleepCheckIgnorePauseMenu(fighter_gobj) != FALSE))
+    {
+        return FALSE;
+    }
+    if (fp->is_menu_ignore)
+    {
+        return FALSE;
+    }
+    return TRUE;
+}
+
+sb32 ifCommonBattlePauseSetupFromPlayer(s32 player)
+{
+    GObj *fighter_gobj;
+    FTStruct *fp;
+    Vec3f sp68;
+    Vec3f sp5C;
+
+    if (ifCommonBattlePausePlayerCanRequestPause(player) == FALSE)
+    {
+        return FALSE;
+    }
+    if (gSCManagerBattleState->players[player].pkind == nFTPlayerKindNot)
+    {
+        sIFCommonBattlePauseKindInterface = 0;
+
+        return TRUE;
+    }
+    if ((gSCManagerBattleState->gkind == nGRKindBonus3) &&
+        (gSCManagerBattleState->players[player].pkind == nFTPlayerKindCom))
+    {
+        sIFCommonBattlePauseKindInterface = 0;
+
+        return TRUE;
+    }
+    fighter_gobj = gSCManagerBattleState->players[player].fighter_gobj;
+
+    fp = ftGetStruct(fighter_gobj);
+    if (gSCManagerBattleState->game_type == nSCBattleGameTypeBonus)
+    {
+        sp68.x = gMPCollisionGroundData->zoom_start.x;
+        sp68.y = gMPCollisionGroundData->zoom_start.y;
+        sp68.z = gMPCollisionGroundData->zoom_start.z;
+
+        sp5C.x = gMPCollisionGroundData->zoom_end.x;
+        sp5C.y = gMPCollisionGroundData->zoom_end.y;
+        sp5C.z = gMPCollisionGroundData->zoom_end.z;
+
+        gmCameraSetStatusMapZoom(&sp68, &sp5C);
+
+        sIFCommonBattlePauseKindInterface = nIFPauseKindBonus;
+    }
+    else if (gmCameraCheckPausePlayerOutBounds(&DObjGetStruct(fighter_gobj)->translate.vec.f) != FALSE)
+    {
+        sIFCommonBattlePauseKindInterface = nIFPauseKindPlayerNA;
+    }
+    else
+    {
+        gmCameraSetStatusPlayerZoom(fighter_gobj, 0.0F, 0.0F, ftGetStruct(fighter_gobj)->attr->closeup_camera_zoom, 0.1F, 29.0F);
+
+        sIFCommonBattlePauseCameraEyeXOrigin = gGMCameraPauseCameraEyeX;
+        sIFCommonBattlePauseCameraEyeYOrigin = gGMCameraPauseCameraEyeY;
+
+        sIFCommonBattlePauseKindInterface = nIFPauseKindDefault;
+
+        sIFCommonBattlePausePlayerDetail = fp->detail_curr;
+
+        ftParamSetModelPartDetailAll(fighter_gobj, nFTPartsDetailHigh);
+    }
+    return TRUE;
+}
+#endif
+
+void ifCommonBattlePauseBeginUnpause(void)
+{
+    if (sIFCommonBattlePauseKindInterface != nIFPauseKindPlayerNA)
+    {
+        gmCameraSetStatusPrev();
+
+        sIFCommonBattlePauseCameraRestoreWait = 20;
+    }
+    else
+    {
+        sIFCommonBattlePauseCameraRestoreWait = 0;
+    }
+    gSCManagerBattleState->game_status = nSCBattleGameStatusUnpause;
+}
+
 // 0x8011403C
 void ifCommonBattleGoUpdateInterface(void)
 {
@@ -3203,6 +3312,16 @@ void ifCommonBattleGoUpdateInterface(void)
     {
         if (gSYControllerDevices[player].button_tap & START_BUTTON)
         {
+#ifdef PORT
+            if (syNetPeerIsVSSessionActive() != FALSE)
+            {
+                if (syNetPauseRequestPauseFromGo(player) != FALSE)
+                {
+                    return;
+                }
+                continue;
+            }
+#endif
             if (gSCManagerBattleState->players[player].pkind != nFTPlayerKindNot)
             {
                 if ((gSCManagerBattleState->gkind != nGRKindBonus3) || (gSCManagerBattleState->players[player].pkind != nFTPlayerKindCom))
@@ -3261,6 +3380,13 @@ void ifCommonBattleGoUpdateInterface(void)
             return;
         }
     }
+#ifdef PORT
+    if ((syNetPeerIsVSSessionActive() != FALSE) &&
+        (syNetPauseShouldDeferBattleSim(syNetInputGetTick()) != FALSE))
+    {
+        return;
+    }
+#endif
     gcRunAll();
 }
 
@@ -3316,15 +3442,14 @@ void ifCommonBattlePauseUpdateInterface(void)
     {
         if (button_tap & START_BUTTON)
         {
-            if (sIFCommonBattlePauseKindInterface != nIFPauseKindPlayerNA)
+#ifdef PORT
+            if (syNetPeerIsVSSessionActive() != FALSE)
             {
-                gmCameraSetStatusPrev();
-
-                sIFCommonBattlePauseCameraRestoreWait = 20;
+                syNetPauseRequestUnpauseFromPause();
+                return;
             }
-            else sIFCommonBattlePauseCameraRestoreWait = 0;
-
-            gSCManagerBattleState->game_status = nSCBattleGameStatusUnpause;
+#endif
+            ifCommonBattlePauseBeginUnpause();
 
             return;
         }

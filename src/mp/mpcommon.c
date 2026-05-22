@@ -1,4 +1,5 @@
 #include <ft/fighter.h>
+#include <ft/ftmain.h>
 #include <wp/weapon.h>
 #include <it/item.h>
 #ifdef PORT
@@ -402,6 +403,7 @@ void mpCommonUpdateFighterSlopeContour(GObj *fighter_gobj)
             {
                 DObjGetStruct(fighter_gobj)->rotate.vec.f.x = (syUtilsArcTan2(fp->coll_data.floor_angle.x, fp->coll_data.floor_angle.y) * fp->lr);
             }
+            ftParamInvalidateFighterTransformFromRoot(fighter_gobj);
         }
     }
     else return;

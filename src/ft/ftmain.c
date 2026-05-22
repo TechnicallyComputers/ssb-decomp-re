@@ -179,7 +179,6 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
     FTMotionDamageScript *p_damage;
     s32 fkind;
     s32 script_id;
-    s32 slope_contour;
     sb32 unused3;
 
     switch (ev_kind)
@@ -688,14 +687,7 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
         break;
 
     case nFTMotionEventSetSlopeContour:
-        slope_contour = fp->slope_contour;
-
-        fp->slope_contour = ftMotionEventCastAdvance(ms, FTMotionEventSetSlopeContour)->flags;
-
-        if (!(slope_contour & fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
-        {
-            DObjGetStruct(fighter_gobj)->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
-        }
+        ftMainApplySlopeContourFlags(fighter_gobj, ftMotionEventCastAdvance(ms, FTMotionEventSetSlopeContour)->flags);
         break;
 
     case nFTMotionEventHideItem:
@@ -1998,6 +1990,16 @@ void ftMainProcPhysicsMap(GObj *fighter_gobj)
     if (fp->proc_slope != NULL)
     {
         fp->proc_slope(fighter_gobj);
+    }
+    if (!(fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
+    {
+        DObj *root_dobj = DObjGetStruct(fighter_gobj);
+
+        if (root_dobj->rotate.vec.f.x != 0.0F)
+        {
+            root_dobj->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
+            ftParamInvalidateFighterTransformFromRoot(fighter_gobj);
+        }
     }
     ftParamsUpdateFighterPartsTransformAll(fp->joints[nFTPartsJointTopN]);
 
@@ -4588,7 +4590,20 @@ void ftMainEjectHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
     gcEjectDObj(root_joint);
 }
 
-// 0x800E6F24
+void ftMainApplySlopeContourFlags(GObj *fighter_gobj, u8 new_flags)
+{
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+    u8 slope_contour = fp->slope_contour;
+
+    fp->slope_contour = new_flags;
+
+    if (!(slope_contour & fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
+    {
+        DObjGetStruct(fighter_gobj)->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
+        ftParamInvalidateFighterTransformFromRoot(fighter_gobj);
+    }
+}
+
 void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 anim_speed, u32 flags)
 {
 #ifdef PORT
@@ -4734,13 +4749,7 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     }
     if (!(flags & FTSTATUS_PRESERVE_SLOPECONTOUR))
     {
-        /* Match SetSlopeContour(0) motion events: zero stale full-body tilt when
-         * leaving a slope-contoured state without the motion-script event path. */
-        if (fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL)
-        {
-            DObjGetStruct(fighter_gobj)->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
-        }
-        fp->slope_contour = 0;
+        ftMainApplySlopeContourFlags(fighter_gobj, 0);
     }
     fp->coll_data.ignore_line_id = -1;
 
