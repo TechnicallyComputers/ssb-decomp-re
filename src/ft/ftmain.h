@@ -74,9 +74,6 @@ extern void ftMainProcParams(GObj* fighter_gobj);
 extern void ftMainUpdateHiddenPartID(FTStruct* fp, s32 index);
 extern void func_ovl2_800E6CE0(FTStruct* fp, s32 index);
 extern void func_ovl2_800E6E00(FTStruct* fp, s32 index);
-#ifdef PORT
-extern void ftMainApplySlopeContourFlags(GObj* fighter_gobj, u8 new_flags);
-#endif
 extern void ftMainSetStatus(GObj* fighter_gobj, s32 status_id, f32 frame_begin, f32 anim_speed, u32 flags);
 
 #endif

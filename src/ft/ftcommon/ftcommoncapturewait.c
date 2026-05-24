@@ -11,22 +11,8 @@ void ftCommonCaptureWaitProcMap(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
     GObj *capture_gobj = this_fp->capture_gobj;
-    FTStruct *capture_fp;
+    FTStruct *capture_fp = ftGetStruct(capture_gobj);
     Vec3f *this_pos = &DObjGetStruct(fighter_gobj)->translate.vec.f;
-
-#ifdef PORT
-    if (capture_gobj == NULL)
-    {
-        return;
-    }
-    capture_fp = ftGetStruct(capture_gobj);
-    if (capture_fp == NULL)
-    {
-        return;
-    }
-#else
-    capture_fp = ftGetStruct(capture_gobj);
-#endif
     Vec3f capture_pos;
     f32 dist_y;
 

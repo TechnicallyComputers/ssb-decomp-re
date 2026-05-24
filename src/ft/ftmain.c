@@ -684,9 +684,6 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
         break;
 
     case nFTMotionEventSetSlopeContour:
-#ifdef PORT
-        ftMainApplySlopeContourFlags(fighter_gobj, ftMotionEventCastAdvance(ms, FTMotionEventSetSlopeContour)->flags);
-#else
         slope_contour = fp->slope_contour;
 
         fp->slope_contour = ftMotionEventCastAdvance(ms, FTMotionEventSetSlopeContour)->flags;
@@ -695,7 +692,6 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
         {
             DObjGetStruct(fighter_gobj)->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
         }
-#endif
         break;
 
     case nFTMotionEventHideItem:
@@ -1936,21 +1932,6 @@ void ftMainProcPhysicsMap(GObj *fighter_gobj)
     {
         fp->proc_slope(fighter_gobj);
     }
-#ifdef PORT
-    /* Belt-and-suspenders: catch motion scripts (or character-specific paths)
-     * that clear the FULL flag without zeroing the pitch they wrote into the
-     * root DObj. Stale pitch would survive into the next hand-matrix walk. */
-    if (!(fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
-    {
-        DObj *root_dobj = DObjGetStruct(fighter_gobj);
-
-        if (root_dobj->rotate.vec.f.x != 0.0F)
-        {
-            root_dobj->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
-            ftParamInvalidateFighterRootChain(fighter_gobj);
-        }
-    }
-#endif
     ftParamsUpdateFighterPartsTransformAll(fp->joints[nFTPartsJointTopN]);
 
     if (fp->hitlag_tics == 0)
@@ -4519,27 +4500,6 @@ void ftMainEjectHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
     gcEjectDObj(root_joint);
 }
 
-#ifdef PORT
-/* Drive slope_contour transitions through a single chokepoint so we always
- * pair the FULL-flag clear with a transform invalidate. The original guard
- * (drop root pitch when FULL stops being held both before AND after) is
- * preserved; the addition is the invalidate so stale root rotate.x cannot
- * survive into the next func_ovl2_800EDBA4(hand) walk and poison grab pose. */
-void ftMainApplySlopeContourFlags(GObj *fighter_gobj, u8 new_flags)
-{
-    FTStruct *fp = ftGetStruct(fighter_gobj);
-    u8 prev_flags = fp->slope_contour;
-
-    fp->slope_contour = new_flags;
-
-    if (!(prev_flags & fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
-    {
-        DObjGetStruct(fighter_gobj)->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
-        ftParamInvalidateFighterRootChain(fighter_gobj);
-    }
-}
-#endif
-
 // 0x800E6F24
 void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 anim_speed, u32 flags)
 {
@@ -4686,11 +4646,7 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     }
     if (!(flags & FTSTATUS_PRESERVE_SLOPECONTOUR))
     {
-#ifdef PORT
-        ftMainApplySlopeContourFlags(fighter_gobj, 0);
-#else
         fp->slope_contour = 0;
-#endif
     }
     fp->coll_data.ignore_line_id = -1;
 

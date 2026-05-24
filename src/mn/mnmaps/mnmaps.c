@@ -1118,16 +1118,52 @@ GObj* mnMapsMakePreviewWallpaper(s32 gkind)
 // 0x80132EF0
 void mnMapsModelPriProcDisplay(GObj *gobj)
 {
+#ifdef PORT
+	// Mirror grDisplayLayer0PriProcDisplay (grdisplay.c): clear Z and render in
+	// painter order. On N64 the original Z-buffered path leaned on AA-coverage
+	// to mask coplanar surfaces; Fast3D's GL_LESS depth-compare exposes those
+	// ties as per-pixel z-fight (visible on Dream Land's water-over-hill).
+	gDPPipeSync(gSYTaskmanDLHeads[0]++);
+	gSPClearGeometryMode(gSYTaskmanDLHeads[0]++, G_ZBUFFER);
+	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_OPA_SURF, G_RM_AA_OPA_SURF2);
+
+	gcDrawDObjTreeForGObj(gobj);
+
+	gDPPipeSync(gSYTaskmanDLHeads[0]++);
+	gSPSetGeometryMode(gSYTaskmanDLHeads[0]++, G_ZBUFFER);
+	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
+#else
 	gDPPipeSync(gSYTaskmanDLHeads[0]++);
 	gSPSetGeometryMode(gSYTaskmanDLHeads[0]++, G_ZBUFFER);
 	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
 
 	gcDrawDObjTreeForGObj(gobj);
+#endif
 }
 
 // 0x80132F70
 void mnMapsModelSecProcDisplay(GObj *gobj)
 {
+#ifdef PORT
+	// Mirror grDisplayLayer0SecProcDisplay (grdisplay.c): opaque pass in painter
+	// order, XLU pass keeps Z (XLU surfaces don't author back-to-front; Z is
+	// what prevents them from punching through later opaque draws).
+	gDPPipeSync(gSYTaskmanDLHeads[0]++);
+	gSPClearGeometryMode(gSYTaskmanDLHeads[0]++, G_ZBUFFER);
+	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_OPA_SURF, G_RM_AA_OPA_SURF2);
+	gDPPipeSync(gSYTaskmanDLHeads[1]++);
+	gSPClearGeometryMode(gSYTaskmanDLHeads[1]++, G_ZBUFFER);
+	gDPSetRenderMode(gSYTaskmanDLHeads[1]++, G_RM_AA_XLU_SURF, G_RM_AA_XLU_SURF2);
+
+	gcDrawDObjTreeDLLinksForGObj(gobj);
+
+	gDPPipeSync(gSYTaskmanDLHeads[0]++);
+	gSPSetGeometryMode(gSYTaskmanDLHeads[0]++, G_ZBUFFER);
+	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
+	gDPPipeSync(gSYTaskmanDLHeads[1]++);
+	gSPSetGeometryMode(gSYTaskmanDLHeads[1]++, G_ZBUFFER);
+	gDPSetRenderMode(gSYTaskmanDLHeads[1]++, G_RM_AA_ZB_XLU_SURF, G_RM_AA_ZB_XLU_SURF2);
+#else
 	gDPPipeSync(gSYTaskmanDLHeads[0]++);
 	gSPSetGeometryMode(gSYTaskmanDLHeads[0]++, G_ZBUFFER);
 	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
@@ -1136,6 +1172,7 @@ void mnMapsModelSecProcDisplay(GObj *gobj)
 	gDPSetRenderMode(gSYTaskmanDLHeads[1]++, G_RM_AA_ZB_XLU_SURF, G_RM_AA_ZB_XLU_SURF2);
 
 	gcDrawDObjTreeDLLinksForGObj(gobj);
+#endif
 }
 
 // 0x8013303C

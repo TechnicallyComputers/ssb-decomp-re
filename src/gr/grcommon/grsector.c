@@ -617,9 +617,24 @@ sb32 grSectorArwingWeaponLaser2DProcHit(GObj *weapon_gobj)
 // 0x801070A4
 void func_ovl2_801070A4(Vec3f *rotate, Vec3f *direction, Vec3f *vec3, Vec3f *vec4)
 {
+#ifdef PORT
+    /* Port: same fragility as gmcollision.c func_ovl2_800EDA0C — vec3 is
+     * built from chained lbCommonCross3D + syVectorNorm3D so its components
+     * compose to ~0.99999 on modern toolchains. Exact equality misses the
+     * gimbal-lock branch, the general extraction runs atan2(noise, noise),
+     * and Sector Z weapon orientation comes out wrong by up to 90°.
+     * Same threshold (~0.81° band around pure ±90° yaw). See
+     * docs/bugs/grab_pose_eulerextract_gimbal_2026-05-23.md. */
+    if ((vec3->z <= -0.9999F) || (vec3->z >= 0.9999F))
+#else
     if ((vec3->z == -1.0F) || (vec3->z == 1.0F))
+#endif
     {
+#ifdef PORT
+        if (vec3->z <= -0.9999F)
+#else
         if (vec3->z == -1.0F)
+#endif
         {
             rotate->y = F_CST_DTOR32(90.0F);
             rotate->x = syUtilsArcTan2(vec4->x, vec4->y);

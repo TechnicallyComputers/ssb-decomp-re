@@ -588,7 +588,22 @@ void func_ovl2_800EE050(s32 arg0, Vec3f *arg1, Vec3f *arg2, sb32 *arg3, Mtx44f m
             // JUST BARELY matches; otherwise 1.0F and square are swapped in the c.eq.s instruction operands; if(TRUE) necessary (for now)
             square = SQUARE(dist.x);
 
+#ifdef PORT
+            /* Port: same float-equality fragility as func_ovl2_800EDA0C —
+             * dist.x is built from a normalize step (division by sqrtf) and
+             * its square composes to ~0.99999 rather than exact 1.0 on
+             * modern toolchains. The else branch below divides by
+             * (1.0F - SQUARE(temp)) and (1.0F + dist.x); both denominators
+             * collapse to 0 as dist.x approaches ±1, producing inf/nan in
+             * the collision capsule rotation matrix. Tolerance keeps the
+             * axis-aligned branch firing in the near-singular band before
+             * the else branch's divisors blow up. Same 0.9999 threshold as
+             * other gimbal-lock fixes; see
+             * docs/bugs/grab_pose_eulerextract_gimbal_2026-05-23.md. */
+            if (square >= 0.9999F)
+#else
             if (TRUE && square == 1.0F)
+#endif
             {
                 if (dist.x >= 0.0F)
                 {

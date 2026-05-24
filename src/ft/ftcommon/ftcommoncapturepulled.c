@@ -1,5 +1,4 @@
 #include <ft/fighter.h>
-#include <ft/ftparam.h>
 #include <it/item.h>
 
 // // // // // // // // // // // //
@@ -12,51 +11,12 @@
 void ftCommonCapturePulledRotateScale(GObj *fighter_gobj, Vec3f *this_pos, Vec3f *rotate)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
-#ifdef PORT
-    FTStruct *capture_fp;
-    DObj *attach_dobj;
-    /* Rollback / synctest can transiently break the capture coupling: GObj
-     * present but capture_gobj cleared. Fall back to the victim's own pos so
-     * callers don't sample uninitialised stack memory. */
-    if (this_fp->capture_gobj == NULL)
-    {
-        if (this_pos != NULL)
-        {
-            *this_pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
-        }
-        return;
-    }
-    capture_fp = ftGetStruct(this_fp->capture_gobj);
-    attach_dobj = capture_fp->joints[capture_fp->attr->joint_itemheavy_id];
-    if (attach_dobj == NULL)
-    {
-        if (this_pos != NULL)
-        {
-            *this_pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
-        }
-        return;
-    }
-    /* Defensive: clear FTParts transform-cache short-circuit flags along the
-     * TopN -> root spine so the func_ovl2_800EDBA4 walk-up below can't return
-     * a frame-stale matrix in obscure draw-thread timing. Empirically the
-     * actual bug behind the reported "inverted victim" was elsewhere (see
-     * docs/bugs/grab_pose_eulerextract_gimbal_2026-05-23.md) and this is a
-     * no-op for the offline case, but the invalidate is cheap, harmless, and
-     * still useful as belt-and-suspenders for future save-state / rollback
-     * paths that may revive coupling with a stale grabber cache. */
-    ftParamInvalidateFighterRootChain(this_fp->capture_gobj);
-#else
     FTStruct *capture_fp = ftGetStruct(this_fp->capture_gobj);
-#endif
 #if defined(REGION_US)
     DObj *joint = DObjGetStruct(fighter_gobj)->child;
     Mtx44f mtx;
 
-#ifdef PORT
-    func_ovl0_800C9A38(mtx, attach_dobj);
-#else
     func_ovl0_800C9A38(mtx, capture_fp->joints[capture_fp->attr->joint_itemheavy_id]);
-#endif
     func_ovl2_800EDA0C(mtx, rotate);
 
     this_pos->x = (-joint->translate.vec.f.x * DObjGetStruct(fighter_gobj)->scale.vec.f.x);
@@ -68,13 +28,8 @@ void ftCommonCapturePulledRotateScale(GObj *fighter_gobj, Vec3f *this_pos, Vec3f
     FTParts *ftparts;
     DObj *joint = DObjGetStruct(fighter_gobj)->child;
 
-#ifdef PORT
-    func_ovl2_800EDBA4(attach_dobj);
-    ftparts = attach_dobj->user_data.p;
-#else
     func_ovl2_800EDBA4(capture_fp->joints[capture_fp->attr->joint_itemheavy_id]);
     ftparts = capture_fp->joints[capture_fp->attr->joint_itemheavy_id]->user_data.p;
-#endif
     func_ovl2_800EDA0C(ftparts->mtx_translate, rotate);
 
     this_pos->x = (-joint->translate.vec.f.x * DObjGetStruct(fighter_gobj)->scale.vec.f.x);
@@ -107,22 +62,8 @@ void ftCommonCapturePulledProcMap(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
     GObj *capture_gobj = this_fp->capture_gobj;
-    FTStruct *capture_fp;
+    FTStruct *capture_fp = ftGetStruct(capture_gobj);
     Vec3f *this_pos = &DObjGetStruct(fighter_gobj)->translate.vec.f;
-
-#ifdef PORT
-    if (capture_gobj == NULL)
-    {
-        return;
-    }
-    capture_fp = ftGetStruct(capture_gobj);
-    if (capture_fp == NULL)
-    {
-        return;
-    }
-#else
-    capture_fp = ftGetStruct(capture_gobj);
-#endif
     Vec3f capture_pos;
     f32 dist_y;
 

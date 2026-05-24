@@ -2306,42 +2306,6 @@ void ftParamKirbyTryMakeMapStarEffect(GObj *fighter_gobj)
     }
 }
 
-#ifdef PORT
-/* Clear FTParts transform caches along the TopN -> root DObj spine.
- *
- * ftParamsUpdateFighterPartsTransformAll(TopN) clears caches in the TopN
- * subtree every frame, but the root DObj sits above TopN and its cache flag
- * carries between frames. func_ovl2_800EDBA4(hand_joint) walks up via
- * dobj->parent looking for a fresh ancestor matrix and stops as soon as it
- * finds unk_dobjtrans_0x5 != 0, so a stale root cache poisons the hand world
- * transform that ftCommonCapturePulledRotateScale reads for grab pose.
- * Walking TopN up to (and including) the root and zeroing the cache word
- * forces the next walk to recompute from the live root translate/rotate. */
-void ftParamInvalidateFighterRootChain(GObj *fighter_gobj)
-{
-    FTStruct *fp = ftGetStruct(fighter_gobj);
-    DObj *dobj = fp->joints[nFTPartsJointTopN];
-    DObj *root_dobj = DObjGetStruct(fighter_gobj);
-    FTParts *parts;
-
-    while (dobj != NULL)
-    {
-        parts = ftGetParts(dobj);
-
-        if (parts != NULL)
-        {
-            parts->transform_update_mode = 0;
-            parts->unk_dobjtrans_word = 0;
-        }
-        if (dobj == root_dobj)
-        {
-            break;
-        }
-        dobj = dobj->parent;
-    }
-}
-#endif
-
 // 0x800EB528
 void ftParamInvalidateFighterTransformFromRoot(GObj *fighter_gobj)
 {
@@ -2852,9 +2816,25 @@ void func_ovl2_800EBD08(DObj *root_dobj, f32 arg1, Vec3f *vec, f32 arg3)
 
     inverse_xy_2 = (zmulnorm + new_var);
 
+#ifdef PORT
+    /* Port: same fragility as gmcollision.c func_ovl2_800EDA0C — inverse_xy_2
+     * is built from chained sqrtf + division + trig so it composes to
+     * ~0.99999 on modern toolchains. Exact equality misses the gimbal-lock
+     * branch, the general extraction runs atan2/arcsin on near-singular
+     * inputs, and child1_dobj's rotate ends up corrupted — this drives
+     * fighter two-bone IK (arm chain), used among other things for grab and
+     * throw target tracking. Same threshold (~0.81° band around ±90°).
+     * See docs/bugs/grab_pose_eulerextract_gimbal_2026-05-23.md. */
+    if ((inverse_xy_2 <= -0.9999F) || (inverse_xy_2 >= 0.9999F))
+#else
     if ((inverse_xy_2 == -1.0F) || (inverse_xy_2 == 1.0F))
+#endif
     {
+#ifdef PORT
+        if (inverse_xy_2 <= -0.9999F)
+#else
         if (inverse_xy_2 == -1.0F)
+#endif
         {
             child1_dobj->rotate.vec.f.y = F_CLC_DTOR32(90.0F);
 
