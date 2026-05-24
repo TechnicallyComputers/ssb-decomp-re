@@ -5023,3 +5023,147 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     }
     else fp->proc_update = NULL;
 }
+
+#ifdef PORT
+/* Rollback snapshot apply copies status_id/motion_vars but leaves stale proc_*; resim then runs the wrong handler. */
+void ftMainRebindStatusProcs(GObj *fighter_gobj)
+{
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+    FTStatusDesc *status_struct;
+    FTOpeningDesc *opening_struct;
+    s32 status_id;
+    s32 status_struct_id;
+
+    if (fp == NULL)
+    {
+        return;
+    }
+    status_struct = NULL;
+    opening_struct = NULL;
+    status_id = fp->status_id;
+
+    if (status_id >= FTSTAT_CHARDATA_START)
+    {
+        status_id -= FTSTAT_CHARDATA_START;
+    }
+    if (status_id >= FTSTAT_OPENING1_START)
+    {
+        opening_struct = D_ovl1_80390D20[fp->fkind];
+        status_struct_id = status_id - FTSTAT_OPENING1_START;
+    }
+    else if (status_id >= FTSTAT_OPENING2_START)
+    {
+        opening_struct = &D_ovl1_80390BE8;
+        status_struct_id = status_id - FTSTAT_OPENING2_START;
+    }
+    else if (status_id >= nFTCommonStatusSpecialStart)
+    {
+        status_struct = dFTMainSpecialStatusDescs[fp->fkind];
+        status_struct_id = status_id - nFTCommonStatusSpecialStart;
+    }
+    else if (status_id >= nFTCommonStatusActionStart)
+    {
+        status_struct = dFTCommonActionStatusDescs;
+        status_struct_id = status_id - nFTCommonStatusActionStart;
+    }
+    else
+    {
+        status_struct = dFTCommonNullStatusDescs;
+        status_struct_id = status_id;
+    }
+    if (fp->pkind != nFTPlayerKindDemo)
+    {
+        if (status_struct != NULL)
+        {
+            fp->proc_update = status_struct[status_struct_id].proc_update;
+            fp->proc_interrupt = status_struct[status_struct_id].proc_interrupt;
+            fp->proc_physics = status_struct[status_struct_id].proc_physics;
+            fp->proc_map = status_struct[status_struct_id].proc_map;
+            fp->proc_slope = mpCommonUpdateFighterSlopeContour;
+        }
+        else
+        {
+            fp->proc_update = NULL;
+            fp->proc_interrupt = NULL;
+            fp->proc_physics = NULL;
+            fp->proc_map = NULL;
+            fp->proc_slope = NULL;
+        }
+    }
+    else if (opening_struct != NULL)
+    {
+        fp->proc_update = opening_struct[status_struct_id].proc_update;
+    }
+    else
+    {
+        fp->proc_update = NULL;
+    }
+}
+
+/*
+ * Post-rollback visual-only path: resolve figatree for current status/motion and re-attach
+ * at the fighter GObj anim_frame. Does not run proc_status, motion events, or joint defaults.
+ */
+void ftMainRefreshFigatreeVisual(GObj *fighter_gobj)
+{
+    FTStruct *fp;
+    FTMotionDescArray *script_array;
+    FTMotionDesc *motion_desc;
+    s32 status_id;
+    s32 motion_id;
+    DObj *topn_child;
+
+    if (fighter_gobj == NULL)
+    {
+        return;
+    }
+    fp = ftGetStruct(fighter_gobj);
+    if ((fp == NULL) || (fp->joints[nFTPartsJointTopN] == NULL))
+    {
+        return;
+    }
+    topn_child = fp->joints[nFTPartsJointTopN]->child;
+    if (topn_child == NULL)
+    {
+        return;
+    }
+
+    status_id = fp->status_id;
+    if (status_id >= FTSTAT_CHARDATA_START)
+    {
+        status_id -= FTSTAT_CHARDATA_START;
+    }
+    if (status_id >= FTSTAT_OPENING2_START)
+    {
+        script_array = fp->data->submotion;
+    }
+    else
+    {
+        script_array = fp->data->mainmotion;
+    }
+
+    motion_id = fp->motion_id;
+    if ((script_array != NULL) && (motion_id != -1) && (motion_id != -2))
+    {
+        motion_desc = &script_array->motion_desc[motion_id];
+        if (motion_desc->anim_desc.flags.is_use_shieldpose)
+        {
+            fp->figatree = (void *)((intptr_t)motion_desc->anim_file_id + (uintptr_t)fp->data->p_file_shieldpose);
+        }
+        else if (motion_desc->anim_file_id != 0)
+        {
+            lbRelocGetForceExternHeapFile(motion_desc->anim_file_id, (void *)fp->figatree_heap);
+            fp->figatree = fp->figatree_heap;
+        }
+        else
+        {
+            fp->figatree = NULL;
+        }
+    }
+
+    if (fp->figatree != NULL)
+    {
+        lbCommonAddFighterPartsFigatree(topn_child, fp->figatree, fighter_gobj->anim_frame);
+    }
+}
+#endif
