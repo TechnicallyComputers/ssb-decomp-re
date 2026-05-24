@@ -3902,45 +3902,95 @@ static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *
 	return TRUE;
 }
 
+static sb32 mnVSNetAutomatchAMForcePeerLanFirst(void)
+{
+	const char *fl = getenv("SSB64_MATCHMAKING_FORCE_PEER_LAN");
+
+	if ((fl == NULL) || (fl[0] == '\0'))
+	{
+		return FALSE;
+	}
+	return (atoi(fl) != 0) ? TRUE : FALSE;
+}
+
+static const char *mnVSNetAutomatchAMLocalWanHostport(void)
+{
+	const char *pub_env = getenv("SSB64_MATCHMAKING_PUBLIC_ENDPOINT");
+
+	if ((pub_env != NULL) && (pub_env[0] != '\0'))
+	{
+		return pub_env;
+	}
+	if (sMnAMPublicEndpoint[0] != '\0')
+	{
+		return sMnAMPublicEndpoint;
+	}
+	return NULL;
+}
+
 static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 {
 	const char *bind;
-	const char *pub_env;
+	const char *local_wan;
+	sb32 force_lan_first;
+	sb32 same_wan;
 
 	bind = (sMnAMBindSpec[0] != '\0') ? sMnAMBindSpec : MN_AM_BIND_DEFAULT;
-	pub_env = getenv("SSB64_MATCHMAKING_PUBLIC_ENDPOINT");
+	local_wan = mnVSNetAutomatchAMLocalWanHostport();
+	force_lan_first = mnVSNetAutomatchAMForcePeerLanFirst();
+	same_wan = ((local_wan != NULL) && (mmHostportWanIpv4Equal(local_wan, mr->peer_hostport) != FALSE)) ? TRUE : FALSE;
 
 	port_log(
-	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s public_endpoint_env=%s\n",
+	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_wan=%s same_wan=%d force_lan=%d\n",
 	    mr->session_id, mr->you_are_host, mr->peer_hostport,
 	    (mr->peer_lan_hostport[0] != '\0') ? mr->peer_lan_hostport : "(none)",
-	    (pub_env != NULL && pub_env[0] != '\0') ? "set" : "unset");
+	    (local_wan != NULL) ? local_wan : "(none)", (int)same_wan, (int)force_lan_first);
 
-	if ((mr->peer_lan_hostport[0] != '\0') && (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_lan_hostport) != FALSE))
+	if (force_lan_first != FALSE)
 	{
-		port_log("SSB64 NetPeer automatch: reachability candidate=lan ok peer=%s\n", mr->peer_lan_hostport);
-		sMnAMStagingP2PReady = TRUE;
-		return;
+		if ((mr->peer_lan_hostport[0] != '\0') &&
+		    (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_lan_hostport) != FALSE))
+		{
+			port_log("SSB64 NetPeer automatch: reachability candidate=lan ok peer=%s (force_lan)\n",
+			         mr->peer_lan_hostport);
+			sMnAMStagingP2PReady = TRUE;
+			return;
+		}
+		if (mr->peer_lan_hostport[0] != '\0')
+		{
+			port_log("SSB64 Automatch: forced LAN bootstrap failed, trying reflexive peer=%s\n",
+			         mr->peer_hostport);
+			syNetPeerPauseBetweenBootstrapAttempts();
+		}
 	}
-	if (mr->peer_lan_hostport[0] != '\0')
-	{
-		port_log("SSB64 Automatch: LAN bootstrap failed, trying reflexive peer=%s\n", mr->peer_hostport);
-		syNetPeerPauseBetweenBootstrapAttempts();
-	}
-	if ((mr->peer_lan_hostport[0] != '\0') &&
-	    (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_hostport) != FALSE))
+
+	if (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_hostport) != FALSE)
 	{
 		port_log("SSB64 NetPeer automatch: reachability candidate=reflexive ok peer=%s\n", mr->peer_hostport);
 		sMnAMStagingP2PReady = TRUE;
 		return;
 	}
-	if (mr->peer_lan_hostport[0] == '\0')
+
+	if ((force_lan_first == FALSE) && (mr->peer_lan_hostport[0] != '\0'))
 	{
-		if (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_hostport) != FALSE)
+		if (same_wan == FALSE)
 		{
-			port_log("SSB64 NetPeer automatch: reachability candidate=reflexive ok peer=%s\n", mr->peer_hostport);
-			sMnAMStagingP2PReady = TRUE;
-			return;
+			port_log(
+			    "SSB64 Automatch: skipping peer_lan=%s (WAN IPv4 mismatch local=%s peer=%s)\n",
+			    mr->peer_lan_hostport, (local_wan != NULL) ? local_wan : "(none)", mr->peer_hostport);
+		}
+		else
+		{
+			port_log("SSB64 Automatch: reflexive bootstrap failed, trying peer_lan=%s (same WAN)\n",
+			         mr->peer_lan_hostport);
+			syNetPeerPauseBetweenBootstrapAttempts();
+			if (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_lan_hostport) != FALSE)
+			{
+				port_log("SSB64 NetPeer automatch: reachability candidate=lan ok peer=%s\n",
+				         mr->peer_lan_hostport);
+				sMnAMStagingP2PReady = TRUE;
+				return;
+			}
 		}
 	}
 
