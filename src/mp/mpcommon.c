@@ -1,10 +1,9 @@
 #include <ft/fighter.h>
-#include <ft/ftmain.h>
+#include <ft/ftparam.h>
 #include <wp/weapon.h>
 #include <it/item.h>
 #ifdef PORT
 #include <ft/ftcommon/ftcommonfunctions.h>
-#include <port_log.h>
 #endif
 
 // // // // // // // // // // // //
@@ -404,7 +403,12 @@ void mpCommonUpdateFighterSlopeContour(GObj *fighter_gobj)
             {
                 DObjGetStruct(fighter_gobj)->rotate.vec.f.x = (syUtilsArcTan2(fp->coll_data.floor_angle.x, fp->coll_data.floor_angle.y) * fp->lr);
             }
-            ftParamInvalidateFighterTransformFromRoot(fighter_gobj);
+#ifdef PORT
+            /* Root translate/rotate just changed from floor sampling — drop
+             * the FTParts caches along the spine so the next hand-matrix walk
+             * (e.g. attack-coll, grab pull) re-derives from the live root. */
+            ftParamInvalidateFighterRootChain(fighter_gobj);
+#endif
         }
     }
     else return;
@@ -980,44 +984,11 @@ void mpCommonRunItemCollisionDefault(GObj *item_gobj, Vec3f *pos, MPCollData *co
     mpCommonResetCollDataStats(&ip->coll_data);
 }
 
-#ifdef PORT
-static sb32 mpCommonVec3fPointerUsable(const Vec3f *pos)
-{
-    uintptr_t addr;
-
-    if (pos == NULL)
-    {
-        return FALSE;
-    }
-    addr = (uintptr_t)pos;
-    if (addr < 0x10000ULL)
-    {
-        return FALSE;
-    }
-    /* Reject LP64 garbage like fault_addr=0x3700000000 (small high half, zero low half). */
-    if (((addr & 0xFFFFFFFFULL) == 0ULL) && ((addr >> 32) != 0ULL) && ((addr >> 32) < 0x8000ULL))
-    {
-        return FALSE;
-    }
-    return TRUE;
-}
-#endif
-
 // 0x800DF09C
 void mpCommonRunWeaponCollisionDefault(GObj *weapon_gobj, Vec3f *pos, MPCollData *coll_data)
 {
     WPStruct *wp = wpGetStruct(weapon_gobj);
 
-#ifdef PORT
-    if (mpCommonVec3fPointerUsable(pos) == FALSE)
-    {
-        port_log("SSB64 mpCommon: skip weapon coll init pos=%p weapon=%p coll=%p\n",
-                 (void *)pos,
-                 (void *)weapon_gobj,
-                 (void *)coll_data);
-        return;
-    }
-#endif
     mpCommonCopyCollDataStats(&wp->coll_data, pos, coll_data);
     mpCommonRunDefaultCollision(&wp->coll_data, weapon_gobj, MAP_PROC_TYPE_DEFAULT);
     mpCommonResetCollDataStats(&wp->coll_data);

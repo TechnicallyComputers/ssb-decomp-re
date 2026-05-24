@@ -11,6 +11,7 @@
 #include "port_scene_heap.h"
 #include <stdbool.h>
 #include <stdlib.h>
+#include <string.h>
 #ifdef _MSC_VER
 #include <excpt.h>
 #endif
@@ -2281,10 +2282,37 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
                     if (sStaleDLLinkSpamFrame != dSYTaskmanFrameCount)
                     {
                         sStaleDLLinkSpamFrame = dSYTaskmanFrameCount;
+                        /* PORT diag: log enough holder context to pin who
+                         * set this dobj's dl_link. The GObj's func_run
+                         * pointer in particular addr2line's straight to
+                         * the entity-kind update function (ftMainUpdate,
+                         * efManagerEffectUpdate, mvOpeningRunFuncRun, ...).
+                         * Also dump the first 16 bytes at the dl_link
+                         * address so we can correlate the stale memory
+                         * pattern back to whatever the new occupant is. */
+                        GObj *pg = dobj->parent_gobj;
+                        u64 raw0 = 0, raw1 = 0;
+                        if (dl_link != NULL) {
+                            /* memcpy avoids strict-aliasing UB on the read */
+                            memcpy(&raw0, (const u8*)dl_link, sizeof(raw0));
+                            memcpy(&raw1, (const u8*)dl_link + 8, sizeof(raw1));
+                        }
                         port_log("SSB64: gcDrawDObjTreeDLLinks: stale dl_link bail "
-                                 "dobj=%p dl_link=%p root=%p list_id=%d walk=%d frame=%u\n",
+                                 "dobj=%p dl_link=%p root=%p list_id=%d walk=%d "
+                                 "dobj.flags=0x%02x dobj.vec=%p "
+                                 "gobj=%p gobj.id=%u gobj.link_id=%u gobj.obj_kind=%u "
+                                 "gobj.func_run=%p stale[0..7]=0x%016llx stale[8..15]=0x%016llx "
+                                 "frame=%u\n",
                                  (void*)dobj, (void*)dl_link, (void*)dobj->dl_link,
                                  dl_link->list_id, walk_count,
+                                 (unsigned)dobj->flags, (void*)dobj->vec,
+                                 (void*)pg,
+                                 pg ? (unsigned)pg->id : 0u,
+                                 pg ? (unsigned)pg->link_id : 0u,
+                                 pg ? (unsigned)pg->obj_kind : 0u,
+                                 pg ? (void*)pg->func_run : (void*)0,
+                                 (unsigned long long)raw0,
+                                 (unsigned long long)raw1,
                                  (unsigned)dSYTaskmanFrameCount);
                     }
                     break;

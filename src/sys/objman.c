@@ -9,6 +9,38 @@
 
 extern void port_log(const char *fmt, ...);
 
+#ifdef PORT
+/* PORT diag: log GObj allocations for the kinds known to leak stale
+ * DObj.dl_link across scene boundaries (Ground=1010, Effect=1011).
+ * Resolves to the caller of the wrapper (gcMakeGObjSPAfter / SPBefore /
+ * After / Before), which is the user-level allocation site
+ * (efManagerMakeEffect, grCastleSetup, etc.) — addr2line on it pins the
+ * scene/effect that allocated this GObj. Cross-reference with the
+ * stale-dl_link bail log to identify which scene's GObj is surviving
+ * the scene-arena recycle. */
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define PORT_CALLER_RA() _ReturnAddress()
+#else
+#define PORT_CALLER_RA() __builtin_return_address(0)
+#endif
+#define PORT_LOG_GOBJ_ALLOC(gobj, _id, _link)                                  \
+	do                                                                         \
+	{                                                                          \
+		if ((gobj) != NULL && ((_id) == 1010 || (_id) == 1011))                \
+		{                                                                      \
+			port_log("SSB64: gobj_alloc gobj=%p id=%u link=%u caller=%p "      \
+			         "frame=%u\n",                                             \
+			         (void *) (gobj), (unsigned) (_id), (unsigned) (_link),    \
+			         PORT_CALLER_RA(),                                         \
+			         (unsigned) dSYTaskmanFrameCount);                         \
+		}                                                                      \
+	} while (0)
+#else
+#define PORT_LOG_GOBJ_ALLOC(gobj, _id, _link) ((void) 0)
+#endif
+
 /* Issue #128 follow-on (item-side variant): a stale GObj* from BSS-stored
  * handles is being injected into gGCCommonDLLinks[] *after* gcSetupObjman
  * cleared the array. Catching the injection (here) names the caller — the
@@ -1788,6 +1820,7 @@ GObj* gcMakeGObjSPAfter(u32 id, void (*func_run)(GObj*), u8 link, u32 priority)
 	}
 	gcLinkGObjSPAfter(new_gobj);
 
+	PORT_LOG_GOBJ_ALLOC(new_gobj, id, link);
 	return new_gobj;
 }
 
@@ -1802,6 +1835,7 @@ GObj* gcMakeGObjSPBefore(u32 id, void (*func_run)(GObj*), u8 link, u32 priority)
 	}
 	gcLinkGObjSPBefore(new_gobj);
 
+	PORT_LOG_GOBJ_ALLOC(new_gobj, id, link);
 	return new_gobj;
 }
 
@@ -1816,6 +1850,7 @@ GObj* gcMakeGObjAfter(u32 id, void (*func_run)(GObj*), GObj *link_gobj)
 	}
 	gcLinkGObjAfter(new_gobj, link_gobj);
 
+	PORT_LOG_GOBJ_ALLOC(new_gobj, id, link_gobj->link_id);
 	return new_gobj;
 }
 
@@ -1830,6 +1865,7 @@ GObj* gcMakeGObjBefore(u32 id, void (*func_run)(GObj*), GObj *link_gobj)
 	}
 	gcLinkGObjAfter(new_gobj, link_gobj->link_prev);
 
+	PORT_LOG_GOBJ_ALLOC(new_gobj, id, link_gobj->link_id);
 	return new_gobj;
 }
 

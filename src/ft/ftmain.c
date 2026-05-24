@@ -6,10 +6,6 @@
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
 extern void port_dump_backtrace(void);
-#if defined(SSB64_NETMENU)
-// Required for Netplay rollback snapshotting support
-#include <sys/netfighterphase.h>
-#endif
 #endif
 #include <sys/controller.h>
 
@@ -179,6 +175,7 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
     FTMotionDamageScript *p_damage;
     s32 fkind;
     s32 script_id;
+    s32 slope_contour;
     sb32 unused3;
 
     switch (ev_kind)
@@ -687,7 +684,18 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
         break;
 
     case nFTMotionEventSetSlopeContour:
+#ifdef PORT
         ftMainApplySlopeContourFlags(fighter_gobj, ftMotionEventCastAdvance(ms, FTMotionEventSetSlopeContour)->flags);
+#else
+        slope_contour = fp->slope_contour;
+
+        fp->slope_contour = ftMotionEventCastAdvance(ms, FTMotionEventSetSlopeContour)->flags;
+
+        if (!(slope_contour & fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
+        {
+            DObjGetStruct(fighter_gobj)->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
+        }
+#endif
         break;
 
     case nFTMotionEventHideItem:
@@ -983,12 +991,7 @@ void ftMainPlayAnim(GObj *fighter_gobj)
 
     if (fp->anim_desc.flags.is_use_transn_joint)
     {
-#ifdef PORT
-        if (fp->joints[nFTPartsJointTransN] != NULL)
-#endif
-        {
-            fp->anim_vel = fp->joints[nFTPartsJointTransN]->translate.vec.f;
-        }
+        fp->anim_vel = fp->joints[nFTPartsJointTransN]->translate.vec.f;
     }
     ftParamUpdateAnimKeys(fighter_gobj);
     ftParamsUpdateFighterPartsTransform(fp->joints[nFTPartsJointTopN]);
@@ -1303,13 +1306,6 @@ void ftMainRunUpdateColAnim(GObj *fighter_gobj)
 void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
-#if defined(PORT) && defined(SSB64_NETMENU)
-    if ((fighter_gobj == NULL) || (this_fp == NULL))
-    {
-        return;
-    }
-    syNetFighterPhaseOnInterruptVeryStart(fighter_gobj);
-#endif
     FTStruct *other_fp;
     FTAttributes *this_attr;
     FTAttributes *other_attr;
@@ -1341,14 +1337,6 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         {
         case nFTPlayerKindMan:
             controller = this_fp->input.controller;
-#ifdef PORT
-            if (controller == NULL)
-            {
-                pl->stick_range.x = pl->stick_range.y = 0;
-                pl->button_hold = pl->button_tap = pl->button_release = 0;
-                break;
-            }
-#endif
             button_hold = controller->button_hold;
 
             if (button_hold & R_TRIG)
@@ -1473,9 +1461,6 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         {
             this_fp->hold_stick_y = FTINPUT_STICKBUFFER_TICS_MAX;
         }
-#if defined(PORT) && defined(SSB64_NETMENU)
-        syNetFighterPhaseOnInterruptAfterInputControl(fighter_gobj);
-#endif
     }
     if (this_fp->tics_since_last_z < FTINPUT_ZTRIGLAST_TICS_MAX)
     {
@@ -1578,26 +1563,10 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             ftParamResetStatUpdateColAnim(fighter_gobj);
         }
     }
-#ifdef PORT
-    if ((this_fp->item_gobj != NULL) && (this_fp->status_id != nFTCommonStatusLightGet))
-    {
-        ITStruct *item_ip = itGetStruct(this_fp->item_gobj);
-
-        if (item_ip == NULL)
-        {
-            this_fp->item_gobj = NULL;
-        }
-        else if (item_ip->kind == nITKindHammer)
-        {
-            ftHammerUpdateStats(fighter_gobj);
-        }
-    }
-#else
     if ((this_fp->item_gobj != NULL) && (this_fp->status_id != nFTCommonStatusLightGet) && (itGetStruct(this_fp->item_gobj)->kind == nITKindHammer))
     {
         ftHammerUpdateStats(fighter_gobj);
     }
-#endif
     if (this_fp->shuffle_tics != 0)
     {
         this_fp->shuffle_tics--;
@@ -1638,10 +1607,6 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
 
         if ((this_fp->ga == nMPKineticsGround) && !(this_fp->is_jostle_ignore))
         {
-#ifdef PORT
-            if (this_fp->attr != NULL)
-#endif
-            {
             other_gobj = gGCCommonLinks[nGCCommonLinkIDFighter];
 
             is_check_self = FALSE;
@@ -1650,13 +1615,6 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             {
                 other_fp = ftGetStruct(other_gobj);
 
-#ifdef PORT
-                if (other_fp == NULL)
-                {
-                    other_gobj = other_gobj->link_next;
-                    continue;
-                }
-#endif
                 if ((fighter_gobj != other_gobj) && (other_fp->capture_gobj == NULL))
                 {
                     if ((other_fp->ga == nMPKineticsGround) && (this_fp->coll_data.floor_line_id == other_fp->coll_data.floor_line_id))
@@ -1664,18 +1622,6 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
                         this_attr = this_fp->attr;
                         other_attr = other_fp->attr;
 
-#ifdef PORT
-                        if ((this_attr == NULL) || (other_attr == NULL))
-                        {
-                            other_gobj = other_gobj->link_next;
-                            continue;
-                        }
-                        if ((DObjGetStruct(fighter_gobj) == NULL) || (DObjGetStruct(other_gobj) == NULL))
-                        {
-                            other_gobj = other_gobj->link_next;
-                            continue;
-                        }
-#endif
                         this_jostle = this_fp->attr->jostle_width;
 
                         jostle_dist_x = (DObjGetStruct(fighter_gobj)->translate.vec.f.x + (this_attr->jostle_x * this_fp->lr)) - (DObjGetStruct(other_gobj)->translate.vec.f.x + (other_attr->jostle_x * other_fp->lr));
@@ -1712,15 +1658,9 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             {
                 this_fp->physics.vel_jostle_z = ((DObjGetStruct(fighter_gobj)->translate.vec.f.z < 0.0F) ? +1 : -1) * 3.0F;
             }
-#ifdef PORT
-            }
-#endif
         }
     }
     this_fp->coll_data.vel_push.x = this_fp->coll_data.vel_push.y = this_fp->coll_data.vel_push.z = 0.0F;
-#if defined(PORT) && defined(SSB64_NETMENU)
-    syNetFighterPhaseOnParamsEnd(fighter_gobj);
-#endif
 }
 
 // 0x800E1CF0
@@ -1996,6 +1936,10 @@ void ftMainProcPhysicsMap(GObj *fighter_gobj)
     {
         fp->proc_slope(fighter_gobj);
     }
+#ifdef PORT
+    /* Belt-and-suspenders: catch motion scripts (or character-specific paths)
+     * that clear the FULL flag without zeroing the pitch they wrote into the
+     * root DObj. Stale pitch would survive into the next hand-matrix walk. */
     if (!(fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
     {
         DObj *root_dobj = DObjGetStruct(fighter_gobj);
@@ -2003,9 +1947,10 @@ void ftMainProcPhysicsMap(GObj *fighter_gobj)
         if (root_dobj->rotate.vec.f.x != 0.0F)
         {
             root_dobj->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
-            ftParamInvalidateFighterTransformFromRoot(fighter_gobj);
+            ftParamInvalidateFighterRootChain(fighter_gobj);
         }
     }
+#endif
     ftParamsUpdateFighterPartsTransformAll(fp->joints[nFTPartsJointTopN]);
 
     if (fp->hitlag_tics == 0)
@@ -4211,28 +4156,7 @@ void ftMainProcParams(GObj *fighter_gobj)
             break;
 
         case TRUE:
-#ifdef PORT
-            if ((fp->item_gobj != NULL) && (fp->is_item_show))
-            {
-                ITStruct *item_ip = itGetStruct(fp->item_gobj);
-
-                if (item_ip == NULL)
-                {
-                    fp->item_gobj = NULL;
-                    break;
-                }
-                if (item_ip->kind != nITKindSword)
-                {
-                    break;
-                }
-            }
-            else
-            {
-                break;
-            }
-#else
             if ((fp->item_gobj != NULL) && (fp->is_item_show) && (itGetStruct(fp->item_gobj)->kind == nITKindSword))
-#endif
             {
                 s32 unused;
                 Mtx44f mtx;
@@ -4595,20 +4519,28 @@ void ftMainEjectHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
     gcEjectDObj(root_joint);
 }
 
+#ifdef PORT
+/* Drive slope_contour transitions through a single chokepoint so we always
+ * pair the FULL-flag clear with a transform invalidate. The original guard
+ * (drop root pitch when FULL stops being held both before AND after) is
+ * preserved; the addition is the invalidate so stale root rotate.x cannot
+ * survive into the next func_ovl2_800EDBA4(hand) walk and poison grab pose. */
 void ftMainApplySlopeContourFlags(GObj *fighter_gobj, u8 new_flags)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
-    u8 slope_contour = fp->slope_contour;
+    u8 prev_flags = fp->slope_contour;
 
     fp->slope_contour = new_flags;
 
-    if (!(slope_contour & fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
+    if (!(prev_flags & fp->slope_contour & FTSLOPECONTOUR_FLAG_FULL))
     {
         DObjGetStruct(fighter_gobj)->rotate.vec.f.x = F_CLC_DTOR32(0.0F);
-        ftParamInvalidateFighterTransformFromRoot(fighter_gobj);
+        ftParamInvalidateFighterRootChain(fighter_gobj);
     }
 }
+#endif
 
+// 0x800E6F24
 void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 anim_speed, u32 flags)
 {
 #ifdef PORT
@@ -4754,7 +4686,11 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     }
     if (!(flags & FTSTATUS_PRESERVE_SLOPECONTOUR))
     {
+#ifdef PORT
         ftMainApplySlopeContourFlags(fighter_gobj, 0);
+#else
+        fp->slope_contour = 0;
+#endif
     }
     fp->coll_data.ignore_line_id = -1;
 
@@ -4946,16 +4882,12 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
             if (fp->anim_desc.flags.is_use_transn_joint)
             {
                 joint = fp->joints[nFTPartsJointTransN];
-#ifdef PORT
-                if (joint != NULL)
-#endif
-                {
-                    joint->translate.vec.f.x = joint->translate.vec.f.y = joint->translate.vec.f.z = 0.0F;
+                
+                joint->translate.vec.f.x = joint->translate.vec.f.y = joint->translate.vec.f.z = 0.0F;
 
-                    joint->rotate.vec.f.z = 0.0F;
+                joint->rotate.vec.f.z = 0.0F;
 
-                    joint->flags = DOBJ_FLAG_NONE;
-                }
+                joint->flags = DOBJ_FLAG_NONE;
             }
             if (fp->anim_desc.flags.is_use_xrotn_joint)
             {
@@ -4996,19 +4928,15 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
             if (fp->anim_desc.flags.is_use_transn_joint)
             {
                 joint = fp->joints[nFTPartsJointTransN];
-#ifdef PORT
-                if ((joint != NULL) && (joint->parent != NULL) && (joint->child != NULL))
-#endif
-                {
-                    transn_parent = joint->parent;
-                    transn_child = joint->child;
-                    transn_parent->child = transn_child;
-                    transn_child->parent = transn_parent;
-                    transn_child->sib_next = joint;
-                    joint->sib_prev = transn_child;
-                    joint->parent = transn_child->parent;
-                    joint->child = NULL;
-                }
+
+                transn_parent = joint->parent;
+                transn_child = joint->child;
+                transn_parent->child = transn_child;
+                transn_child->parent = transn_parent;
+                transn_child->sib_next = joint;
+                joint->sib_prev = transn_child;
+                joint->parent = transn_child->parent;
+                joint->child = NULL;
             }
 
             if (fp->is_use_animlocks)
@@ -5139,147 +5067,3 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     }
     else fp->proc_update = NULL;
 }
-
-#ifdef PORT
-/* Rollback snapshot apply copies status_id/motion_vars but leaves stale proc_*; resim then runs the wrong handler. */
-void ftMainRebindStatusProcs(GObj *fighter_gobj)
-{
-    FTStruct *fp = ftGetStruct(fighter_gobj);
-    FTStatusDesc *status_struct;
-    FTOpeningDesc *opening_struct;
-    s32 status_id;
-    s32 status_struct_id;
-
-    if (fp == NULL)
-    {
-        return;
-    }
-    status_struct = NULL;
-    opening_struct = NULL;
-    status_id = fp->status_id;
-
-    if (status_id >= FTSTAT_CHARDATA_START)
-    {
-        status_id -= FTSTAT_CHARDATA_START;
-    }
-    if (status_id >= FTSTAT_OPENING1_START)
-    {
-        opening_struct = D_ovl1_80390D20[fp->fkind];
-        status_struct_id = status_id - FTSTAT_OPENING1_START;
-    }
-    else if (status_id >= FTSTAT_OPENING2_START)
-    {
-        opening_struct = &D_ovl1_80390BE8;
-        status_struct_id = status_id - FTSTAT_OPENING2_START;
-    }
-    else if (status_id >= nFTCommonStatusSpecialStart)
-    {
-        status_struct = dFTMainSpecialStatusDescs[fp->fkind];
-        status_struct_id = status_id - nFTCommonStatusSpecialStart;
-    }
-    else if (status_id >= nFTCommonStatusActionStart)
-    {
-        status_struct = dFTCommonActionStatusDescs;
-        status_struct_id = status_id - nFTCommonStatusActionStart;
-    }
-    else
-    {
-        status_struct = dFTCommonNullStatusDescs;
-        status_struct_id = status_id;
-    }
-    if (fp->pkind != nFTPlayerKindDemo)
-    {
-        if (status_struct != NULL)
-        {
-            fp->proc_update = status_struct[status_struct_id].proc_update;
-            fp->proc_interrupt = status_struct[status_struct_id].proc_interrupt;
-            fp->proc_physics = status_struct[status_struct_id].proc_physics;
-            fp->proc_map = status_struct[status_struct_id].proc_map;
-            fp->proc_slope = mpCommonUpdateFighterSlopeContour;
-        }
-        else
-        {
-            fp->proc_update = NULL;
-            fp->proc_interrupt = NULL;
-            fp->proc_physics = NULL;
-            fp->proc_map = NULL;
-            fp->proc_slope = NULL;
-        }
-    }
-    else if (opening_struct != NULL)
-    {
-        fp->proc_update = opening_struct[status_struct_id].proc_update;
-    }
-    else
-    {
-        fp->proc_update = NULL;
-    }
-}
-
-/*
- * Post-rollback visual-only path: resolve figatree for current status/motion and re-attach
- * at the fighter GObj anim_frame. Does not run proc_status, motion events, or joint defaults.
- */
-void ftMainRefreshFigatreeVisual(GObj *fighter_gobj)
-{
-    FTStruct *fp;
-    FTMotionDescArray *script_array;
-    FTMotionDesc *motion_desc;
-    s32 status_id;
-    s32 motion_id;
-    DObj *topn_child;
-
-    if (fighter_gobj == NULL)
-    {
-        return;
-    }
-    fp = ftGetStruct(fighter_gobj);
-    if ((fp == NULL) || (fp->joints[nFTPartsJointTopN] == NULL))
-    {
-        return;
-    }
-    topn_child = fp->joints[nFTPartsJointTopN]->child;
-    if (topn_child == NULL)
-    {
-        return;
-    }
-
-    status_id = fp->status_id;
-    if (status_id >= FTSTAT_CHARDATA_START)
-    {
-        status_id -= FTSTAT_CHARDATA_START;
-    }
-    if (status_id >= FTSTAT_OPENING2_START)
-    {
-        script_array = fp->data->submotion;
-    }
-    else
-    {
-        script_array = fp->data->mainmotion;
-    }
-
-    motion_id = fp->motion_id;
-    if ((script_array != NULL) && (motion_id != -1) && (motion_id != -2))
-    {
-        motion_desc = &script_array->motion_desc[motion_id];
-        if (motion_desc->anim_desc.flags.is_use_shieldpose)
-        {
-            fp->figatree = (void *)((intptr_t)motion_desc->anim_file_id + (uintptr_t)fp->data->p_file_shieldpose);
-        }
-        else if (motion_desc->anim_file_id != 0)
-        {
-            lbRelocGetForceExternHeapFile(motion_desc->anim_file_id, (void *)fp->figatree_heap);
-            fp->figatree = fp->figatree_heap;
-        }
-        else
-        {
-            fp->figatree = NULL;
-        }
-    }
-
-    if (fp->figatree != NULL)
-    {
-        lbCommonAddFighterPartsFigatree(topn_child, fp->figatree, fighter_gobj->anim_frame);
-    }
-}
-#endif

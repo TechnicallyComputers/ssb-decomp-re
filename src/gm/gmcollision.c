@@ -301,9 +301,28 @@ void func_ovl2_800EDA0C(Mtx44f mtx, Vec3f *rotate)
         dst[i][1] = mtx[i][1] * scale;
         dst[i][2] = mtx[i][2] * scale;
     }
+#ifdef PORT
+    /* Port: the original exact-equality gimbal-lock check (dst[0][2] == ±1.0F)
+     * is fragile under modern toolchain rounding. A matrix that is rotation-wise
+     * "axis-aligned" (typical end of a joint chain like the heavy-item hand for
+     * a grab) builds via clang/x86-64/arm64 float multiplies to dst[0][2] ≈
+     * 0.99999... rather than exactly 1.0, so the gimbal-lock branch never fires
+     * and the general branch's `atan2(dst[0][1], dst[0][0])` reads garbage roll
+     * from quantization noise (~0.003-scale components → ~50° spurious roll).
+     * IDO/MIPS rounding apparently lands on exact 1.0 often enough that the
+     * vanilla code visually works. Threshold 0.9999F == within ~0.8° of ±90°
+     * yaw — narrow gimbal-lock band, doesn't fire for genuine rotations.
+     * See docs/bugs/grab_pose_eulerextract_gimbal_2026-05-23.md. */
+    if ((dst[0][2] <= -0.9999F) || (dst[0][2] >= 0.9999F))
+#else
     if ((dst[0][2] == -1.0F) || (dst[0][2] == 1.0F))
+#endif
     {
+#ifdef PORT
+        if (dst[0][2] <= -0.9999F)
+#else
         if (dst[0][2] == -1.0F)
+#endif
         {
             rotate->y = F_CLC_DTOR32(90.0F);
             rotate->x = syUtilsArcTan2(dst[1][0], dst[1][1]);

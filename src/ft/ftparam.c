@@ -2306,6 +2306,42 @@ void ftParamKirbyTryMakeMapStarEffect(GObj *fighter_gobj)
     }
 }
 
+#ifdef PORT
+/* Clear FTParts transform caches along the TopN -> root DObj spine.
+ *
+ * ftParamsUpdateFighterPartsTransformAll(TopN) clears caches in the TopN
+ * subtree every frame, but the root DObj sits above TopN and its cache flag
+ * carries between frames. func_ovl2_800EDBA4(hand_joint) walks up via
+ * dobj->parent looking for a fresh ancestor matrix and stops as soon as it
+ * finds unk_dobjtrans_0x5 != 0, so a stale root cache poisons the hand world
+ * transform that ftCommonCapturePulledRotateScale reads for grab pose.
+ * Walking TopN up to (and including) the root and zeroing the cache word
+ * forces the next walk to recompute from the live root translate/rotate. */
+void ftParamInvalidateFighterRootChain(GObj *fighter_gobj)
+{
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+    DObj *dobj = fp->joints[nFTPartsJointTopN];
+    DObj *root_dobj = DObjGetStruct(fighter_gobj);
+    FTParts *parts;
+
+    while (dobj != NULL)
+    {
+        parts = ftGetParts(dobj);
+
+        if (parts != NULL)
+        {
+            parts->transform_update_mode = 0;
+            parts->unk_dobjtrans_word = 0;
+        }
+        if (dobj == root_dobj)
+        {
+            break;
+        }
+        dobj = dobj->parent;
+    }
+}
+#endif
+
 // 0x800EB528
 void ftParamInvalidateFighterTransformFromRoot(GObj *fighter_gobj)
 {
