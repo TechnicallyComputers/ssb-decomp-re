@@ -20,8 +20,10 @@ extern float port_widescreen_clip_x_scale(void);
  */
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sc/scmanager.h>
+#include <sc/scsubsys/scsubsys.h>
 #include <sys/taskman.h>
 #include <stdio.h>
+#include <time.h>
 #include <sys/netinput.h>
 #include <sys/netpeer.h>
 #include <mm_matchmaking.h>
@@ -37,6 +39,9 @@ void mnVSNetAutomatchAMFinalizeVsLoad(void);
 sb32 mnVSNetAutomatchAMConsumeStagingHandshake(void);
 sb32 mnVSNetAutomatchAMIsError(void);
 void mnVSNetAutomatchAMStagingReturnToAutomatch(void);
+void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason);
+sb32 mnVSNetAutomatchAMPollUserCancel(void);
+sb32 mnVSNetAutomatchAMPollAbortDuringBootstrap(void);
 void mnVSNetAutomatchForceRequeueAfterBarrierTimeout(void);
 #endif
 extern void *func_800269C0_275C0(u16 id);
@@ -3857,6 +3862,79 @@ static sb32 sMnAMStagingP2PReady = FALSE;
 /* Advances once per MatchmakingTick while MN_AM_POLL (staging drives MatchmakingTick; CSS tics do not). */
 static u32 sMnAMPollPeriodTics;
 static sb32 sMnAMStagingRendezvousStarted = FALSE;
+static u64 sMnAMConnectDeadlineMs;
+
+static u64 mnVSNetAutomatchAMNowMs(void)
+{
+	struct timespec ts;
+
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
+	{
+		return 0U;
+	}
+	return ((u64)ts.tv_sec * 1000ULL) + ((u64)ts.tv_nsec / 1000000ULL);
+}
+
+static u32 mnVSNetAutomatchAMConnectTimeoutMs(void)
+{
+	const char *env;
+	s32 ms;
+
+	env = getenv("SSB64_NETPLAY_AUTOMATCH_CONNECT_TIMEOUT_MS");
+	ms = (env != NULL && env[0] != '\0') ? atoi(env) : 60000;
+	if (ms < 5000)
+	{
+		ms = 5000;
+	}
+	if (ms > 300000)
+	{
+		ms = 300000;
+	}
+	return (u32)ms;
+}
+
+void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason)
+{
+	const char *why = (reason != NULL && reason[0] != '\0') ? reason : "aborted";
+
+	if (strcmp(why, "cancelled") == 0)
+	{
+		func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+	}
+	else
+	{
+		func_800269C0_275C0(nSYAudioFGMMenuDenied);
+	}
+	port_log("SSB64 Automatch: returning to character select (%s)\n", why);
+	syNetPeerRequestAutomatchAbort();
+	syNetPeerCancelAutomatchBootstrap();
+	syNetPeerEndVSSessionLocally();
+	if (sMnAMTicket[0] != '\0')
+	{
+		mmMatchmakingEnqueueCancel(FALSE, sMnAMTicket);
+	}
+	sMnAMConnectDeadlineMs = 0U;
+	mnVSNetAutomatchAMReset();
+	gSCManagerSceneData.is_vs_automatch_battle = (ub8)FALSE;
+	gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
+	gSCManagerSceneData.scene_curr = nSCKindVSNetAutomatch;
+	mnVSNetAutomatchSetSceneData();
+	syTaskmanSetLoadScene();
+}
+
+sb32 mnVSNetAutomatchAMPollUserCancel(void)
+{
+	return (scSubsysControllerGetPlayerTapButtons(B_BUTTON) != FALSE) ? TRUE : FALSE;
+}
+
+sb32 mnVSNetAutomatchAMPollAbortDuringBootstrap(void)
+{
+	if (sMnAMConnectDeadlineMs != 0U && mnVSNetAutomatchAMNowMs() >= sMnAMConnectDeadlineMs)
+	{
+		return TRUE;
+	}
+	return mnVSNetAutomatchAMPollUserCancel();
+}
 
 void mnVSNetAutomatchAMReset(void)
 {
@@ -3867,16 +3945,22 @@ void mnVSNetAutomatchAMReset(void)
 	sMnAMStagingP2PReady = FALSE;
 	sMnAMPollPeriodTics = 0;
 	sMnAMStagingRendezvousStarted = FALSE;
+	sMnAMConnectDeadlineMs = 0U;
+	syNetPeerClearAutomatchAbort();
 }
 
 static void mnVSNetAutomatchAMErr(void)
 {
 	func_800269C0_275C0(nSYAudioFGMMenuDenied);
-	sMnAMState = MN_AM_ERR;
+	mnVSNetAutomatchAMAbortToCharacterSelect("connection failed");
 }
 
 static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *bind, const char *peer_hp)
 {
+	if (mnVSNetAutomatchAMPollAbortDuringBootstrap() != FALSE)
+	{
+		return FALSE;
+	}
 	gSYNetPeerSuppressBootstrapSceneAdvance = TRUE;
 	(void)syNetPeerSetAutomatchNegotiation(TRUE);
 	syNetPeerSetAutomatchLocalOffer((u16)gSCManagerSceneData.vs_net_stage_ban_mask,
@@ -3891,7 +3975,14 @@ static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *
 	}
 	if (syNetPeerRunBootstrap() == FALSE)
 	{
-		port_log("SSB64 Automatch: bootstrap run failed peer=%s\n", peer_hp);
+		if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+		{
+			port_log("SSB64 Automatch: bootstrap aborted peer=%s\n", peer_hp);
+		}
+		else
+		{
+			port_log("SSB64 Automatch: bootstrap run failed peer=%s\n", peer_hp);
+		}
 		syNetPeerCancelAutomatchBootstrap();
 		gSYNetPeerSuppressBootstrapSceneAdvance = FALSE;
 		(void)syNetPeerSetAutomatchNegotiation(FALSE);
@@ -3940,6 +4031,9 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	force_lan_first = mnVSNetAutomatchAMForcePeerLanFirst();
 	same_wan = ((local_wan != NULL) && (mmHostportWanIpv4Equal(local_wan, mr->peer_hostport) != FALSE)) ? TRUE : FALSE;
 
+	syNetPeerClearAutomatchAbort();
+	sMnAMConnectDeadlineMs = mnVSNetAutomatchAMNowMs() + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
+
 	port_log(
 	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_wan=%s same_wan=%d force_lan=%d\n",
 	    mr->session_id, mr->you_are_host, mr->peer_hostport,
@@ -3961,6 +4055,11 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 			port_log("SSB64 Automatch: forced LAN bootstrap failed, trying reflexive peer=%s\n",
 			         mr->peer_hostport);
 			syNetPeerPauseBetweenBootstrapAttempts();
+			if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+			{
+				mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
+				return;
+			}
 		}
 	}
 
@@ -3984,6 +4083,11 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 			port_log("SSB64 Automatch: reflexive bootstrap failed, trying peer_lan=%s (same WAN)\n",
 			         mr->peer_lan_hostport);
 			syNetPeerPauseBetweenBootstrapAttempts();
+			if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+			{
+				mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
+				return;
+			}
 			if (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_lan_hostport) != FALSE)
 			{
 				port_log("SSB64 NetPeer automatch: reachability candidate=lan ok peer=%s\n",
@@ -3994,7 +4098,14 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 		}
 	}
 
-	mnVSNetAutomatchAMErr();
+	if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+	{
+		mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
+	}
+	else
+	{
+		mnVSNetAutomatchAMErr();
+	}
 	return;
 }
 
@@ -4042,12 +4153,7 @@ sb32 mnVSNetAutomatchAMIsError(void)
 
 void mnVSNetAutomatchAMStagingReturnToAutomatch(void)
 {
-	syNetPeerEndVSSessionLocally();
-	gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
-	gSCManagerSceneData.scene_curr = nSCKindVSNetAutomatch;
-	mnVSNetAutomatchSetSceneData();
-	syTaskmanSetLoadScene();
-	mnVSNetAutomatchAMReset();
+	mnVSNetAutomatchAMAbortToCharacterSelect("connection failed");
 }
 
 void mnVSNetAutomatchForceRequeueAfterBarrierTimeout(void)

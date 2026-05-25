@@ -27,10 +27,18 @@ extern void mnVSNetAutomatchAMFinalizeVsLoad(void);
 extern sb32 mnVSNetAutomatchAMConsumeStagingHandshake(void);
 extern sb32 mnVSNetAutomatchAMIsError(void);
 extern void mnVSNetAutomatchAMStagingReturnToAutomatch(void);
+extern void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason);
+extern sb32 mnVSNetAutomatchAMPollUserCancel(void);
 
 static void mnVSNetMatchStagingFuncRun(GObj *gobj)
 {
 	(void)gobj;
+
+	if (mnVSNetAutomatchAMPollUserCancel() != FALSE)
+	{
+		mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
+		return;
+	}
 
 	mnVSNetAutomatchMatchmakingTick();
 
