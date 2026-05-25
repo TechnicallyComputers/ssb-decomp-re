@@ -3865,6 +3865,7 @@ typedef enum MnVSNetAutomatchAMState
 static MmMatchResult sMnAMPendingMatch;
 static sb32 sMnAMPendingLanBootstrap = FALSE;
 static MmStunNatHint sMnAMNatHint = MM_STUN_NAT_UNKNOWN;
+static sb32 sMnAMBootstrapUsesTurnRelay = FALSE;
 
 static MnVSNetAutomatchAMState sMnAMState = MN_AM_IDLE;
 static char sMnAMTicket[72];
@@ -3970,6 +3971,9 @@ void mnVSNetAutomatchAMReset(void)
 	sMnAMPendingLanBootstrap = FALSE;
 	memset(&sMnAMPendingMatch, 0, sizeof(sMnAMPendingMatch));
 	sMnAMNatHint = MM_STUN_NAT_UNKNOWN;
+	sMnAMBootstrapUsesTurnRelay = FALSE;
+	syNetPeerSetTurnOutboundRelay(FALSE);
+	mmTurnEndRelaySession();
 	syNetPeerClearAutomatchAbort();
 }
 
@@ -4030,6 +4034,12 @@ static sb32 mnVSNetAutomatchAMEnsureLanEndpoint(char *lan_buf, u32 lan_buf_size)
 	return TRUE;
 }
 
+static sb32 mnVSNetAutomatchAMEnsureTurnAllocate(sb32 force_retry);
+static sb32 mnVSNetAutomatchAMShouldPreferTurn(const MmMatchResult *mr);
+static sb32 mnVSNetAutomatchAMSkipDirectReflexive(void);
+static void mnVSNetAutomatchAMFailTurnRequired(void);
+static sb32 mnVSNetAutomatchAMTryTurnPath(const MmMatchResult *mr, const char *bind, sb32 keep_turn_relay);
+
 static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_buf_size)
 {
 	const char *pub_env;
@@ -4066,22 +4076,76 @@ static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_
 			lan_buf[0] = '\0';
 		}
 	}
-	/* Coturn relay backup (CGNAT): best-effort; queue still succeeds if allocate fails. */
-	if (mmTurnIsClientEnabled() != FALSE)
-	{
-		MmTurnRelayResult turn;
-
-		memset(&turn, 0, sizeof(turn));
-		if (mmTurnAllocateIpv4Relay(fd, &turn) != FALSE && turn.ok != FALSE)
-		{
-			snprintf(sMnAMTurnEndpoint, sizeof(sMnAMTurnEndpoint), "%s", turn.relay_endpoint);
-		}
-		else
-		{
-			sMnAMTurnEndpoint[0] = '\0';
-		}
-	}
+	(void)mnVSNetAutomatchAMEnsureTurnAllocate(FALSE);
 	return TRUE;
+}
+
+static sb32 mnVSNetAutomatchAMEnsureTurnAllocate(sb32 force_retry)
+{
+	s32 fd;
+	MmTurnRelayResult turn;
+
+	if (mmTurnIsClientEnabled() == FALSE)
+	{
+		return FALSE;
+	}
+	if ((force_retry == FALSE) && (sMnAMTurnEndpoint[0] != '\0') && (mmTurnRelaySessionActive() != FALSE))
+	{
+		return TRUE;
+	}
+	fd = syNetPeerGetUdpSocketFd();
+	if (fd < 0)
+	{
+		return FALSE;
+	}
+	memset(&turn, 0, sizeof(turn));
+	if (mmTurnAllocateIpv4Relay(fd, &turn) != FALSE && turn.ok != FALSE)
+	{
+		snprintf(sMnAMTurnEndpoint, sizeof(sMnAMTurnEndpoint), "%s", turn.relay_endpoint);
+		return TRUE;
+	}
+	sMnAMTurnEndpoint[0] = '\0';
+	return FALSE;
+}
+
+static sb32 mnVSNetAutomatchAMShouldPreferTurn(const MmMatchResult *mr)
+{
+	if (mmTurnIsClientEnabled() == FALSE)
+	{
+		return FALSE;
+	}
+	if (mmTurnIsRequired() != FALSE)
+	{
+		return TRUE;
+	}
+	if (sMnAMNatHint == MM_STUN_NAT_SYMMETRIC_SUSPECTED)
+	{
+		return TRUE;
+	}
+	if ((mr != NULL) && (sMnAMTurnEndpoint[0] != '\0') && (mr->peer_turn_hostport[0] != '\0'))
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static sb32 mnVSNetAutomatchAMSkipDirectReflexive(void)
+{
+	if (mmTurnIsRequired() != FALSE)
+	{
+		return TRUE;
+	}
+	if ((mmTurnIsClientEnabled() != FALSE) && (sMnAMNatHint == MM_STUN_NAT_SYMMETRIC_SUSPECTED))
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static void mnVSNetAutomatchAMFailTurnRequired(void)
+{
+	port_log("SSB64 Automatch: TURN relay required but unavailable (symmetric/CGNAT or SSB64_NETPLAY_TURN_REQUIRED)\n");
+	mnVSNetAutomatchAMAbortToCharacterSelect("TURN relay required");
 }
 
 static void mnVSNetAutomatchAMResolvePeerLan(char *peer_lan_out, u32 cap, const MmMatchResult *mr)
@@ -4113,12 +4177,15 @@ static void mnVSNetAutomatchAMErr(void)
 }
 
 static sb32 mnVSNetAutomatchAMTryBootstrapPeer(const MmMatchResult *mr, const char *bind, const char *peer_hp,
-					       const char *turn_permission_hp, sb32 use_turn_outbound)
+					       const char *turn_permission_hp, sb32 use_turn_outbound, sb32 keep_turn_relay)
 {
+	sb32 turn_channel_ok;
+
 	if (mnVSNetAutomatchAMPollAbortDuringBootstrap() != FALSE)
 	{
 		return FALSE;
 	}
+	turn_channel_ok = FALSE;
 	syNetPeerSetTurnOutboundRelay(FALSE);
 	gSYNetPeerSuppressBootstrapSceneAdvance = TRUE;
 	(void)syNetPeerSetAutomatchNegotiation(TRUE);
@@ -4135,7 +4202,11 @@ static sb32 mnVSNetAutomatchAMTryBootstrapPeer(const MmMatchResult *mr, const ch
 	if ((use_turn_outbound != FALSE) && (turn_permission_hp != NULL) && (turn_permission_hp[0] != '\0') &&
 	    (mmTurnIsClientEnabled() != FALSE))
 	{
-		if (syNetPeerEnableTurnChannelRelay(turn_permission_hp) == FALSE)
+		if (syNetPeerEnableTurnChannelRelay(turn_permission_hp) != FALSE)
+		{
+			turn_channel_ok = TRUE;
+		}
+		else
 		{
 			port_log("SSB64 Automatch: TURN ChannelBind failed perm=%s connect=%s\n", turn_permission_hp, peer_hp);
 		}
@@ -4158,16 +4229,24 @@ static sb32 mnVSNetAutomatchAMTryBootstrapPeer(const MmMatchResult *mr, const ch
 	}
 	gSYNetPeerSuppressBootstrapSceneAdvance = FALSE;
 	(void)syNetPeerSetAutomatchNegotiation(FALSE);
-	syNetPeerSetTurnOutboundRelay(FALSE);
+	if ((keep_turn_relay != FALSE) && (mmTurnRelaySessionActive() != FALSE))
+	{
+		sMnAMBootstrapUsesTurnRelay = TRUE;
+		(void)turn_channel_ok;
+	}
+	else
+	{
+		syNetPeerSetTurnOutboundRelay(FALSE);
+	}
 	return TRUE;
 }
 
 static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *bind, const char *peer_hp)
 {
-	return mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, peer_hp, NULL, FALSE);
+	return mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, peer_hp, NULL, FALSE, FALSE);
 }
 
-static sb32 mnVSNetAutomatchAMTryTurnFallback(const MmMatchResult *mr, const char *bind)
+static sb32 mnVSNetAutomatchAMTryTurnPath(const MmMatchResult *mr, const char *bind, sb32 keep_turn_relay)
 {
 	const char *peer_turn;
 	const char *connect_hp;
@@ -4183,13 +4262,18 @@ static sb32 mnVSNetAutomatchAMTryTurnFallback(const MmMatchResult *mr, const cha
 		return FALSE;
 	}
 	use_outbound = (sMnAMNatHint == MM_STUN_NAT_SYMMETRIC_SUSPECTED) ? TRUE : FALSE;
-	port_log("SSB64 Automatch: trying TURN fallback local_turn=%s peer_turn=%s outbound=%d\n",
+	port_log("SSB64 Automatch: trying TURN path local_turn=%s peer_turn=%s outbound=%d\n",
 	         (sMnAMTurnEndpoint[0] != '\0') ? sMnAMTurnEndpoint : "(none)",
 	         (peer_turn[0] != '\0') ? peer_turn : "(none)", (int)use_outbound);
 	if (peer_turn[0] != '\0')
 	{
+		sb32 use_channel;
+
 		connect_hp = peer_turn;
-		if (mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, connect_hp, mr->peer_hostport, use_outbound) != FALSE)
+		use_channel = (mr->peer_hostport[0] != '\0') ? TRUE : use_outbound;
+		if (mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, connect_hp,
+		                                        (use_channel != FALSE) ? mr->peer_hostport : NULL, use_channel,
+		                                        keep_turn_relay) != FALSE)
 		{
 			port_log("SSB64 NetPeer automatch: reachability candidate=turn ok peer=%s\n", connect_hp);
 			return TRUE;
@@ -4202,7 +4286,8 @@ static sb32 mnVSNetAutomatchAMTryTurnFallback(const MmMatchResult *mr, const cha
 	}
 	if ((use_outbound != FALSE) && (mr->peer_hostport[0] != '\0'))
 	{
-		if (mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, mr->peer_hostport, mr->peer_hostport, TRUE) != FALSE)
+		if (mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, mr->peer_hostport, mr->peer_hostport, TRUE, keep_turn_relay) !=
+		    FALSE)
 		{
 			port_log("SSB64 NetPeer automatch: reachability candidate=turn_outbound ok peer=%s\n",
 			         mr->peer_hostport);
@@ -4284,6 +4369,8 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	sb32 same_wan;
 	sb32 peer_lan_local;
 	sb32 try_lan_first;
+	sb32 prefer_turn;
+	sb32 skip_direct;
 
 	bind = (sMnAMBindSpec[0] != '\0') ? sMnAMBindSpec : MN_AM_BIND_DEFAULT;
 	queued_wan = sMnAMPublicEndpoint;
@@ -4333,36 +4420,27 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	/* LAN-first only when peer_lan is on our subnet (true LAN). Same WAN IP alone is not enough
 	 * (CGNAT / different sites): those matches punch reflexive host:port instead. */
 	try_lan_first = (force_lan_first != FALSE) || (peer_lan_local != FALSE) ? TRUE : FALSE;
+	prefer_turn = mnVSNetAutomatchAMShouldPreferTurn(&mr_work);
+	skip_direct = mnVSNetAutomatchAMSkipDirectReflexive();
+	if (prefer_turn != FALSE)
+	{
+		(void)mnVSNetAutomatchAMEnsureTurnAllocate(TRUE);
+	}
+	if ((mmTurnIsRequired() != FALSE) && (sMnAMTurnEndpoint[0] == '\0') && (mr_work.peer_turn_hostport[0] == '\0'))
+	{
+		mnVSNetAutomatchAMFailTurnRequired();
+		return;
+	}
 
 	port_log(
-	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_lan=%s local_wan=%s same_wan=%d peer_lan_local=%d lan_first=%d\n",
+	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_lan=%s local_wan=%s same_wan=%d peer_lan_local=%d lan_first=%d prefer_turn=%d skip_direct=%d local_turn=%s peer_turn=%s\n",
 	    mr->session_id, mr->you_are_host, mr->peer_hostport,
 	    (peer_lan[0] != '\0') ? peer_lan : "(none)",
 	    (sMnAMLanEndpoint[0] != '\0') ? sMnAMLanEndpoint : "(none)",
-	    (local_wan != NULL) ? local_wan : "(none)", (int)same_wan, (int)peer_lan_local, (int)try_lan_first);
-
-	/* Same public IPv4 but peer_lan is another network's RFC1918 — try reflexive ports first. */
-	if ((same_wan != FALSE) && (try_lan_first == FALSE))
-	{
-		if (peer_lan[0] != '\0')
-		{
-			port_log(
-			    "SSB64 Automatch: same WAN, peer_lan=%s not on local subnet — trying reflexive %s\n",
-			    peer_lan, mr->peer_hostport);
-		}
-		if (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, mr->peer_hostport) != FALSE)
-		{
-			port_log("SSB64 NetPeer automatch: reachability candidate=reflexive ok peer=%s\n", mr->peer_hostport);
-			sMnAMStagingP2PReady = TRUE;
-			return;
-		}
-		syNetPeerPauseBetweenBootstrapAttempts();
-		if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
-		{
-			mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
-			return;
-		}
-	}
+	    (local_wan != NULL) ? local_wan : "(none)", (int)same_wan, (int)peer_lan_local, (int)try_lan_first,
+	    (int)prefer_turn, (int)skip_direct,
+	    (sMnAMTurnEndpoint[0] != '\0') ? sMnAMTurnEndpoint : "(none)",
+	    (mr_work.peer_turn_hostport[0] != '\0') ? mr_work.peer_turn_hostport : "(none)");
 
 	if (try_lan_first != FALSE)
 	{
@@ -4391,7 +4469,50 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 		}
 	}
 
-	if (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, mr->peer_hostport) != FALSE)
+	if (prefer_turn != FALSE)
+	{
+		if (mnVSNetAutomatchAMTryTurnPath(&mr_work, bind, TRUE) != FALSE)
+		{
+			sMnAMStagingP2PReady = TRUE;
+			return;
+		}
+		syNetPeerPauseBetweenBootstrapAttempts();
+		if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+		{
+			mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
+			return;
+		}
+		if (mmTurnIsRequired() != FALSE)
+		{
+			mnVSNetAutomatchAMFailTurnRequired();
+			return;
+		}
+	}
+
+	/* Same public IPv4 but peer_lan is another network's RFC1918 — try reflexive ports first. */
+	if ((skip_direct == FALSE) && (same_wan != FALSE) && (try_lan_first == FALSE))
+	{
+		if (peer_lan[0] != '\0')
+		{
+			port_log(
+			    "SSB64 Automatch: same WAN, peer_lan=%s not on local subnet — trying reflexive %s\n",
+			    peer_lan, mr->peer_hostport);
+		}
+		if (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, mr->peer_hostport) != FALSE)
+		{
+			port_log("SSB64 NetPeer automatch: reachability candidate=reflexive ok peer=%s\n", mr->peer_hostport);
+			sMnAMStagingP2PReady = TRUE;
+			return;
+		}
+		syNetPeerPauseBetweenBootstrapAttempts();
+		if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+		{
+			mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
+			return;
+		}
+	}
+
+	if ((skip_direct == FALSE) && (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, mr->peer_hostport) != FALSE))
 	{
 		port_log("SSB64 NetPeer automatch: reachability candidate=reflexive ok peer=%s\n", mr->peer_hostport);
 		sMnAMStagingP2PReady = TRUE;
@@ -4429,9 +4550,13 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	{
 		mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
 	}
-	else if (mnVSNetAutomatchAMTryTurnFallback(&mr_work, bind) != FALSE)
+	else if ((prefer_turn == FALSE) && (mnVSNetAutomatchAMTryTurnPath(&mr_work, bind, TRUE) != FALSE))
 	{
 		sMnAMStagingP2PReady = TRUE;
+	}
+	else if ((prefer_turn != FALSE) && (sMnAMNatHint == MM_STUN_NAT_SYMMETRIC_SUSPECTED))
+	{
+		mnVSNetAutomatchAMFailTurnRequired();
 	}
 	else
 	{
@@ -4552,6 +4677,15 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			{
 				mnVSNetAutomatchAMErr();
 				continue;
+			}
+			if (mmTurnIsRequired() != FALSE)
+			{
+				(void)mnVSNetAutomatchAMEnsureTurnAllocate(TRUE);
+				if (sMnAMTurnEndpoint[0] == '\0')
+				{
+					mnVSNetAutomatchAMFailTurnRequired();
+					continue;
+				}
 			}
 			{
 				const char *lan_for_queue;
