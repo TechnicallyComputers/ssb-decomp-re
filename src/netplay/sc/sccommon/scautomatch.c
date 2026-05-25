@@ -3970,40 +3970,74 @@ void mnVSNetAutomatchAMReset(void)
 	syNetPeerClearAutomatchAbort();
 }
 
+/* Queue/heartbeat LAN pointer: prefer caller scratch, then cached registration. */
+static const char *mnVSNetAutomatchAMLanPtr(const char *lan_buf)
+{
+	if ((lan_buf != NULL) && (lan_buf[0] != '\0'))
+	{
+		return lan_buf;
+	}
+	if (sMnAMLanEndpoint[0] != '\0')
+	{
+		return sMnAMLanEndpoint;
+	}
+	return NULL;
+}
+
+/* Fill sMnAMLanEndpoint (and optional lan_buf) from env or interface detect. */
+static sb32 mnVSNetAutomatchAMEnsureLanEndpoint(char *lan_buf, u32 lan_buf_size)
+{
+	const char *lan_env;
+	s32 fd;
+	char scratch[144];
+
+	if (sMnAMLanEndpoint[0] != '\0')
+	{
+		if ((lan_buf != NULL) && (lan_buf_size > 0U))
+		{
+			snprintf(lan_buf, lan_buf_size, "%s", sMnAMLanEndpoint);
+		}
+		return TRUE;
+	}
+	lan_env = getenv("SSB64_MATCHMAKING_LAN_ENDPOINT");
+	if ((lan_env != NULL) && (lan_env[0] != '\0'))
+	{
+		snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", lan_env);
+		if ((lan_buf != NULL) && (lan_buf_size > 0U))
+		{
+			snprintf(lan_buf, lan_buf_size, "%s", lan_env);
+		}
+		return TRUE;
+	}
+	fd = syNetPeerGetUdpSocketFd();
+	if (fd < 0)
+	{
+		return FALSE;
+	}
+	scratch[0] = '\0';
+	if (mmLanDetectEndpoint(scratch, (u32)sizeof(scratch), fd, sMnAMBindSpec) == FALSE)
+	{
+		return FALSE;
+	}
+	snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", scratch);
+	if ((lan_buf != NULL) && (lan_buf_size > 0U))
+	{
+		snprintf(lan_buf, lan_buf_size, "%s", scratch);
+	}
+	return TRUE;
+}
+
 static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_buf_size)
 {
 	const char *pub_env;
 	s32 fd;
 	MmStunProbeResult probe;
-	const char *lan_for_queue;
 
 	pub_env = getenv("SSB64_MATCHMAKING_PUBLIC_ENDPOINT");
 	if ((pub_env != NULL) && (pub_env[0] != '\0'))
 	{
-		const char *lan_env = getenv("SSB64_MATCHMAKING_LAN_ENDPOINT");
-
 		snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", pub_env);
-		if ((lan_env != NULL) && (lan_env[0] != '\0'))
-		{
-			snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", lan_env);
-			if ((lan_buf != NULL) && (lan_buf_size > 0U))
-			{
-				snprintf(lan_buf, lan_buf_size, "%s", lan_env);
-			}
-		}
-		else
-		{
-			fd = syNetPeerGetUdpSocketFd();
-			if ((lan_buf != NULL) && (lan_buf_size > 0U) && (fd >= 0) &&
-			    (mmLanDetectEndpoint(lan_buf, lan_buf_size, fd, sMnAMBindSpec) != FALSE))
-			{
-				snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", lan_buf);
-			}
-			else
-			{
-				sMnAMLanEndpoint[0] = '\0';
-			}
-		}
+		(void)mnVSNetAutomatchAMEnsureLanEndpoint(lan_buf, lan_buf_size);
 		return TRUE;
 	}
 	fd = syNetPeerGetUdpSocketFd();
@@ -4021,28 +4055,13 @@ static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_
 	{
 		port_log("SSB64 Automatch: symmetric NAT suspected — direct punch may fail (use TURN/VPN)\n");
 	}
-	lan_for_queue = NULL;
+	if (mnVSNetAutomatchAMEnsureLanEndpoint(lan_buf, lan_buf_size) == FALSE)
 	{
-		const char *lan_env = getenv("SSB64_MATCHMAKING_LAN_ENDPOINT");
-
-		if ((lan_env != NULL) && (lan_env[0] != '\0'))
+		/* WAN/STUN succeeded; LAN is optional — only clear when caller owns lan_buf. */
+		if ((lan_buf != NULL) && (lan_buf_size > 0U))
 		{
-			lan_for_queue = lan_env;
+			lan_buf[0] = '\0';
 		}
-		else if ((lan_buf != NULL) && (lan_buf_size > 0U) &&
-		         (mmLanDetectEndpoint(lan_buf, lan_buf_size, fd, sMnAMBindSpec) != FALSE))
-		{
-			lan_for_queue = lan_buf;
-		}
-	}
-	if ((lan_buf != NULL) && (lan_buf_size > 0U) && (lan_for_queue != NULL))
-	{
-		snprintf(lan_buf, lan_buf_size, "%s", lan_for_queue);
-		snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", lan_for_queue);
-	}
-	else
-	{
-		sMnAMLanEndpoint[0] = '\0';
 	}
 	return TRUE;
 }
@@ -4178,11 +4197,17 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	MmMatchResult mr_work;
 	sb32 force_lan_first;
 	sb32 same_wan;
+	sb32 peer_lan_local;
 	sb32 try_lan_first;
 
 	bind = (sMnAMBindSpec[0] != '\0') ? sMnAMBindSpec : MN_AM_BIND_DEFAULT;
 	queued_wan = sMnAMPublicEndpoint;
-	(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(NULL, 0U);
+	{
+		char lan_refresh[144];
+
+		lan_refresh[0] = '\0';
+		(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_refresh, (u32)sizeof(lan_refresh));
+	}
 	refreshed_wan[0] = '\0';
 	if (sMnAMPublicEndpoint[0] != '\0')
 	{
@@ -4203,19 +4228,49 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 		snprintf(mr_work.peer_lan_hostport, sizeof(mr_work.peer_lan_hostport), "%s", peer_lan);
 	}
 
+	peer_lan_local = FALSE;
+	if (peer_lan[0] != '\0')
+	{
+		peer_lan_local = mmLanPeerHostportIsOnLocalLan(peer_lan);
+	}
+
 	syNetPeerClearAutomatchAbort();
 	sMnAMConnectDeadlineMs = mnVSNetAutomatchAMNowMs() + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
 	sMnAMPendingLanBootstrap = FALSE;
 
-	/* Same public IP (typical home LAN): reflexive punch is often hairpin-blocked — prefer LAN. */
-	try_lan_first = (force_lan_first != FALSE) || ((same_wan != FALSE) && (peer_lan[0] != '\0')) ? TRUE : FALSE;
+	/* LAN-first only when peer_lan is on our subnet (true LAN). Same WAN IP alone is not enough
+	 * (CGNAT / different sites): those matches punch reflexive host:port instead. */
+	try_lan_first = (force_lan_first != FALSE) || (peer_lan_local != FALSE) ? TRUE : FALSE;
 
 	port_log(
-	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_lan=%s local_wan=%s same_wan=%d lan_first=%d\n",
+	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_lan=%s local_wan=%s same_wan=%d peer_lan_local=%d lan_first=%d\n",
 	    mr->session_id, mr->you_are_host, mr->peer_hostport,
 	    (peer_lan[0] != '\0') ? peer_lan : "(none)",
 	    (sMnAMLanEndpoint[0] != '\0') ? sMnAMLanEndpoint : "(none)",
-	    (local_wan != NULL) ? local_wan : "(none)", (int)same_wan, (int)try_lan_first);
+	    (local_wan != NULL) ? local_wan : "(none)", (int)same_wan, (int)peer_lan_local, (int)try_lan_first);
+
+	/* Same public IPv4 but peer_lan is another network's RFC1918 — try reflexive ports first. */
+	if ((same_wan != FALSE) && (try_lan_first == FALSE))
+	{
+		if (peer_lan[0] != '\0')
+		{
+			port_log(
+			    "SSB64 Automatch: same WAN, peer_lan=%s not on local subnet — trying reflexive %s\n",
+			    peer_lan, mr->peer_hostport);
+		}
+		if (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, mr->peer_hostport) != FALSE)
+		{
+			port_log("SSB64 NetPeer automatch: reachability candidate=reflexive ok peer=%s\n", mr->peer_hostport);
+			sMnAMStagingP2PReady = TRUE;
+			return;
+		}
+		syNetPeerPauseBetweenBootstrapAttempts();
+		if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+		{
+			mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
+			return;
+		}
+	}
 
 	if (try_lan_first != FALSE)
 	{
@@ -4234,20 +4289,17 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 				return;
 			}
 		}
-		if ((same_wan != FALSE) && (force_lan_first == FALSE))
-		{
-			port_log(
-			    "SSB64 Automatch: same WAN but no peer_lan — skipping reflexive hairpin (set SSB64_MATCHMAKING_PEER_LAN=h:p)\n");
-			mnVSNetAutomatchAMErr();
-			return;
-		}
 		if (force_lan_first != FALSE)
 		{
 			port_log("SSB64 Automatch: LAN bootstrap failed, trying reflexive peer=%s\n", mr->peer_hostport);
 		}
+		else if (same_wan != FALSE)
+		{
+			port_log("SSB64 Automatch: local LAN bootstrap failed, trying reflexive peer=%s\n", mr->peer_hostport);
+		}
 	}
 
-	if ((same_wan == FALSE) && (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, mr->peer_hostport) != FALSE))
+	if (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, mr->peer_hostport) != FALSE)
 	{
 		port_log("SSB64 NetPeer automatch: reachability candidate=reflexive ok peer=%s\n", mr->peer_hostport);
 		sMnAMStagingP2PReady = TRUE;
@@ -4262,9 +4314,9 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 			    "SSB64 Automatch: skipping peer_lan=%s (WAN IPv4 mismatch local=%s peer=%s)\n",
 			    peer_lan, (local_wan != NULL) ? local_wan : "(none)", mr->peer_hostport);
 		}
-		else
+		else if (peer_lan_local != FALSE)
 		{
-			port_log("SSB64 Automatch: reflexive bootstrap failed, deferring peer_lan=%s (same WAN)\n", peer_lan);
+			port_log("SSB64 Automatch: reflexive bootstrap failed, deferring peer_lan=%s (local LAN)\n", peer_lan);
 			memcpy(&sMnAMPendingMatch, &mr_work, sizeof(sMnAMPendingMatch));
 			snprintf(sMnAMPendingMatch.peer_lan_hostport, sizeof(sMnAMPendingMatch.peer_lan_hostport), "%s",
 			         peer_lan);
@@ -4272,6 +4324,12 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 			sMnAMState = MN_AM_BOOTSTRAP_LAN;
 			syNetPeerPauseBetweenBootstrapAttempts();
 			return;
+		}
+		else
+		{
+			port_log(
+			    "SSB64 Automatch: reflexive failed; peer_lan=%s not on local subnet (same WAN, skip unreachable LAN)\n",
+			    peer_lan);
 		}
 	}
 
@@ -4392,6 +4450,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			if ((pub_env != NULL) && (pub_env[0] != '\0'))
 			{
 				snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", pub_env);
+				(void)mnVSNetAutomatchAMEnsureLanEndpoint(lan_buf, (u32)sizeof(lan_buf));
 			}
 			else if (mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_buf, (u32)sizeof(lan_buf)) == FALSE)
 			{
@@ -4401,7 +4460,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			{
 				const char *lan_for_queue;
 
-				lan_for_queue = (lan_buf[0] != '\0') ? lan_buf : NULL;
+				lan_for_queue = mnVSNetAutomatchAMLanPtr(lan_buf);
 				port_log("SSB64 Automatch: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
 				         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
 				mmMatchmakingEnqueueJoinQueue(FALSE, sMnAMPublicEndpoint, (u8)sMNVSNetAutomatchSlot.fkind,
@@ -4492,11 +4551,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_hb, (u32)sizeof(lan_hb));
 			}
 			udp_ep = (sMnAMPublicEndpoint[0] != '\0') ? sMnAMPublicEndpoint : NULL;
-			lan_ep = (sMnAMLanEndpoint[0] != '\0') ? sMnAMLanEndpoint : NULL;
-			if ((lan_ep == NULL) && (lan_hb[0] != '\0'))
-			{
-				lan_ep = lan_hb;
-			}
+			lan_ep = mnVSNetAutomatchAMLanPtr(lan_hb);
 			if ((udp_ep != NULL) || (lan_ep != NULL))
 			{
 				mmMatchmakingEnqueueHeartbeatWithEndpoints(FALSE, sMnAMTicket, udp_ep, lan_ep);
