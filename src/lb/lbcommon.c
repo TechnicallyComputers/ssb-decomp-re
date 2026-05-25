@@ -1431,6 +1431,25 @@ void lbCommonEjectTreeDObj(DObj *dobj)
     dobj->child = NULL;
     
     gcEjectDObj(dobj);
+
+#ifdef PORT
+    /* Rollback reconcile / partial hold teardown can leave a wrapper with no inner child. */
+    if (child_dobj == NULL)
+    {
+        if (parent_dobj == DOBJ_PARENT_NULL)
+        {
+            if ((dobj->parent_gobj != NULL) && (dobj->parent_gobj->obj == dobj))
+            {
+                dobj->parent_gobj->obj = NULL;
+            }
+        }
+        else
+        {
+            parent_dobj->child = NULL;
+        }
+        return;
+    }
+#endif
     
     if (parent_dobj == DOBJ_PARENT_NULL)
     {

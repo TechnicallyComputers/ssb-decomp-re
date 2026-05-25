@@ -409,7 +409,14 @@ void itMainSetFighterRelease(GObj *item_gobj, Vec3f *vel, f32 throw_mul, u16 sta
     Vec3f pos;
     s32 joint_id;
 
-    lbCommonEjectTreeDObj(DObjGetStruct(item_gobj));
+    {
+        DObj *wrapper = DObjGetStruct(item_gobj);
+
+        if ((wrapper != NULL) && (wrapper->child != NULL))
+        {
+            lbCommonEjectTreeDObj(wrapper);
+        }
+    }
 
     pos.x = pos.y = pos.z = 0.0F;
 
@@ -633,7 +640,12 @@ void itMainDetachOrphanHoldDisplay(GObj *item_gobj)
     ip->owner_gobj = NULL;
     if (item_gobj->obj != NULL)
     {
-        lbCommonEjectTreeDObj(DObjGetStruct(item_gobj));
+        DObj *wrapper = DObjGetStruct(item_gobj);
+
+        if ((wrapper != NULL) && (wrapper->child != NULL))
+        {
+            lbCommonEjectTreeDObj(wrapper);
+        }
         item_gobj->obj = NULL;
     }
 }
