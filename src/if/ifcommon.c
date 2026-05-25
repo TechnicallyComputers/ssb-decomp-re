@@ -17,6 +17,7 @@ extern void syAudioSetBGMVolume(u32, u32);
 #include <sys/objman.h>
 #include <sys/scheduler.h>
 extern sb32 syNetPeerIsVSSessionActive(void);
+void syNetFighterPhaseTraceGcRunAllBegin(void);
 extern void func_800266A0_272A0(void);
 extern s32 func_80026594_27194(void);
 extern s32 func_800264A4_270A4(void);
@@ -3389,6 +3390,10 @@ void ifCommonBattleGoUpdateInterface(void)
 
             return;
         }
+    }
+    if (syNetPeerIsVSSessionActive() != FALSE)
+    {
+        syNetFighterPhaseTraceGcRunAllBegin();
     }
     gcRunAll();
 }

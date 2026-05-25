@@ -6,6 +6,7 @@
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
 extern void port_dump_backtrace(void);
+#include <sys/netfighterphase.h>
 #endif
 #include <sys/controller.h>
 
@@ -1302,6 +1303,9 @@ void ftMainRunUpdateColAnim(GObj *fighter_gobj)
 void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
+#ifdef PORT
+    syNetFighterPhaseOnInterruptVeryStart(fighter_gobj);
+#endif
     FTStruct *other_fp;
     FTAttributes *this_attr;
     FTAttributes *other_attr;
@@ -1457,6 +1461,9 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         {
             this_fp->hold_stick_y = FTINPUT_STICKBUFFER_TICS_MAX;
         }
+#ifdef PORT
+        syNetFighterPhaseOnInterruptAfterInputControl(fighter_gobj);
+#endif
     }
     if (this_fp->tics_since_last_z < FTINPUT_ZTRIGLAST_TICS_MAX)
     {
@@ -4167,6 +4174,9 @@ void ftMainProcParams(GObj *fighter_gobj)
             break;
         }
     }
+#ifdef PORT
+    syNetFighterPhaseOnParamsEnd(fighter_gobj);
+#endif
 }
 
 // 0x800E69C4
