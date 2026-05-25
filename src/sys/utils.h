@@ -21,6 +21,15 @@ extern void syUtilsResetCosmeticRandomSeed(s32 seed);
 extern u16 syUtilsRandUShortCosmetic(void);
 extern f32 syUtilsRandFloatCosmetic(void);
 extern s32 syUtilsRandIntRangeCosmetic(s32 range);
+/* Accessor for the per-peer cosmetic LCG seed. Exposed for netplay diagnostics:
+ * effect manager (`ef/efmanager.c`) and particle system (`lb/lbparticle.c`)
+ * read/write this seed through `syUtilsRand*Cosmetic` whenever
+ * `syNetRollbackIsActive()` is TRUE (i.e. the entire duration of a netplay VS
+ * session). The shared `rng` partition only hashes the *game* seed, so silent
+ * drift of this cosmetic seed between peers is the smoking gun for
+ * `eff`-partition divergence on stages with continuous particle activity
+ * (DK Jungle TaruCann). See docs/bugs/netplay_dk_jungle_effect_pop_desync_2026-05-25.md. */
+extern s32 syUtilsCosmeticRandSeed(void);
 #endif
 extern void syUtilsSetRandomSeedPtr(s32 *seedptr);
 extern u16 syUtilsRandUShort(void);

@@ -17,7 +17,23 @@ s32 sSYUtilsRandomSeed     = 1;
 s32 *sSYUtilsRandomSeedPtr = &sSYUtilsRandomSeed;
 #ifdef PORT
 s32 sSYUtilsCosmeticRandomSeed = 1;
-extern sb32 syNetRollbackIsActive(void);
+/*
+ * The cosmetic-vs-shared-seed gate uses `syNetRollbackIsResimulating`
+ * deliberately, NOT `syNetRollbackIsActive`. See `syUtilsRandUShortCosmetic`
+ * below and docs/bugs/netplay_dk_jungle_effect_pop_desync_2026-05-25.md for the
+ * full story (DK Jungle TaruCann particle drift between peers).
+ *
+ * Short version: `IsActive` is TRUE the entire netplay VS session, which made
+ * effect-manager / particle-system RNG read from a *per-peer* cosmetic seed
+ * for every forward sim tick. That seed is initialised in sync at session
+ * start but drifts the moment a single effect spawn path is even slightly
+ * asymmetric across peers, and the `rng` partition never folds it. By keying
+ * on `IsResimulating` instead, forward sim consumes the shared game seed
+ * (same behaviour as offline) so cosmetic asymmetries surface immediately in
+ * the `rng` partition at the next FC. Resim still uses the cosmetic seed so
+ * the replay does not perturb the authoritative shared seed.
+ */
+extern sb32 syNetRollbackIsResimulating(void);
 #endif
 
 s32 sSYUtilsQSortItemSize = 0;
@@ -232,6 +248,11 @@ void syUtilsResetCosmeticRandomSeed(s32 seed)
     sSYUtilsCosmeticRandomSeed = seed;
 }
 
+s32 syUtilsCosmeticRandSeed(void)
+{
+    return sSYUtilsCosmeticRandomSeed;
+}
+
 static u16 syUtilsRandUShortFromSeed(s32 *seedptr)
 {
     u32 step = ((u32)*seedptr * 214013u) + 2531011u;
@@ -240,9 +261,30 @@ static u16 syUtilsRandUShortFromSeed(s32 *seedptr)
     return (u16)(step >> 16);
 }
 
+/*
+ * Cosmetic RNG family. Gate-key explanation lives at the top of this file
+ * with the `sSYUtilsCosmeticRandomSeed` declaration; the rule here is:
+ *
+ *   forward sim (IsResimulating == FALSE) -> shared game seed
+ *     so two peers consume the same RNG sequence per tick, and any
+ *     asymmetric cosmetic consumption surfaces immediately in the
+ *     `rng` partition (caught at the next FC checkpoint).
+ *
+ *   rollback resim (IsResimulating == TRUE) -> per-peer cosmetic seed
+ *     so the replay does not advance the shared game seed and the
+ *     authoritative seed at the end of resim equals what it was
+ *     before the rollback.
+ *
+ * Previously the gate keyed on `syNetRollbackIsActive` which is TRUE the
+ * entire netplay VS session, so forward sim used the cosmetic seed too;
+ * that seed silently drifted across peers (initialised in sync at session
+ * start but never resynced) and caused free-floating effect spawns to fork
+ * — visible as `gch` and `eff` divergence on DK Jungle Match 2 (load_drift
+ * at tick 1920 of session 2026-05-25).
+ */
 u16 syUtilsRandUShortCosmetic(void)
 {
-    if (syNetRollbackIsActive() == FALSE)
+    if (syNetRollbackIsResimulating() == FALSE)
     {
         return syUtilsRandUShort();
     }
@@ -253,7 +295,7 @@ f32 syUtilsRandFloatCosmetic(void)
 {
     u16 value;
 
-    if (syNetRollbackIsActive() == FALSE)
+    if (syNetRollbackIsResimulating() == FALSE)
     {
         return syUtilsRandFloat();
     }
@@ -263,7 +305,7 @@ f32 syUtilsRandFloatCosmetic(void)
 
 s32 syUtilsRandIntRangeCosmetic(s32 range)
 {
-    if (syNetRollbackIsActive() == FALSE)
+    if (syNetRollbackIsResimulating() == FALSE)
     {
         return syUtilsRandIntRange(range);
     }
