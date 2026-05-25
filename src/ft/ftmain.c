@@ -6,7 +6,9 @@
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
 extern void port_dump_backtrace(void);
+#if defined(SSB64_NETMENU)
 #include <sys/netfighterphase.h>
+#endif
 #endif
 #include <sys/controller.h>
 
@@ -1303,7 +1305,7 @@ void ftMainRunUpdateColAnim(GObj *fighter_gobj)
 void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     syNetFighterPhaseOnInterruptVeryStart(fighter_gobj);
 #endif
     FTStruct *other_fp;
@@ -1461,7 +1463,7 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         {
             this_fp->hold_stick_y = FTINPUT_STICKBUFFER_TICS_MAX;
         }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         syNetFighterPhaseOnInterruptAfterInputControl(fighter_gobj);
 #endif
     }
@@ -4174,7 +4176,7 @@ void ftMainProcParams(GObj *fighter_gobj)
             break;
         }
     }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     syNetFighterPhaseOnParamsEnd(fighter_gobj);
 #endif
 }
