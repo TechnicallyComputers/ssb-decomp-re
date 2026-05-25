@@ -3857,8 +3857,13 @@ typedef enum MnVSNetAutomatchAMState
 	MN_AM_JOIN = 3,
 	MN_AM_POLL = 4,
 	MN_AM_ENTER = 5,
+	MN_AM_BOOTSTRAP_LAN = 6,
 	MN_AM_ERR = 99
 } MnVSNetAutomatchAMState;
+
+static MmMatchResult sMnAMPendingMatch;
+static sb32 sMnAMPendingLanBootstrap = FALSE;
+static MmStunNatHint sMnAMNatHint = MM_STUN_NAT_UNKNOWN;
 
 static MnVSNetAutomatchAMState sMnAMState = MN_AM_IDLE;
 static char sMnAMTicket[72];
@@ -3957,7 +3962,59 @@ void mnVSNetAutomatchAMReset(void)
 	sMnAMPollPeriodTics = 0;
 	sMnAMStagingRendezvousStarted = FALSE;
 	sMnAMConnectDeadlineMs = 0U;
+	sMnAMPendingLanBootstrap = FALSE;
+	memset(&sMnAMPendingMatch, 0, sizeof(sMnAMPendingMatch));
+	sMnAMNatHint = MM_STUN_NAT_UNKNOWN;
 	syNetPeerClearAutomatchAbort();
+}
+
+static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_buf_size)
+{
+	const char *pub_env;
+	s32 fd;
+	MmStunProbeResult probe;
+	const char *lan_for_queue;
+
+	pub_env = getenv("SSB64_MATCHMAKING_PUBLIC_ENDPOINT");
+	if ((pub_env != NULL) && (pub_env[0] != '\0'))
+	{
+		snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", pub_env);
+		return TRUE;
+	}
+	fd = syNetPeerGetUdpSocketFd();
+	if (fd < 0)
+	{
+		return FALSE;
+	}
+	if (mmStunProbeIpv4Endpoint(fd, &probe) == FALSE)
+	{
+		return FALSE;
+	}
+	snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", probe.endpoint);
+	sMnAMNatHint = probe.nat_hint;
+	if (probe.nat_hint == MM_STUN_NAT_SYMMETRIC_SUSPECTED)
+	{
+		port_log("SSB64 Automatch: symmetric NAT suspected — direct punch may fail (use TURN/VPN)\n");
+	}
+	lan_for_queue = NULL;
+	{
+		const char *lan_env = getenv("SSB64_MATCHMAKING_LAN_ENDPOINT");
+
+		if ((lan_env != NULL) && (lan_env[0] != '\0'))
+		{
+			lan_for_queue = lan_env;
+		}
+		else if ((lan_buf != NULL) && (lan_buf_size > 0U) &&
+		         (mmLanDetectEndpoint(lan_buf, lan_buf_size, fd, sMnAMBindSpec) != FALSE))
+		{
+			lan_for_queue = lan_buf;
+		}
+	}
+	if ((lan_buf != NULL) && (lan_buf_size > 0U) && (lan_for_queue != NULL))
+	{
+		snprintf(lan_buf, lan_buf_size, "%s", lan_for_queue);
+	}
+	return TRUE;
 }
 
 static void mnVSNetAutomatchAMErr(void)
@@ -3976,7 +4033,7 @@ static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *
 	(void)syNetPeerSetAutomatchNegotiation(TRUE);
 	syNetPeerSetAutomatchLocalOffer((u16)gSCManagerSceneData.vs_net_stage_ban_mask,
 	                                (u8)sMNVSNetAutomatchSlot.fkind, (u8)sMNVSNetAutomatchSlot.costume, 0U);
-	if (syNetPeerConfigureUdpForAutomatch(bind, peer_hp, mr->session_id, mr->you_are_host, 2U) == FALSE)
+	if (syNetPeerConfigureUdpForAutomatch(bind, peer_hp, mr->session_id, mr->you_are_host, 2U, TRUE) == FALSE)
 	{
 		port_log("SSB64 Automatch: bootstrap configure failed peer=%s\n", peer_hp);
 		syNetPeerCancelAutomatchBootstrap();
@@ -4030,20 +4087,63 @@ static const char *mnVSNetAutomatchAMLocalWanHostport(void)
 	return NULL;
 }
 
+static void mnVSNetAutomatchAMTryPendingLanBootstrap(void)
+{
+	const char *bind;
+
+	if (sMnAMPendingLanBootstrap == FALSE)
+	{
+		return;
+	}
+	bind = (sMnAMBindSpec[0] != '\0') ? sMnAMBindSpec : MN_AM_BIND_DEFAULT;
+	if (mnVSNetAutomatchAMTryBootstrap(&sMnAMPendingMatch, bind, sMnAMPendingMatch.peer_lan_hostport) != FALSE)
+	{
+		port_log("SSB64 NetPeer automatch: reachability candidate=lan ok peer=%s\n",
+		         sMnAMPendingMatch.peer_lan_hostport);
+		sMnAMStagingP2PReady = TRUE;
+		sMnAMPendingLanBootstrap = FALSE;
+		sMnAMState = MN_AM_ENTER;
+		return;
+	}
+	sMnAMPendingLanBootstrap = FALSE;
+	if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+	{
+		mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
+	}
+	else
+	{
+		mnVSNetAutomatchAMErr();
+	}
+}
+
 static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 {
 	const char *bind;
 	const char *local_wan;
+	const char *queued_wan;
+	char refreshed_wan[144];
 	sb32 force_lan_first;
 	sb32 same_wan;
 
 	bind = (sMnAMBindSpec[0] != '\0') ? sMnAMBindSpec : MN_AM_BIND_DEFAULT;
+	queued_wan = sMnAMPublicEndpoint;
+	(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(NULL, 0U);
+	refreshed_wan[0] = '\0';
+	if (sMnAMPublicEndpoint[0] != '\0')
+	{
+		snprintf(refreshed_wan, sizeof(refreshed_wan), "%s", sMnAMPublicEndpoint);
+	}
+	if ((queued_wan[0] != '\0') && (refreshed_wan[0] != '\0') && (strcmp(queued_wan, refreshed_wan) != 0))
+	{
+		port_log("SSB64 Automatch: reflexive endpoint changed queue=%s bootstrap=%s\n", queued_wan, refreshed_wan);
+	}
 	local_wan = mnVSNetAutomatchAMLocalWanHostport();
 	force_lan_first = mnVSNetAutomatchAMForcePeerLanFirst();
 	same_wan = ((local_wan != NULL) && (mmHostportWanIpv4Equal(local_wan, mr->peer_hostport) != FALSE)) ? TRUE : FALSE;
 
 	syNetPeerClearAutomatchAbort();
 	sMnAMConnectDeadlineMs = mnVSNetAutomatchAMNowMs() + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
+	sMnAMPendingLanBootstrap = FALSE;
 
 	port_log(
 	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_wan=%s same_wan=%d force_lan=%d\n",
@@ -4091,21 +4191,13 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 		}
 		else
 		{
-			port_log("SSB64 Automatch: reflexive bootstrap failed, trying peer_lan=%s (same WAN)\n",
+			port_log("SSB64 Automatch: reflexive bootstrap failed, deferring peer_lan=%s (same WAN)\n",
 			         mr->peer_lan_hostport);
+			memcpy(&sMnAMPendingMatch, mr, sizeof(sMnAMPendingMatch));
+			sMnAMPendingLanBootstrap = TRUE;
+			sMnAMState = MN_AM_BOOTSTRAP_LAN;
 			syNetPeerPauseBetweenBootstrapAttempts();
-			if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
-			{
-				mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
-				return;
-			}
-			if (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_lan_hostport) != FALSE)
-			{
-				port_log("SSB64 NetPeer automatch: reachability candidate=lan ok peer=%s\n",
-				         mr->peer_lan_hostport);
-				sMnAMStagingP2PReady = TRUE;
-				return;
-			}
+			return;
 		}
 	}
 
@@ -4197,8 +4289,10 @@ void mnVSNetAutomatchMatchmakingTick(void)
 		{
 			const char *bm;
 			const char *pub_env;
+			char lan_buf[144];
 			s32 fd;
 
+			lan_buf[0] = '\0';
 			if (sMnAMState != MN_AM_ENSURE)
 			{
 				continue;
@@ -4209,7 +4303,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				bm = MN_AM_BIND_DEFAULT;
 			}
 			snprintf(sMnAMBindSpec, sizeof(sMnAMBindSpec), "%s", bm);
-			if (syNetPeerConfigureUdpForAutomatch(sMnAMBindSpec, MN_AM_STUB_PEER, 1U, FALSE, 2U) == FALSE)
+			if (syNetPeerConfigureUdpForAutomatch(sMnAMBindSpec, MN_AM_STUB_PEER, 1U, FALSE, 2U, FALSE) == FALSE)
 			{
 				mnVSNetAutomatchAMErr();
 				continue;
@@ -4225,29 +4319,15 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			{
 				snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", pub_env);
 			}
-			else if ((fd >= 0) && (mmStunGetReflexiveIpv4Endpoint(fd, sMnAMPublicEndpoint,
-			                                                     (u32)sizeof(sMnAMPublicEndpoint)) == FALSE))
+			else if (mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_buf, (u32)sizeof(lan_buf)) == FALSE)
 			{
 				mnVSNetAutomatchAMErr();
 				continue;
 			}
 			{
-				char lan_buf[144];
-				const char *lan_env = getenv("SSB64_MATCHMAKING_LAN_ENDPOINT");
 				const char *lan_for_queue;
 
-				if ((lan_env != NULL) && (lan_env[0] != '\0'))
-				{
-					lan_for_queue = lan_env;
-				}
-				else if (mmLanDetectEndpoint(lan_buf, (u32)sizeof(lan_buf), fd, sMnAMBindSpec) != FALSE)
-				{
-					lan_for_queue = lan_buf;
-				}
-				else
-				{
-					lan_for_queue = NULL;
-				}
+				lan_for_queue = (lan_buf[0] != '\0') ? lan_buf : NULL;
 				mmMatchmakingEnqueueJoinQueue(FALSE, sMnAMPublicEndpoint, (u8)sMNVSNetAutomatchSlot.fkind,
 				                              (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE : FALSE,
 				                              lan_for_queue);
@@ -4325,7 +4405,34 @@ void mnVSNetAutomatchMatchmakingTick(void)
 		}
 		if ((sMnAMPollPeriodTics % hb_every) == MN_AM_POLL_HEARTBEAT_PHASE)
 		{
-			mmMatchmakingEnqueueHeartbeat(FALSE, sMnAMTicket);
+			char lan_hb[144];
+			const char *udp_ep;
+			const char *lan_ep;
+
+			lan_hb[0] = '\0';
+			if (mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_hb, (u32)sizeof(lan_hb)) != FALSE)
+			{
+				udp_ep = (sMnAMPublicEndpoint[0] != '\0') ? sMnAMPublicEndpoint : NULL;
+				lan_ep = (lan_hb[0] != '\0') ? lan_hb : NULL;
+				mmMatchmakingEnqueueHeartbeatWithEndpoints(FALSE, sMnAMTicket, udp_ep, lan_ep);
+			}
+			else
+			{
+				mmMatchmakingEnqueueHeartbeat(FALSE, sMnAMTicket);
+			}
+		}
+	}
+
+	if (sMnAMState == MN_AM_BOOTSTRAP_LAN)
+	{
+		if (mnVSNetAutomatchAMPollAbortDuringBootstrap() != FALSE)
+		{
+			mnVSNetAutomatchAMAbortToCharacterSelect(
+			    (mnVSNetAutomatchAMPollUserCancel() != FALSE) ? "cancelled" : "connection timed out");
+		}
+		else
+		{
+			mnVSNetAutomatchAMTryPendingLanBootstrap();
 		}
 	}
 }
