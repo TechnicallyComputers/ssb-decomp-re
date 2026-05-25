@@ -24,6 +24,12 @@ extern float port_widescreen_clip_x_scale(void);
 #include <sys/taskman.h>
 #include <stdio.h>
 #include <time.h>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#endif
 #include <sys/netinput.h>
 #include <sys/netpeer.h>
 #include <mm_matchmaking.h>
@@ -3866,6 +3872,10 @@ static u64 sMnAMConnectDeadlineMs;
 
 static u64 mnVSNetAutomatchAMNowMs(void)
 {
+#ifdef _WIN32
+	/* MSVC has no CLOCK_MONOTONIC / clock_gettime; GetTickCount64 is fine for connect deadlines. */
+	return (u64)GetTickCount64();
+#else
 	struct timespec ts;
 
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0)
@@ -3873,6 +3883,7 @@ static u64 mnVSNetAutomatchAMNowMs(void)
 		return 0U;
 	}
 	return ((u64)ts.tv_sec * 1000ULL) + ((u64)ts.tv_nsec / 1000000ULL);
+#endif
 }
 
 static u32 mnVSNetAutomatchAMConnectTimeoutMs(void)
