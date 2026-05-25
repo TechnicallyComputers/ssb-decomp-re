@@ -3869,6 +3869,7 @@ static MnVSNetAutomatchAMState sMnAMState = MN_AM_IDLE;
 static char sMnAMTicket[72];
 static char sMnAMPublicEndpoint[144];
 static char sMnAMBindSpec[96];
+static char sMnAMLanEndpoint[144];
 static sb32 sMnAMStagingP2PReady = FALSE;
 /* Advances once per MatchmakingTick while MN_AM_POLL (staging drives MatchmakingTick; CSS tics do not). */
 static u32 sMnAMPollPeriodTics;
@@ -3958,6 +3959,7 @@ void mnVSNetAutomatchAMReset(void)
 	sMnAMTicket[0] = '\0';
 	sMnAMPublicEndpoint[0] = '\0';
 	sMnAMBindSpec[0] = '\0';
+	sMnAMLanEndpoint[0] = '\0';
 	sMnAMStagingP2PReady = FALSE;
 	sMnAMPollPeriodTics = 0;
 	sMnAMStagingRendezvousStarted = FALSE;
@@ -3978,7 +3980,30 @@ static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_
 	pub_env = getenv("SSB64_MATCHMAKING_PUBLIC_ENDPOINT");
 	if ((pub_env != NULL) && (pub_env[0] != '\0'))
 	{
+		const char *lan_env = getenv("SSB64_MATCHMAKING_LAN_ENDPOINT");
+
 		snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", pub_env);
+		if ((lan_env != NULL) && (lan_env[0] != '\0'))
+		{
+			snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", lan_env);
+			if ((lan_buf != NULL) && (lan_buf_size > 0U))
+			{
+				snprintf(lan_buf, lan_buf_size, "%s", lan_env);
+			}
+		}
+		else
+		{
+			fd = syNetPeerGetUdpSocketFd();
+			if ((lan_buf != NULL) && (lan_buf_size > 0U) && (fd >= 0) &&
+			    (mmLanDetectEndpoint(lan_buf, lan_buf_size, fd, sMnAMBindSpec) != FALSE))
+			{
+				snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", lan_buf);
+			}
+			else
+			{
+				sMnAMLanEndpoint[0] = '\0';
+			}
+		}
 		return TRUE;
 	}
 	fd = syNetPeerGetUdpSocketFd();
@@ -4013,8 +4038,35 @@ static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_
 	if ((lan_buf != NULL) && (lan_buf_size > 0U) && (lan_for_queue != NULL))
 	{
 		snprintf(lan_buf, lan_buf_size, "%s", lan_for_queue);
+		snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", lan_for_queue);
+	}
+	else
+	{
+		sMnAMLanEndpoint[0] = '\0';
 	}
 	return TRUE;
+}
+
+static void mnVSNetAutomatchAMResolvePeerLan(char *peer_lan_out, u32 cap, const MmMatchResult *mr)
+{
+	const char *env;
+
+	if ((peer_lan_out == NULL) || (cap == 0U) || (mr == NULL))
+	{
+		return;
+	}
+	peer_lan_out[0] = '\0';
+	if (mr->peer_lan_hostport[0] != '\0')
+	{
+		snprintf(peer_lan_out, cap, "%s", mr->peer_lan_hostport);
+		return;
+	}
+	env = getenv("SSB64_MATCHMAKING_PEER_LAN");
+	if ((env != NULL) && (env[0] != '\0'))
+	{
+		snprintf(peer_lan_out, cap, "%s", env);
+		port_log("SSB64 Automatch: using SSB64_MATCHMAKING_PEER_LAN=%s (server peer_lan missing)\n", peer_lan_out);
+	}
 }
 
 static void mnVSNetAutomatchAMErr(void)
@@ -4122,8 +4174,11 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	const char *local_wan;
 	const char *queued_wan;
 	char refreshed_wan[144];
+	char peer_lan[144];
+	MmMatchResult mr_work;
 	sb32 force_lan_first;
 	sb32 same_wan;
+	sb32 try_lan_first;
 
 	bind = (sMnAMBindSpec[0] != '\0') ? sMnAMBindSpec : MN_AM_BIND_DEFAULT;
 	queued_wan = sMnAMPublicEndpoint;
@@ -4141,30 +4196,37 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	force_lan_first = mnVSNetAutomatchAMForcePeerLanFirst();
 	same_wan = ((local_wan != NULL) && (mmHostportWanIpv4Equal(local_wan, mr->peer_hostport) != FALSE)) ? TRUE : FALSE;
 
+	memcpy(&mr_work, mr, sizeof(mr_work));
+	mnVSNetAutomatchAMResolvePeerLan(peer_lan, (u32)sizeof(peer_lan), mr);
+	if (peer_lan[0] != '\0')
+	{
+		snprintf(mr_work.peer_lan_hostport, sizeof(mr_work.peer_lan_hostport), "%s", peer_lan);
+	}
+
 	syNetPeerClearAutomatchAbort();
 	sMnAMConnectDeadlineMs = mnVSNetAutomatchAMNowMs() + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
 	sMnAMPendingLanBootstrap = FALSE;
 
-	port_log(
-	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_wan=%s same_wan=%d force_lan=%d\n",
-	    mr->session_id, mr->you_are_host, mr->peer_hostport,
-	    (mr->peer_lan_hostport[0] != '\0') ? mr->peer_lan_hostport : "(none)",
-	    (local_wan != NULL) ? local_wan : "(none)", (int)same_wan, (int)force_lan_first);
+	/* Same public IP (typical home LAN): reflexive punch is often hairpin-blocked — prefer LAN. */
+	try_lan_first = (force_lan_first != FALSE) || ((same_wan != FALSE) && (peer_lan[0] != '\0')) ? TRUE : FALSE;
 
-	if (force_lan_first != FALSE)
+	port_log(
+	    "SSB64 NetPeer automatch: match enter session=%u host=%d peer=%s peer_lan=%s local_lan=%s local_wan=%s same_wan=%d lan_first=%d\n",
+	    mr->session_id, mr->you_are_host, mr->peer_hostport,
+	    (peer_lan[0] != '\0') ? peer_lan : "(none)",
+	    (sMnAMLanEndpoint[0] != '\0') ? sMnAMLanEndpoint : "(none)",
+	    (local_wan != NULL) ? local_wan : "(none)", (int)same_wan, (int)try_lan_first);
+
+	if (try_lan_first != FALSE)
 	{
-		if ((mr->peer_lan_hostport[0] != '\0') &&
-		    (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_lan_hostport) != FALSE))
+		if (peer_lan[0] != '\0')
 		{
-			port_log("SSB64 NetPeer automatch: reachability candidate=lan ok peer=%s (force_lan)\n",
-			         mr->peer_lan_hostport);
-			sMnAMStagingP2PReady = TRUE;
-			return;
-		}
-		if (mr->peer_lan_hostport[0] != '\0')
-		{
-			port_log("SSB64 Automatch: forced LAN bootstrap failed, trying reflexive peer=%s\n",
-			         mr->peer_hostport);
+			if (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, peer_lan) != FALSE)
+			{
+				port_log("SSB64 NetPeer automatch: reachability candidate=lan ok peer=%s\n", peer_lan);
+				sMnAMStagingP2PReady = TRUE;
+				return;
+			}
 			syNetPeerPauseBetweenBootstrapAttempts();
 			if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
 			{
@@ -4172,28 +4234,40 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 				return;
 			}
 		}
+		if ((same_wan != FALSE) && (force_lan_first == FALSE))
+		{
+			port_log(
+			    "SSB64 Automatch: same WAN but no peer_lan — skipping reflexive hairpin (set SSB64_MATCHMAKING_PEER_LAN=h:p)\n");
+			mnVSNetAutomatchAMErr();
+			return;
+		}
+		if (force_lan_first != FALSE)
+		{
+			port_log("SSB64 Automatch: LAN bootstrap failed, trying reflexive peer=%s\n", mr->peer_hostport);
+		}
 	}
 
-	if (mnVSNetAutomatchAMTryBootstrap(mr, bind, mr->peer_hostport) != FALSE)
+	if ((same_wan == FALSE) && (mnVSNetAutomatchAMTryBootstrap(&mr_work, bind, mr->peer_hostport) != FALSE))
 	{
 		port_log("SSB64 NetPeer automatch: reachability candidate=reflexive ok peer=%s\n", mr->peer_hostport);
 		sMnAMStagingP2PReady = TRUE;
 		return;
 	}
 
-	if ((force_lan_first == FALSE) && (mr->peer_lan_hostport[0] != '\0'))
+	if ((force_lan_first == FALSE) && (peer_lan[0] != '\0'))
 	{
 		if (same_wan == FALSE)
 		{
 			port_log(
 			    "SSB64 Automatch: skipping peer_lan=%s (WAN IPv4 mismatch local=%s peer=%s)\n",
-			    mr->peer_lan_hostport, (local_wan != NULL) ? local_wan : "(none)", mr->peer_hostport);
+			    peer_lan, (local_wan != NULL) ? local_wan : "(none)", mr->peer_hostport);
 		}
 		else
 		{
-			port_log("SSB64 Automatch: reflexive bootstrap failed, deferring peer_lan=%s (same WAN)\n",
-			         mr->peer_lan_hostport);
-			memcpy(&sMnAMPendingMatch, mr, sizeof(sMnAMPendingMatch));
+			port_log("SSB64 Automatch: reflexive bootstrap failed, deferring peer_lan=%s (same WAN)\n", peer_lan);
+			memcpy(&sMnAMPendingMatch, &mr_work, sizeof(sMnAMPendingMatch));
+			snprintf(sMnAMPendingMatch.peer_lan_hostport, sizeof(sMnAMPendingMatch.peer_lan_hostport), "%s",
+			         peer_lan);
 			sMnAMPendingLanBootstrap = TRUE;
 			sMnAMState = MN_AM_BOOTSTRAP_LAN;
 			syNetPeerPauseBetweenBootstrapAttempts();
@@ -4328,6 +4402,8 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				const char *lan_for_queue;
 
 				lan_for_queue = (lan_buf[0] != '\0') ? lan_buf : NULL;
+				port_log("SSB64 Automatch: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
+				         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
 				mmMatchmakingEnqueueJoinQueue(FALSE, sMnAMPublicEndpoint, (u8)sMNVSNetAutomatchSlot.fkind,
 				                              (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE : FALSE,
 				                              lan_for_queue);
@@ -4410,10 +4486,19 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			const char *lan_ep;
 
 			lan_hb[0] = '\0';
-			if (mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_hb, (u32)sizeof(lan_hb)) != FALSE)
+			/* Re-STUN at most every 4th heartbeat; reuse cached endpoints otherwise. */
+			if (((sMnAMPollPeriodTics / hb_every) % 4U) == 0U)
 			{
-				udp_ep = (sMnAMPublicEndpoint[0] != '\0') ? sMnAMPublicEndpoint : NULL;
-				lan_ep = (lan_hb[0] != '\0') ? lan_hb : NULL;
+				(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_hb, (u32)sizeof(lan_hb));
+			}
+			udp_ep = (sMnAMPublicEndpoint[0] != '\0') ? sMnAMPublicEndpoint : NULL;
+			lan_ep = (sMnAMLanEndpoint[0] != '\0') ? sMnAMLanEndpoint : NULL;
+			if ((lan_ep == NULL) && (lan_hb[0] != '\0'))
+			{
+				lan_ep = lan_hb;
+			}
+			if ((udp_ep != NULL) || (lan_ep != NULL))
+			{
 				mmMatchmakingEnqueueHeartbeatWithEndpoints(FALSE, sMnAMTicket, udp_ep, lan_ep);
 			}
 			else
