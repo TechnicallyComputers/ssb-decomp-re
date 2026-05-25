@@ -35,6 +35,7 @@ extern float port_widescreen_clip_x_scale(void);
 #include <mm_matchmaking.h>
 #include <mm_lan_detect.h>
 #include <mm_stun.h>
+#include <mm_turn.h>
 
 extern void port_log(const char *fmt, ...);
 
@@ -3868,6 +3869,7 @@ static MmStunNatHint sMnAMNatHint = MM_STUN_NAT_UNKNOWN;
 static MnVSNetAutomatchAMState sMnAMState = MN_AM_IDLE;
 static char sMnAMTicket[72];
 static char sMnAMPublicEndpoint[144];
+static char sMnAMTurnEndpoint[144];
 static char sMnAMBindSpec[96];
 static char sMnAMLanEndpoint[144];
 static sb32 sMnAMStagingP2PReady = FALSE;
@@ -3958,6 +3960,7 @@ void mnVSNetAutomatchAMReset(void)
 	sMnAMState = MN_AM_IDLE;
 	sMnAMTicket[0] = '\0';
 	sMnAMPublicEndpoint[0] = '\0';
+	sMnAMTurnEndpoint[0] = '\0';
 	sMnAMBindSpec[0] = '\0';
 	sMnAMLanEndpoint[0] = '\0';
 	sMnAMStagingP2PReady = FALSE;
@@ -4063,6 +4066,21 @@ static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_
 			lan_buf[0] = '\0';
 		}
 	}
+	/* Coturn relay backup (CGNAT): best-effort; queue still succeeds if allocate fails. */
+	if (mmTurnIsClientEnabled() != FALSE)
+	{
+		MmTurnRelayResult turn;
+
+		memset(&turn, 0, sizeof(turn));
+		if (mmTurnAllocateIpv4Relay(fd, &turn) != FALSE && turn.ok != FALSE)
+		{
+			snprintf(sMnAMTurnEndpoint, sizeof(sMnAMTurnEndpoint), "%s", turn.relay_endpoint);
+		}
+		else
+		{
+			sMnAMTurnEndpoint[0] = '\0';
+		}
+	}
 	return TRUE;
 }
 
@@ -4094,12 +4112,14 @@ static void mnVSNetAutomatchAMErr(void)
 	mnVSNetAutomatchAMAbortToCharacterSelect("connection failed");
 }
 
-static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *bind, const char *peer_hp)
+static sb32 mnVSNetAutomatchAMTryBootstrapPeer(const MmMatchResult *mr, const char *bind, const char *peer_hp,
+					       const char *turn_permission_hp, sb32 use_turn_outbound)
 {
 	if (mnVSNetAutomatchAMPollAbortDuringBootstrap() != FALSE)
 	{
 		return FALSE;
 	}
+	syNetPeerSetTurnOutboundRelay(FALSE);
 	gSYNetPeerSuppressBootstrapSceneAdvance = TRUE;
 	(void)syNetPeerSetAutomatchNegotiation(TRUE);
 	syNetPeerSetAutomatchLocalOffer((u16)gSCManagerSceneData.vs_net_stage_ban_mask,
@@ -4111,6 +4131,14 @@ static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *
 		gSYNetPeerSuppressBootstrapSceneAdvance = FALSE;
 		(void)syNetPeerSetAutomatchNegotiation(FALSE);
 		return FALSE;
+	}
+	if ((use_turn_outbound != FALSE) && (turn_permission_hp != NULL) && (turn_permission_hp[0] != '\0') &&
+	    (mmTurnIsClientEnabled() != FALSE))
+	{
+		if (syNetPeerEnableTurnChannelRelay(turn_permission_hp) == FALSE)
+		{
+			port_log("SSB64 Automatch: TURN ChannelBind failed perm=%s connect=%s\n", turn_permission_hp, peer_hp);
+		}
 	}
 	if (syNetPeerRunBootstrap() == FALSE)
 	{
@@ -4125,11 +4153,68 @@ static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *
 		syNetPeerCancelAutomatchBootstrap();
 		gSYNetPeerSuppressBootstrapSceneAdvance = FALSE;
 		(void)syNetPeerSetAutomatchNegotiation(FALSE);
+		syNetPeerSetTurnOutboundRelay(FALSE);
 		return FALSE;
 	}
 	gSYNetPeerSuppressBootstrapSceneAdvance = FALSE;
 	(void)syNetPeerSetAutomatchNegotiation(FALSE);
+	syNetPeerSetTurnOutboundRelay(FALSE);
 	return TRUE;
+}
+
+static sb32 mnVSNetAutomatchAMTryBootstrap(const MmMatchResult *mr, const char *bind, const char *peer_hp)
+{
+	return mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, peer_hp, NULL, FALSE);
+}
+
+static sb32 mnVSNetAutomatchAMTryTurnFallback(const MmMatchResult *mr, const char *bind)
+{
+	const char *peer_turn;
+	const char *connect_hp;
+	sb32 use_outbound;
+
+	if (mmTurnIsClientEnabled() == FALSE)
+	{
+		return FALSE;
+	}
+	peer_turn = mr->peer_turn_hostport;
+	if ((sMnAMTurnEndpoint[0] == '\0') && (peer_turn[0] == '\0'))
+	{
+		return FALSE;
+	}
+	use_outbound = (sMnAMNatHint == MM_STUN_NAT_SYMMETRIC_SUSPECTED) ? TRUE : FALSE;
+	port_log("SSB64 Automatch: trying TURN fallback local_turn=%s peer_turn=%s outbound=%d\n",
+	         (sMnAMTurnEndpoint[0] != '\0') ? sMnAMTurnEndpoint : "(none)",
+	         (peer_turn[0] != '\0') ? peer_turn : "(none)", (int)use_outbound);
+	if (peer_turn[0] != '\0')
+	{
+		connect_hp = peer_turn;
+		if (mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, connect_hp, mr->peer_hostport, use_outbound) != FALSE)
+		{
+			port_log("SSB64 NetPeer automatch: reachability candidate=turn ok peer=%s\n", connect_hp);
+			return TRUE;
+		}
+		syNetPeerPauseBetweenBootstrapAttempts();
+		if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+		{
+			return FALSE;
+		}
+	}
+	if ((use_outbound != FALSE) && (mr->peer_hostport[0] != '\0'))
+	{
+		if (mnVSNetAutomatchAMTryBootstrapPeer(mr, bind, mr->peer_hostport, mr->peer_hostport, TRUE) != FALSE)
+		{
+			port_log("SSB64 NetPeer automatch: reachability candidate=turn_outbound ok peer=%s\n",
+			         mr->peer_hostport);
+			return TRUE;
+		}
+		syNetPeerPauseBetweenBootstrapAttempts();
+		if (syNetPeerAutomatchBootstrapWasAborted() != FALSE)
+		{
+			return FALSE;
+		}
+	}
+	return FALSE;
 }
 
 static sb32 mnVSNetAutomatchAMForcePeerLanFirst(void)
@@ -4344,6 +4429,10 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	{
 		mnVSNetAutomatchAMAbortToCharacterSelect("cancelled");
 	}
+	else if (mnVSNetAutomatchAMTryTurnFallback(&mr_work, bind) != FALSE)
+	{
+		sMnAMStagingP2PReady = TRUE;
+	}
 	else
 	{
 		mnVSNetAutomatchAMErr();
@@ -4470,9 +4559,10 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				lan_for_queue = mnVSNetAutomatchAMLanPtr(lan_buf);
 				port_log("SSB64 Automatch: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
 				         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
-				mmMatchmakingEnqueueJoinQueue(FALSE, sMnAMPublicEndpoint, (u8)sMNVSNetAutomatchSlot.fkind,
+				mmMatchmakingEnqueueJoinQueueEx(FALSE, sMnAMPublicEndpoint, (u8)sMNVSNetAutomatchSlot.fkind,
 				                              (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE : FALSE,
-				                              lan_for_queue);
+				                              lan_for_queue,
+				                              (sMnAMTurnEndpoint[0] != '\0') ? sMnAMTurnEndpoint : NULL);
 			}
 			sMnAMState = MN_AM_JOIN;
 			continue;
@@ -4561,7 +4651,10 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			lan_ep = mnVSNetAutomatchAMLanPtr(lan_hb);
 			if ((udp_ep != NULL) || (lan_ep != NULL))
 			{
-				mmMatchmakingEnqueueHeartbeatWithEndpoints(FALSE, sMnAMTicket, udp_ep, lan_ep);
+				mmMatchmakingEnqueueHeartbeatWithEndpointsEx(FALSE, sMnAMTicket, udp_ep, lan_ep,
+				                                             (sMnAMTurnEndpoint[0] != '\0')
+				                                                 ? sMnAMTurnEndpoint
+				                                                 : NULL);
 			}
 			else
 			{
