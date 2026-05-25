@@ -4231,7 +4231,14 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	peer_lan_local = FALSE;
 	if (peer_lan[0] != '\0')
 	{
-		peer_lan_local = mmLanPeerHostportIsOnLocalLan(peer_lan);
+		if (sMnAMLanEndpoint[0] != '\0')
+		{
+			peer_lan_local = mmLanPeerSharesLocalLanSubnet(peer_lan, sMnAMLanEndpoint);
+		}
+		else
+		{
+			peer_lan_local = mmLanPeerHostportIsOnLocalLan(peer_lan);
+		}
 	}
 
 	syNetPeerClearAutomatchAbort();
