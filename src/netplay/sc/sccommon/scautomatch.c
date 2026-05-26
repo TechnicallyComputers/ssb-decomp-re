@@ -34,8 +34,14 @@ extern float port_widescreen_clip_x_scale(void);
 #include <sys/netpeer.h>
 #include <mm_matchmaking.h>
 #include <mm_lan_detect.h>
+#if defined(SSB64_NETPLAY_ICE)
+#include <mm_ice.h>
+#include <mm_ice_automatch.h>
+#include <mm_lan_detect.h>
+#else
 #include <mm_stun.h>
 #include <mm_turn.h>
+#endif
 
 extern void port_log(const char *fmt, ...);
 
@@ -3859,18 +3865,26 @@ typedef enum MnVSNetAutomatchAMState
 	MN_AM_POLL = 4,
 	MN_AM_ENTER = 5,
 	MN_AM_BOOTSTRAP_LAN = 6,
+	MN_AM_ICE_CONNECT = 7,
 	MN_AM_ERR = 99
 } MnVSNetAutomatchAMState;
 
 static MmMatchResult sMnAMPendingMatch;
 static sb32 sMnAMPendingLanBootstrap = FALSE;
+#ifndef SSB64_NETPLAY_ICE
 static MmStunNatHint sMnAMNatHint = MM_STUN_NAT_UNKNOWN;
 static sb32 sMnAMBootstrapUsesTurnRelay = FALSE;
+#endif
 
 static MnVSNetAutomatchAMState sMnAMState = MN_AM_IDLE;
+#if defined(SSB64_NETPLAY_ICE)
+static MmMatchResult sMnAMIcePendingMatch;
+#endif
 static char sMnAMTicket[72];
 static char sMnAMPublicEndpoint[144];
+#ifndef SSB64_NETPLAY_ICE
 static char sMnAMTurnEndpoint[144];
+#endif
 static char sMnAMBindSpec[96];
 static char sMnAMLanEndpoint[144];
 static sb32 sMnAMStagingP2PReady = FALSE;
@@ -3964,20 +3978,31 @@ void mnVSNetAutomatchAMReset(void)
 	sMnAMState = MN_AM_IDLE;
 	sMnAMTicket[0] = '\0';
 	sMnAMPublicEndpoint[0] = '\0';
+#ifndef SSB64_NETPLAY_ICE
 	sMnAMTurnEndpoint[0] = '\0';
+#endif
 	sMnAMBindSpec[0] = '\0';
 	sMnAMLanEndpoint[0] = '\0';
 	sMnAMStagingP2PReady = FALSE;
 	sMnAMPollPeriodTics = 0;
 	sMnAMStagingRendezvousStarted = FALSE;
 	sMnAMConnectDeadlineMs = 0U;
+#ifndef SSB64_NETPLAY_ICE
 	sMnAMTurnLastAllocateAttemptMs = 0U;
+#endif
 	sMnAMPendingLanBootstrap = FALSE;
 	memset(&sMnAMPendingMatch, 0, sizeof(sMnAMPendingMatch));
+#ifndef SSB64_NETPLAY_ICE
 	sMnAMNatHint = MM_STUN_NAT_UNKNOWN;
 	sMnAMBootstrapUsesTurnRelay = FALSE;
 	syNetPeerSetTurnOutboundRelay(FALSE);
+#endif
+#if defined(SSB64_NETPLAY_ICE)
+	mmIceShutdown();
+	syNetPeerSetIceTransport(FALSE);
+#else
 	mmTurnEndRelaySession();
+#endif
 	syNetPeerClearAutomatchAbort();
 }
 
@@ -4038,11 +4063,14 @@ static sb32 mnVSNetAutomatchAMEnsureLanEndpoint(char *lan_buf, u32 lan_buf_size)
 	return TRUE;
 }
 
+#ifndef SSB64_NETPLAY_ICE
 static sb32 mnVSNetAutomatchAMEnsureTurnAllocate(sb32 force_retry);
 static sb32 mnVSNetAutomatchAMShouldPreferTurn(const MmMatchResult *mr);
 static sb32 mnVSNetAutomatchAMSkipDirectReflexive(void);
 static void mnVSNetAutomatchAMFailTurnRequired(void);
 static sb32 mnVSNetAutomatchAMTryTurnPath(const MmMatchResult *mr, const char *bind, sb32 keep_turn_relay);
+static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr);
+#endif
 
 static u32 mnVSNetAutomatchAMTurnAllocateCooldownMs(void)
 {
@@ -4062,8 +4090,7 @@ static u32 mnVSNetAutomatchAMTurnAllocateCooldownMs(void)
 	return (u32)ms;
 }
 
-static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_buf_size, sb32 include_nat_hint);
-
+#ifndef SSB64_NETPLAY_ICE
 static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_buf_size, sb32 include_nat_hint)
 {
 	const char *pub_env;
@@ -4202,6 +4229,7 @@ static void mnVSNetAutomatchAMFailTurnRequired(void)
 	port_log("SSB64 Automatch: TURN relay required but unavailable (symmetric/CGNAT or SSB64_NETPLAY_TURN_REQUIRED)\n");
 	mnVSNetAutomatchAMAbortToCharacterSelect("TURN relay required");
 }
+#endif /* !SSB64_NETPLAY_ICE */
 
 static void mnVSNetAutomatchAMResolvePeerLan(char *peer_lan_out, u32 cap, const MmMatchResult *mr)
 {
@@ -4231,6 +4259,7 @@ static void mnVSNetAutomatchAMErr(void)
 	mnVSNetAutomatchAMAbortToCharacterSelect("connection failed");
 }
 
+#ifndef SSB64_NETPLAY_ICE
 static sb32 mnVSNetAutomatchAMTryBootstrapPeer(const MmMatchResult *mr, const char *bind, const char *peer_hp,
 					       const char *turn_permission_hp, sb32 use_turn_outbound, sb32 keep_turn_relay)
 {
@@ -4619,6 +4648,7 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	}
 	return;
 }
+#endif /* !SSB64_NETPLAY_ICE */
 
 void mnVSNetAutomatchAMFinalizeVsLoad(void)
 {
@@ -4711,6 +4741,31 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				bm = MN_AM_BIND_DEFAULT;
 			}
 			snprintf(sMnAMBindSpec, sizeof(sMnAMBindSpec), "%s", bm);
+#if defined(SSB64_NETPLAY_ICE)
+			{
+				char ice_sdp[4096];
+
+				ice_sdp[0] = '\0';
+				if (mnVSNetAutomatchAMIcePlayerReady(bm, sMnAMPublicEndpoint, (u32)sizeof(sMnAMPublicEndpoint),
+				                                     lan_buf, (u32)sizeof(lan_buf), ice_sdp,
+				                                     (u32)sizeof(ice_sdp)) == FALSE)
+				{
+					mnVSNetAutomatchAMErr();
+					continue;
+				}
+				{
+					const char *lan_for_queue = mnVSNetAutomatchAMLanPtr(lan_buf);
+
+					port_log("SSB64 Automatch ICE: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
+					         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
+					mmMatchmakingEnqueueJoinQueueIce(FALSE, sMnAMPublicEndpoint, ice_sdp,
+					                                 (u8)sMNVSNetAutomatchSlot.fkind,
+					                                 (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE
+					                                                                                      : FALSE,
+					                                 lan_for_queue);
+				}
+			}
+#else
 			if (syNetPeerConfigureUdpForAutomatch(sMnAMBindSpec, MN_AM_STUB_PEER, 1U, FALSE, 2U, FALSE) == FALSE)
 			{
 				mnVSNetAutomatchAMErr();
@@ -4753,6 +4808,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				                              lan_for_queue,
 				                              (sMnAMTurnEndpoint[0] != '\0') ? sMnAMTurnEndpoint : NULL);
 			}
+#endif
 			sMnAMState = MN_AM_JOIN;
 			continue;
 		}
@@ -4776,8 +4832,14 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			port_log(
 			    "SSB64 Automatch: MM_POLL_MATCHED poll_phase_tics=%u session=%u host=%d ticket=%.36s\n",
 			    (unsigned int)sMnAMPollPeriodTics, (unsigned int)ev.session_id, (int)ev.you_are_host, sMnAMTicket);
+#if defined(SSB64_NETPLAY_ICE)
+			memcpy(&sMnAMIcePendingMatch, &ev, sizeof(ev));
+			mnVSNetAutomatchAMIceBeginConnect(&ev);
+			sMnAMState = MN_AM_ICE_CONNECT;
+#else
 			sMnAMState = MN_AM_ENTER;
 			mnVSNetAutomatchAMEnterVs(&ev);
+#endif
 			continue;
 		}
 		if (ev.kind == MM_POLL_HEARTBEAT_OK)
@@ -4831,6 +4893,29 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			const char *lan_ep;
 
 			lan_hb[0] = '\0';
+#if defined(SSB64_NETPLAY_ICE)
+			if (((sMnAMPollPeriodTics / hb_every) % 4U) == 0U)
+			{
+				char reflex[144];
+
+				if (mmIceGetReflexiveHostport(reflex, sizeof(reflex)) != FALSE)
+				{
+					snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", reflex);
+				}
+				(void)mmLanDetectEndpoint(lan_hb, (u32)sizeof(lan_hb), -1,
+				                          (sMnAMBindSpec[0] != '\0') ? sMnAMBindSpec : NULL);
+			}
+			udp_ep = (sMnAMPublicEndpoint[0] != '\0') ? sMnAMPublicEndpoint : NULL;
+			lan_ep = mnVSNetAutomatchAMLanPtr(lan_hb);
+			if ((udp_ep != NULL) || (lan_ep != NULL))
+			{
+				mmMatchmakingEnqueueHeartbeatWithEndpoints(FALSE, sMnAMTicket, udp_ep, lan_ep);
+			}
+			else
+			{
+				mmMatchmakingEnqueueHeartbeat(FALSE, sMnAMTicket);
+			}
+#else
 			/* Re-STUN at most every 4th heartbeat; reuse cached endpoints otherwise. */
 			if (((sMnAMPollPeriodTics / hb_every) % 4U) == 0U)
 			{
@@ -4849,9 +4934,39 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			{
 				mmMatchmakingEnqueueHeartbeat(FALSE, sMnAMTicket);
 			}
+#endif
 		}
 	}
 
+#if defined(SSB64_NETPLAY_ICE)
+	if (sMnAMState == MN_AM_ICE_CONNECT)
+	{
+		const char *bind;
+
+		if (mnVSNetAutomatchAMPollAbortDuringBootstrap() != FALSE)
+		{
+			mmIceShutdown();
+			mnVSNetAutomatchAMAbortToCharacterSelect(
+			    (mnVSNetAutomatchAMPollUserCancel() != FALSE) ? "cancelled" : "connection timed out");
+		}
+		else if (mnVSNetAutomatchAMIceConnectTick() != FALSE)
+		{
+			bind = (sMnAMBindSpec[0] != '\0') ? sMnAMBindSpec : MN_AM_BIND_DEFAULT;
+			if (mnVSNetAutomatchAMIceBootstrapPeer(&sMnAMIcePendingMatch, bind) != FALSE)
+			{
+				sMnAMStagingP2PReady = TRUE;
+				sMnAMState = MN_AM_ENTER;
+			}
+			else
+			{
+				mmIceShutdown();
+				mnVSNetAutomatchAMErr();
+			}
+		}
+	}
+#endif
+
+#ifndef SSB64_NETPLAY_ICE
 	if (sMnAMState == MN_AM_BOOTSTRAP_LAN)
 	{
 		if (mnVSNetAutomatchAMPollAbortDuringBootstrap() != FALSE)
@@ -4864,6 +4979,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			mnVSNetAutomatchAMTryPendingLanBootstrap();
 		}
 	}
+#endif /* !SSB64_NETPLAY_ICE */
 }
 #endif /* PORT && SSB64_NETMENU */
 
