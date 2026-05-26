@@ -3855,6 +3855,10 @@ SYTaskmanSetup dMNVSNetAutomatchTaskmanSetup =
 #define MN_AM_POLL_MATCH_INTERVAL 4U
 #define MN_AM_POLL_HEARTBEAT_PERIOD 300U
 #define MN_AM_POLL_HEARTBEAT_PHASE 20U
+#if defined(SSB64_NETPLAY_ICE)
+/* Faster match poll while libjuice negotiates (trickle drain via GET /v1/match). */
+#define MN_AM_ICE_POLL_INTERVAL 2U
+#endif
 
 typedef enum MnVSNetAutomatchAMState
 {
@@ -3930,6 +3934,48 @@ static u32 mnVSNetAutomatchAMConnectTimeoutMs(void)
 	return (u32)ms;
 }
 
+#if defined(SSB64_NETPLAY_ICE)
+static u32 mnVSNetAutomatchAMAdaptivePollEvery(u32 base_interval)
+{
+	u32 depth;
+
+	depth = mmMatchmakingApproxPendingJobs();
+	if (depth >= 12U)
+	{
+		return base_interval * 8U;
+	}
+	if (depth >= 8U)
+	{
+		return base_interval * 4U;
+	}
+	if (depth >= 4U)
+	{
+		return base_interval * 2U;
+	}
+	return base_interval;
+}
+
+static void mnVSNetAutomatchAMMaybeEnqueueMatchPoll(u32 base_interval, sb32 trickle_only)
+{
+	if (sMnAMTicket[0] == '\0')
+	{
+		return;
+	}
+	sMnAMPollPeriodTics++;
+	if ((sMnAMPollPeriodTics % mnVSNetAutomatchAMAdaptivePollEvery(base_interval)) == 0U)
+	{
+		if (trickle_only != FALSE)
+		{
+			mmMatchmakingEnqueuePollIceTrickle(FALSE, sMnAMTicket);
+		}
+		else
+		{
+			mmMatchmakingEnqueuePollMatch(FALSE, sMnAMTicket);
+		}
+	}
+}
+#endif /* SSB64_NETPLAY_ICE */
+
 void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason)
 {
 	const char *why = (reason != NULL && reason[0] != '\0') ? reason : "aborted";
@@ -3997,7 +4043,9 @@ void mnVSNetAutomatchAMReset(void)
 	sMnAMBootstrapUsesTurnRelay = FALSE;
 	syNetPeerSetTurnOutboundRelay(FALSE);
 #endif
+	syNetPeerClearAutomatchBootstrapContext();
 #if defined(SSB64_NETPLAY_ICE)
+	mnVSNetAutomatchAMIceReset();
 	mmIceShutdown();
 	syNetPeerSetIceTransport(FALSE);
 #else
@@ -4269,6 +4317,7 @@ static sb32 mnVSNetAutomatchAMTryBootstrapPeer(const MmMatchResult *mr, const ch
 	{
 		return FALSE;
 	}
+	syNetPeerSetAutomatchBootstrapContext(mr->match_id, mr->ticket_id);
 	turn_channel_ok = FALSE;
 	syNetPeerSetTurnOutboundRelay(FALSE);
 	gSYNetPeerSuppressBootstrapSceneAdvance = TRUE;
@@ -4684,6 +4733,7 @@ sb32 mnVSNetAutomatchAMConsumeStagingHandshake(void)
 	}
 	sMnAMStagingP2PReady = FALSE;
 	sMnAMStagingRendezvousStarted = FALSE;
+	sMnAMConnectDeadlineMs = 0U;
 	return TRUE;
 }
 
@@ -4753,17 +4803,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 					mnVSNetAutomatchAMErr();
 					continue;
 				}
-				{
-					const char *lan_for_queue = mnVSNetAutomatchAMLanPtr(lan_buf);
-
-					port_log("SSB64 Automatch ICE: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
-					         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
-					mmMatchmakingEnqueueJoinQueueIce(FALSE, sMnAMPublicEndpoint, ice_sdp,
-					                                 (u8)sMNVSNetAutomatchSlot.fkind,
-					                                 (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE
-					                                                                                      : FALSE,
-					                                 lan_for_queue);
-				}
+				(void)mnVSNetAutomatchAMEnsureLanEndpoint(lan_buf, (u32)sizeof(lan_buf));
 			}
 #else
 			if (syNetPeerConfigureUdpForAutomatch(sMnAMBindSpec, MN_AM_STUB_PEER, 1U, FALSE, 2U, FALSE) == FALSE)
@@ -4809,12 +4849,19 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				                              (sMnAMTurnEndpoint[0] != '\0') ? sMnAMTurnEndpoint : NULL);
 			}
 #endif
+#if defined(SSB64_NETPLAY_ICE)
+			sMnAMState = MN_AM_BIND;
+#else
 			sMnAMState = MN_AM_JOIN;
+#endif
 			continue;
 		}
 		if (ev.kind == MM_POLL_QUEUED)
 		{
 			snprintf(sMnAMTicket, sizeof(sMnAMTicket), "%s", ev.ticket_id);
+#if defined(SSB64_NETPLAY_ICE)
+			mnVSNetAutomatchAMIceOnTicketAssigned(sMnAMTicket);
+#endif
 			mmMatchmakingEnqueuePollMatch(FALSE, sMnAMTicket);
 			sMnAMPollPeriodTics = 0;
 			sMnAMState = MN_AM_POLL;
@@ -4824,9 +4871,6 @@ void mnVSNetAutomatchMatchmakingTick(void)
 		{
 			if (sMnAMState != MN_AM_POLL)
 			{
-				port_log(
-				    "SSB64 Automatch: ignoring MM_POLL_MATCHED while state=%d session=%u host=%d ticket=%.36s\n",
-				    (int)sMnAMState, (unsigned int)ev.session_id, (int)ev.you_are_host, sMnAMTicket);
 				continue;
 			}
 			port_log(
@@ -4835,6 +4879,8 @@ void mnVSNetAutomatchMatchmakingTick(void)
 #if defined(SSB64_NETPLAY_ICE)
 			memcpy(&sMnAMIcePendingMatch, &ev, sizeof(ev));
 			mnVSNetAutomatchAMIceBeginConnect(&ev);
+			sMnAMConnectDeadlineMs = mnVSNetAutomatchAMNowMs() + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
+			sMnAMPollPeriodTics = 0U;
 			sMnAMState = MN_AM_ICE_CONNECT;
 #else
 			sMnAMState = MN_AM_ENTER;
@@ -4854,29 +4900,37 @@ void mnVSNetAutomatchMatchmakingTick(void)
 
 	if (sMnAMState == MN_AM_POLL)
 	{
-		u32 poll_every;
 		u32 hb_every;
 		u32 depth;
 
-		sMnAMPollPeriodTics++;
-		poll_every = MN_AM_POLL_MATCH_INTERVAL;
+#if defined(SSB64_NETPLAY_ICE)
+		mnVSNetAutomatchAMMaybeEnqueueMatchPoll(MN_AM_POLL_MATCH_INTERVAL, FALSE);
+#else
+		{
+			u32 poll_every;
+
+			sMnAMPollPeriodTics++;
+			poll_every = MN_AM_POLL_MATCH_INTERVAL;
+			depth = mmMatchmakingApproxPendingJobs();
+			if (depth >= 12U)
+			{
+				poll_every = MN_AM_POLL_MATCH_INTERVAL * 8U;
+			}
+			else if (depth >= 8U)
+			{
+				poll_every = MN_AM_POLL_MATCH_INTERVAL * 4U;
+			}
+			else if (depth >= 4U)
+			{
+				poll_every = MN_AM_POLL_MATCH_INTERVAL * 2U;
+			}
+			if ((sMnAMPollPeriodTics % poll_every) == 0U)
+			{
+				mmMatchmakingEnqueuePollMatch(FALSE, sMnAMTicket);
+			}
+		}
+#endif
 		depth = mmMatchmakingApproxPendingJobs();
-		if (depth >= 12U)
-		{
-			poll_every = MN_AM_POLL_MATCH_INTERVAL * 8U;
-		}
-		else if (depth >= 8U)
-		{
-			poll_every = MN_AM_POLL_MATCH_INTERVAL * 4U;
-		}
-		else if (depth >= 4U)
-		{
-			poll_every = MN_AM_POLL_MATCH_INTERVAL * 2U;
-		}
-		if ((sMnAMPollPeriodTics % poll_every) == 0U)
-		{
-			mmMatchmakingEnqueuePollMatch(FALSE, sMnAMTicket);
-		}
 		hb_every = MN_AM_POLL_HEARTBEAT_PERIOD;
 		if (depth >= 12U)
 		{
@@ -4898,7 +4952,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			{
 				char reflex[144];
 
-				if (mmIceGetReflexiveHostport(reflex, sizeof(reflex)) != FALSE)
+				if (mmIceGetSrflxHostport(reflex, sizeof(reflex)) != FALSE)
 				{
 					snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", reflex);
 				}
@@ -4939,10 +4993,35 @@ void mnVSNetAutomatchMatchmakingTick(void)
 	}
 
 #if defined(SSB64_NETPLAY_ICE)
+	if (sMnAMState == MN_AM_BIND)
+	{
+		char ice_sdp_join[4096];
+		const char *lan_for_queue;
+
+		if (mnVSNetAutomatchAMIceBindTick(ice_sdp_join, (u32)sizeof(ice_sdp_join)) != FALSE)
+		{
+			char reflex[144];
+
+			reflex[0] = '\0';
+			if (mmIceGetSrflxHostport(reflex, sizeof(reflex)) != FALSE)
+			{
+				snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", reflex);
+			}
+			lan_for_queue = mnVSNetAutomatchAMLanPtr(NULL);
+			port_log("SSB64 Automatch ICE: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
+			         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
+			mmMatchmakingEnqueueJoinQueueIce(FALSE, sMnAMPublicEndpoint, ice_sdp_join,
+			                                 (u8)sMNVSNetAutomatchSlot.fkind,
+			                                 (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE : FALSE,
+			                                 lan_for_queue);
+			sMnAMState = MN_AM_JOIN;
+		}
+	}
 	if (sMnAMState == MN_AM_ICE_CONNECT)
 	{
 		const char *bind;
 
+		mnVSNetAutomatchAMMaybeEnqueueMatchPoll(MN_AM_ICE_POLL_INTERVAL, TRUE);
 		if (mnVSNetAutomatchAMPollAbortDuringBootstrap() != FALSE)
 		{
 			mmIceShutdown();
@@ -4962,6 +5041,15 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				mmIceShutdown();
 				mnVSNetAutomatchAMErr();
 			}
+		}
+	}
+	if (sMnAMState == MN_AM_ENTER && sMnAMStagingP2PReady != FALSE)
+	{
+		if (mnVSNetAutomatchAMPollAbortDuringBootstrap() != FALSE)
+		{
+			mmIceShutdown();
+			mnVSNetAutomatchAMAbortToCharacterSelect(
+			    (mnVSNetAutomatchAMPollUserCancel() != FALSE) ? "cancelled" : "connection timed out");
 		}
 	}
 #endif
