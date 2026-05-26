@@ -3878,6 +3878,9 @@ static sb32 sMnAMStagingP2PReady = FALSE;
 static u32 sMnAMPollPeriodTics;
 static sb32 sMnAMStagingRendezvousStarted = FALSE;
 static u64 sMnAMConnectDeadlineMs;
+static u64 sMnAMTurnLastAllocateAttemptMs;
+
+#define MN_AM_TURN_ALLOCATE_COOLDOWN_MS_DEFAULT 30000U
 
 static u64 mnVSNetAutomatchAMNowMs(void)
 {
@@ -3968,6 +3971,7 @@ void mnVSNetAutomatchAMReset(void)
 	sMnAMPollPeriodTics = 0;
 	sMnAMStagingRendezvousStarted = FALSE;
 	sMnAMConnectDeadlineMs = 0U;
+	sMnAMTurnLastAllocateAttemptMs = 0U;
 	sMnAMPendingLanBootstrap = FALSE;
 	memset(&sMnAMPendingMatch, 0, sizeof(sMnAMPendingMatch));
 	sMnAMNatHint = MM_STUN_NAT_UNKNOWN;
@@ -4040,7 +4044,27 @@ static sb32 mnVSNetAutomatchAMSkipDirectReflexive(void);
 static void mnVSNetAutomatchAMFailTurnRequired(void);
 static sb32 mnVSNetAutomatchAMTryTurnPath(const MmMatchResult *mr, const char *bind, sb32 keep_turn_relay);
 
-static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_buf_size)
+static u32 mnVSNetAutomatchAMTurnAllocateCooldownMs(void)
+{
+	const char *env;
+	s32 ms;
+
+	env = getenv("SSB64_MATCHMAKING_TURN_ALLOCATE_COOLDOWN_MS");
+	ms = (env != NULL && env[0] != '\0') ? atoi(env) : (s32)MN_AM_TURN_ALLOCATE_COOLDOWN_MS_DEFAULT;
+	if (ms < 1000)
+	{
+		ms = (s32)MN_AM_TURN_ALLOCATE_COOLDOWN_MS_DEFAULT;
+	}
+	if (ms > 600000)
+	{
+		ms = 600000;
+	}
+	return (u32)ms;
+}
+
+static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_buf_size, sb32 include_nat_hint);
+
+static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_buf_size, sb32 include_nat_hint)
 {
 	const char *pub_env;
 	s32 fd;
@@ -4058,13 +4082,24 @@ static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_
 	{
 		return FALSE;
 	}
-	if (mmStunProbeIpv4Endpoint(fd, &probe) == FALSE)
+	memset(&probe, 0, sizeof(probe));
+	if (mmStunProbeIpv4EndpointQuick(fd, &probe) == FALSE)
 	{
 		return FALSE;
 	}
 	snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", probe.endpoint);
 	sMnAMNatHint = probe.nat_hint;
-	if (probe.nat_hint == MM_STUN_NAT_SYMMETRIC_SUSPECTED)
+	if ((include_nat_hint != FALSE) && (sMnAMPublicEndpoint[0] != '\0'))
+	{
+		probe.ok = TRUE;
+		snprintf(probe.endpoint, sizeof(probe.endpoint), "%s", sMnAMPublicEndpoint);
+		probe.nat_hint = sMnAMNatHint;
+		if (mmStunProbeIpv4EndpointNatHint(fd, &probe) != FALSE)
+		{
+			sMnAMNatHint = probe.nat_hint;
+		}
+	}
+	if (sMnAMNatHint == MM_STUN_NAT_SYMMETRIC_SUSPECTED)
 	{
 		port_log("SSB64 Automatch: symmetric NAT suspected — direct punch may fail (use TURN/VPN)\n");
 	}
@@ -4076,7 +4111,6 @@ static sb32 mnVSNetAutomatchAMRefreshRegisteredEndpoints(char *lan_buf, u32 lan_
 			lan_buf[0] = '\0';
 		}
 	}
-	(void)mnVSNetAutomatchAMEnsureTurnAllocate(FALSE);
 	return TRUE;
 }
 
@@ -4084,6 +4118,9 @@ static sb32 mnVSNetAutomatchAMEnsureTurnAllocate(sb32 force_retry)
 {
 	s32 fd;
 	MmTurnRelayResult turn;
+	u64 now;
+	u32 cooldown_ms;
+	u64 elapsed_ms;
 
 	if (mmTurnIsClientEnabled() == FALSE)
 	{
@@ -4093,11 +4130,29 @@ static sb32 mnVSNetAutomatchAMEnsureTurnAllocate(sb32 force_retry)
 	{
 		return TRUE;
 	}
+	now = mnVSNetAutomatchAMNowMs();
+	cooldown_ms = mnVSNetAutomatchAMTurnAllocateCooldownMs();
+	if ((sMnAMTurnLastAllocateAttemptMs != 0U) && (now >= sMnAMTurnLastAllocateAttemptMs))
+	{
+		elapsed_ms = now - sMnAMTurnLastAllocateAttemptMs;
+		if (elapsed_ms < (u64)cooldown_ms)
+		{
+			if ((force_retry == FALSE) || (mmTurnIsRequired() == FALSE))
+			{
+#ifdef PORT
+				port_log("SSB64 Automatch TURN: allocate skipped (cooldown %u ms, %u ms since last attempt)\n",
+				         (unsigned int)cooldown_ms, (unsigned int)elapsed_ms);
+#endif
+				return (sMnAMTurnEndpoint[0] != '\0') ? TRUE : FALSE;
+			}
+		}
+	}
 	fd = syNetPeerGetUdpSocketFd();
 	if (fd < 0)
 	{
 		return FALSE;
 	}
+	sMnAMTurnLastAllocateAttemptMs = now;
 	memset(&turn, 0, sizeof(turn));
 	if (mmTurnAllocateIpv4Relay(fd, &turn) != FALSE && turn.ok != FALSE)
 	{
@@ -4378,7 +4433,7 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 		char lan_refresh[144];
 
 		lan_refresh[0] = '\0';
-		(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_refresh, (u32)sizeof(lan_refresh));
+		(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_refresh, (u32)sizeof(lan_refresh), TRUE);
 	}
 	refreshed_wan[0] = '\0';
 	if (sMnAMPublicEndpoint[0] != '\0')
@@ -4673,7 +4728,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", pub_env);
 				(void)mnVSNetAutomatchAMEnsureLanEndpoint(lan_buf, (u32)sizeof(lan_buf));
 			}
-			else if (mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_buf, (u32)sizeof(lan_buf)) == FALSE)
+			else if (mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_buf, (u32)sizeof(lan_buf), FALSE) == FALSE)
 			{
 				mnVSNetAutomatchAMErr();
 				continue;
@@ -4779,7 +4834,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			/* Re-STUN at most every 4th heartbeat; reuse cached endpoints otherwise. */
 			if (((sMnAMPollPeriodTics / hb_every) % 4U) == 0U)
 			{
-				(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_hb, (u32)sizeof(lan_hb));
+				(void)mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_hb, (u32)sizeof(lan_hb), TRUE);
 			}
 			udp_ep = (sMnAMPublicEndpoint[0] != '\0') ? sMnAMPublicEndpoint : NULL;
 			lan_ep = mnVSNetAutomatchAMLanPtr(lan_hb);
