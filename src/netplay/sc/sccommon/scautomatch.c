@@ -3935,6 +3935,30 @@ static u32 mnVSNetAutomatchAMConnectTimeoutMs(void)
 }
 
 #if defined(SSB64_NETPLAY_ICE)
+/* Prefer STUN srflx; fall back to host/reflexive. Returns FALSE while still 0.0.0.0 only. */
+static sb32 mnVSNetAutomatchAMResolveQueueWanEndpoint(char *out, u32 out_cap)
+{
+	if ((out == NULL) || (out_cap < 8U))
+	{
+		return FALSE;
+	}
+	out[0] = '\0';
+	if (mmIceGetSrflxHostport(out, out_cap) != FALSE)
+	{
+		return TRUE;
+	}
+	if (mmIceGetReflexiveHostport(out, out_cap) == FALSE)
+	{
+		return FALSE;
+	}
+	if (strncmp(out, "0.0.0.0", 7) == 0)
+	{
+		out[0] = '\0';
+		return FALSE;
+	}
+	return TRUE;
+}
+
 static u32 mnVSNetAutomatchAMAdaptivePollEvery(u32 base_interval)
 {
 	u32 depth;
@@ -4081,6 +4105,12 @@ static sb32 mnVSNetAutomatchAMEnsureLanEndpoint(char *lan_buf, u32 lan_buf_size)
 		{
 			snprintf(lan_buf, lan_buf_size, "%s", sMnAMLanEndpoint);
 		}
+		return TRUE;
+	}
+	/* ICE path: mmLanDetectEndpoint in IcePlayerReady fills lan_buf before UDP socket exists. */
+	if ((lan_buf != NULL) && (lan_buf[0] != '\0'))
+	{
+		snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", lan_buf);
 		return TRUE;
 	}
 	lan_env = getenv("SSB64_MATCHMAKING_LAN_ENDPOINT");
@@ -4871,6 +4901,9 @@ void mnVSNetAutomatchMatchmakingTick(void)
 		{
 			if (sMnAMState != MN_AM_POLL)
 			{
+				port_log(
+				    "SSB64 Automatch: ignoring MM_POLL_MATCHED while state=%d session=%u host=%d ticket=%.36s\n",
+				    (int)sMnAMState, (unsigned int)ev.session_id, (int)ev.you_are_host, sMnAMTicket);
 				continue;
 			}
 			port_log(
@@ -5002,19 +5035,20 @@ void mnVSNetAutomatchMatchmakingTick(void)
 		{
 			char reflex[144];
 
-			reflex[0] = '\0';
-			if (mmIceGetSrflxHostport(reflex, sizeof(reflex)) != FALSE)
+			/* Gathering done; wait for srflx or a non-0.0.0.0 host candidate before queue POST. */
+			if (mnVSNetAutomatchAMResolveQueueWanEndpoint(reflex, (u32)sizeof(reflex)) != FALSE)
 			{
 				snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", reflex);
+				lan_for_queue = mnVSNetAutomatchAMLanPtr(NULL);
+				port_log("SSB64 Automatch ICE: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
+				         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
+				mmMatchmakingEnqueueJoinQueueIce(FALSE, sMnAMPublicEndpoint, ice_sdp_join,
+				                                 (u8)sMNVSNetAutomatchSlot.fkind,
+				                                 (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE
+				                                                                                      : FALSE,
+				                                 lan_for_queue);
+				sMnAMState = MN_AM_JOIN;
 			}
-			lan_for_queue = mnVSNetAutomatchAMLanPtr(NULL);
-			port_log("SSB64 Automatch ICE: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
-			         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
-			mmMatchmakingEnqueueJoinQueueIce(FALSE, sMnAMPublicEndpoint, ice_sdp_join,
-			                                 (u8)sMNVSNetAutomatchSlot.fkind,
-			                                 (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE : FALSE,
-			                                 lan_for_queue);
-			sMnAMState = MN_AM_JOIN;
 		}
 	}
 	if (sMnAMState == MN_AM_ICE_CONNECT)
