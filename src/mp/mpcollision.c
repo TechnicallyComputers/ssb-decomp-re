@@ -31,6 +31,109 @@ f32 dMPCollisionMaterialFrictions[/* */] =
     4.0F, 4.0F
 };
 
+#ifdef PORT
+typedef struct MPCollisionPortVSMapObjContainer MPCollisionPortVSMapObjContainer;
+
+struct MPCollisionPortVSMapObjContainer
+{
+    MPMapObjData mapobjs[11];
+};
+
+// Player spawn and map-object positions for Final Destination in VS mode.
+// Floor surface sits at Y=0 in world space (ROM mapobj data: file 114,
+// offset 0x4ED4 — all four BattlePlayer entries have y=1, i.e. floor level).
+// Using y=0 here; the physics engine snaps fighters to the floor on their first
+// frame anyway, so this is effectively identical to the ROM's y=1.
+//
+// Spacing model matches the ROM "flat stage" pattern observed at file 0x80,
+// offset 0x1F00 (BP1/2/3/4 at +300/+900/+1500/-300, ~600 between adjacent
+// screen positions). FD's platform is much wider than that stage's, so we
+// scale up to ~1000 between adjacent fighters so 4-player intros don't pile
+// up. Order: BP1 outer-left, BP3 inner-left, BP4 inner-right, BP2 outer-right.
+//   screen-left-to-right: BP1(-1500) BP3(-500) BP4(500) BP2(1500)
+// Item Y heights are above the stage so items fall onto the platform.
+// Rebirth halo platform placed well above the stage top (ROM: y=1050;
+// using 2600 for a more comfortable VS respawn arc height).
+MPCollisionPortVSMapObjContainer dMPCollisionLastVSMapObjs =
+{
+    {
+        { nMPMapObjKindBattlePlayer1, { -1500,    0 } },
+        { nMPMapObjKindBattlePlayer2, {  1500,    0 } },
+        { nMPMapObjKindBattlePlayer3, {  -500,    0 } },
+        { nMPMapObjKindBattlePlayer4, {   500,    0 } },
+        { nMPMapObjKindItem,          { -1500,  900 } },
+        { nMPMapObjKindItem,          {  -700,  700 } },
+        { nMPMapObjKindItem,          {     0,  950 } },
+        { nMPMapObjKindItem,          {   700,  700 } },
+        { nMPMapObjKindItem,          {  1500,  900 } },
+        { nMPMapObjKindItem,          {     0,  350 } },
+        { nMPMapObjKindRebirth,       {     0, 2600 } }
+    }
+};
+
+// Metal Cavern (nGRKindMetal) — Meta Crystal arena, designed for the 1v1
+// Metal Mario boss fight. The ROM mapobj data only spawns BattlePlayer1/2;
+// VS mode needs all four. Spawns follow the FD "flat stage" pattern (BP1/3
+// inner/outer left, BP4/2 inner/outer right) but scaled tighter because the
+// crystal floor is narrower than FD's platform.
+//
+// Floor-extent caveat: a previous attempt at ±700 was untested; ±300 spawned
+// fine but piled all 4 fighters on top of each other. ±600 outer with ±200
+// inner gives 400-unit gaps between adjacent fighters, which is enough
+// visual separation without falling off the platform. Bump to ±900/±300 if
+// the floor turns out to reach further; back off to ±400/±150 if any fighter
+// trips mpCollisionCheckExistLineID at intro time.
+MPCollisionPortVSMapObjContainer dMPCollisionMetalVSMapObjs =
+{
+    {
+        { nMPMapObjKindBattlePlayer1, {  -1200,  200 } },
+        { nMPMapObjKindBattlePlayer2, {   1200,  200 } },
+        { nMPMapObjKindBattlePlayer3, {  -400,  200 } },
+        { nMPMapObjKindBattlePlayer4, {   400,  200 } },
+        { nMPMapObjKindItem,          {  -700,  700 } },
+        { nMPMapObjKindItem,          {  -350,  600 } },
+        { nMPMapObjKindItem,          {     0,  800 } },
+        { nMPMapObjKindItem,          {   350,  600 } },
+        { nMPMapObjKindItem,          {   700,  700 } },
+        { nMPMapObjKindItem,          {     0,  400 } },
+        { nMPMapObjKindRebirth,       {     0, 2200 } }
+    }
+};
+
+// Battlefield (nGRKindZako) — Duel Zone arena, the Polygon Fighters' flat
+// abstract platform with no edges. Same spacing model as Metal Cavern; bumping
+// up if the platform turns out to be wider.
+MPCollisionPortVSMapObjContainer dMPCollisionZakoVSMapObjs =
+{
+    {
+        { nMPMapObjKindBattlePlayer1, {  -1500,  200 } },
+        { nMPMapObjKindBattlePlayer2, {   1500,  200 } },
+        { nMPMapObjKindBattlePlayer3, {  -500,  200 } },
+        { nMPMapObjKindBattlePlayer4, {   500,  200 } },
+        { nMPMapObjKindItem,          {  -700,  700 } },
+        { nMPMapObjKindItem,          {  -350,  600 } },
+        { nMPMapObjKindItem,          {     0,  800 } },
+        { nMPMapObjKindItem,          {   350,  600 } },
+        { nMPMapObjKindItem,          {   700,  700 } },
+        { nMPMapObjKindItem,          {     0,  400 } },
+        { nMPMapObjKindRebirth,       {     0, 2200 } }
+    }
+};
+
+// Item weights shared by all port-introduced VS stages. Same distribution as
+// the ROM uses for FD (file 114, offset 0x4ED4 weights block) — keeps item
+// drop behavior consistent across the page-1 expansion stages.
+u8 dMPCollisionPortVSItemWeights[20] =
+{
+    0x46, 0x28, 0x78, 0x00, 0x14, 0x08, 0x06, 0x0A, 0x05, 0x0C,
+    0x16, 0x08, 0x0A, 0x07, 0x0A, 0x0A, 0x0A, 0x05, 0x05, 0x12
+};
+
+// Legacy alias for the FD-specific weights table — kept so any out-of-tree
+// code that referenced dMPCollisionLastVSItemWeights continues to compile.
+#define dMPCollisionLastVSItemWeights dMPCollisionPortVSItemWeights
+#endif
+
 // 0x8012C520
 GRFileInfo dMPCollisionGroundFileInfos[/* */] =
 {
@@ -4118,6 +4221,38 @@ void mpCollisionInitGroundData(void)
     {
         unsigned int mapobj_words = (gdata->mapobj_count * 6 + 3) / 4;
         portFixupStructU16(gMPCollisionMapObjs, 0, mapobj_words);
+    }
+    if (gSCManagerSceneData.scene_curr == nSCKindVSBattle)
+    {
+        // Port-introduced VS stages override the ROM mapobj data because the
+        // ROM only spawns BattlePlayer1/2 (these stages were 1v1 boss arenas
+        // in the original game). The per-gkind container has all four
+        // BattlePlayer entries plus item / rebirth halo positions tuned for
+        // that stage's geometry. Item weights are shared across the three —
+        // the same table FD uses ships for Metal and Battlefield.
+        MPCollisionPortVSMapObjContainer *port_vs_mapobjs = NULL;
+
+        switch (gSCManagerBattleState->gkind)
+        {
+        case nGRKindLast:
+            port_vs_mapobjs = &dMPCollisionLastVSMapObjs;
+            break;
+        case nGRKindMetal:
+            port_vs_mapobjs = &dMPCollisionMetalVSMapObjs;
+            break;
+        case nGRKindZako:
+            port_vs_mapobjs = &dMPCollisionZakoVSMapObjs;
+            break;
+        default:
+            break;
+        }
+        if (port_vs_mapobjs != NULL)
+        {
+            gdata->mapobj_count = ARRAY_COUNT(port_vs_mapobjs->mapobjs);
+            gdata->mapobjs = PORT_REGISTER(port_vs_mapobjs);
+            gMPCollisionMapObjs = (MPMapObjContainer*)PORT_RESOLVE(gdata->mapobjs);
+            gMPCollisionGroundData->item_weights = PORT_REGISTER(dMPCollisionPortVSItemWeights);
+        }
     }
     // Fix MPLineInfo array — all u16 fields (yakumono_id + MPLineData[4] = 18 bytes each).
     // Must happen before mpCollisionAllocLinesGetCountTotal reads line_data->line_count.

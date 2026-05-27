@@ -4572,6 +4572,7 @@ void mnPlayersVSFuncRun(GObj *gobj)
 	s32 gkinds_num;
 	s32 i;
 	s32 gkind;
+	s32 *gkinds;
 
 	// lock game rules UI when competitive ruleset is enabled
 	{
@@ -4641,13 +4642,40 @@ void mnPlayersVSFuncRun(GObj *gobj)
 			else
 			{
 				gSCManagerSceneData.scene_curr = nSCKindVSBattle;
-				gkinds_num = (gSCManagerBackupData.unlock_mask & LBBACKUP_UNLOCK_MASK_INISHIE) ? nGRKindUnlockEnd + 1 : nGRKindStarterEnd + 1;
-
-				do
 				{
-					gkind = syUtilsRandTimeUCharRange(gkinds_num);
+					// Port-introduced playable stages (Final Destination, Metal Cavern,
+					// Battlefield) participate in the VS random pool from the start —
+					// no unlock gating on them today.
+					s32 starter_gkinds[/* */] =
+					{
+						nGRKindCastle, nGRKindSector, nGRKindJungle, nGRKindZebes, nGRKindHyrule,
+						nGRKindYoster, nGRKindPupupu, nGRKindYamabuki,
+						nGRKindLast, nGRKindMetal, nGRKindZako
+					};
+					s32 unlocked_gkinds[/* */] =
+					{
+						nGRKindCastle, nGRKindSector, nGRKindJungle, nGRKindZebes, nGRKindHyrule,
+						nGRKindYoster, nGRKindPupupu, nGRKindYamabuki, nGRKindInishie,
+						nGRKindLast, nGRKindMetal, nGRKindZako
+					};
+
+					if (gSCManagerBackupData.unlock_mask & LBBACKUP_UNLOCK_MASK_INISHIE)
+					{
+						gkinds = unlocked_gkinds;
+						gkinds_num = ARRAY_COUNT(unlocked_gkinds);
+					}
+					else
+					{
+						gkinds = starter_gkinds;
+						gkinds_num = ARRAY_COUNT(starter_gkinds);
+					}
+
+					do
+					{
+						gkind = gkinds[syUtilsRandTimeUCharRange(gkinds_num)];
+					}
+					while (gkind == gSCManagerSceneData.gkind);
 				}
-				while (gkind == gSCManagerSceneData.gkind);
 
 				gSCManagerSceneData.gkind = gkind;
 			}

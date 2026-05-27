@@ -709,6 +709,16 @@ void SC1PGameBossWallpaper1ProcUpdate(GObj *gobj)
     SC1PGameBossWallpaper3ProcUpdate0(gobj);
 }
 
+// 0x80191E00
+s32 sc1PGameBossGetWallpaperProgressDamage(void)
+{
+    if (gSCManagerSceneData.scene_curr == nSCKindVSBattle)
+    {
+        return gSCManagerBattleState->time_passed / 4;
+    }
+    else return gSCManagerBattleState->players[sSC1PGameBossMain.bossplayer].stock_damage_all;
+}
+
 // 0x80191E28
 void SC1PGameBossWallpaper2ProcUpdate0(GObj *gobj)
 {
@@ -718,7 +728,7 @@ void SC1PGameBossWallpaper2ProcUpdate0(GObj *gobj)
     {
         dobj->scale.vec.f.x = dobj->scale.vec.f.y = dobj->scale.vec.f.z = 0.0F;
     }
-    if (gSCManagerBattleState->players[sSC1PGameBossMain.bossplayer].stock_damage_all > 270)
+    if (sc1PGameBossGetWallpaperProgressDamage() > 270)
     {
         dobj->anim_speed += 0.02;
 
@@ -736,7 +746,7 @@ void SC1PGameBossWallpaper2ProcUpdate0(GObj *gobj)
 // 0x80191F28
 void SC1PGameBossWallpaper2ProcUpdate1(GObj *gobj)
 {
-    if (gSCManagerBattleState->players[sSC1PGameBossMain.bossplayer].stock_damage_all > 270)
+    if (sc1PGameBossGetWallpaperProgressDamage() > 270)
     {
         gobj->flags = GOBJ_FLAG_NONE;
 
@@ -1011,7 +1021,7 @@ void sc1PGameBossWallpaperProcUpdate(GObj *gobj)
     }
     if (sSC1PGameBossMain.bosswallpaper->change_damage_min != -1)
     {
-        if (sSC1PGameBossMain.bosswallpaper->change_damage_min < gSCManagerBattleState->players[sSC1PGameBossMain.bossplayer].stock_damage_all)
+        if (sSC1PGameBossMain.bosswallpaper->change_damage_min < sc1PGameBossGetWallpaperProgressDamage())
         {
             sSC1PGameBossMain.is_skip_wallpaper_change = FALSE;
         }
@@ -1048,7 +1058,11 @@ void sc1PGameBossInitWallpaper(void)
         gcAddGObjProcess(gobj, sc1PGameBossWallpaperProcUpdate, nGCProcessKindFunc, 3);
 
         sc1PGameBossMakeCamera();
-        sc1PGameBossSetBossPlayer();
+        if (gSCManagerSceneData.scene_curr == nSCKindVSBattle)
+        {
+            sSC1PGameBossMain.bossplayer = 0;
+        }
+        else sc1PGameBossSetBossPlayer();
 
         sSC1PGameBossMain.is_skip_wallpaper_change = FALSE;
         sSC1PGameBossMain.wallpaper_id = 0;
