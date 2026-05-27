@@ -43,7 +43,7 @@ extern float port_widescreen_clip_x_scale(void);
 #include <mm_turn.h>
 #endif
 
-extern void port_log(const char *fmt, ...);
+#include "port_log.h"
 
 void mnVSNetAutomatchAMReset(void);
 void mnVSNetAutomatchAMStartSearch(void);
@@ -3883,7 +3883,53 @@ static sb32 sMnAMBootstrapUsesTurnRelay = FALSE;
 static MnVSNetAutomatchAMState sMnAMState = MN_AM_IDLE;
 #if defined(SSB64_NETPLAY_ICE)
 static MmMatchResult sMnAMIcePendingMatch;
+static u64 sMnAMBindSrflxLogMs;
 #endif
+
+static const char *mnVSNetAutomatchAMStateName(MnVSNetAutomatchAMState state)
+{
+	switch (state)
+	{
+	case MN_AM_IDLE:
+		return "IDLE";
+	case MN_AM_ENSURE:
+		return "ENSURE";
+	case MN_AM_BIND:
+		return "BIND";
+	case MN_AM_JOIN:
+		return "JOIN";
+	case MN_AM_POLL:
+		return "POLL";
+	case MN_AM_ENTER:
+		return "ENTER";
+	case MN_AM_BOOTSTRAP_LAN:
+		return "BOOTSTRAP_LAN";
+	case MN_AM_ICE_CONNECT:
+		return "ICE_CONNECT";
+	case MN_AM_ERR:
+		return "ERR";
+	default:
+		return "?";
+	}
+}
+
+static void mnVSNetAutomatchAMSetState(MnVSNetAutomatchAMState state, const char *why)
+{
+	MnVSNetAutomatchAMState prev;
+
+	prev = sMnAMState;
+	if (state == prev)
+	{
+		return;
+	}
+	sMnAMState = state;
+	if (port_log_debug_active())
+	{
+		port_log("SSB64 Automatch: state %d->%d (%s->%s) (%s)\n", (int)prev, (int)state,
+		         mnVSNetAutomatchAMStateName(prev), mnVSNetAutomatchAMStateName(state),
+		         (why != NULL && why[0] != '\0') ? why : "");
+	}
+}
 static char sMnAMTicket[72];
 static char sMnAMPublicEndpoint[144];
 #ifndef SSB64_NETPLAY_ICE
@@ -4045,7 +4091,7 @@ sb32 mnVSNetAutomatchAMPollAbortDuringBootstrap(void)
 
 void mnVSNetAutomatchAMReset(void)
 {
-	sMnAMState = MN_AM_IDLE;
+	mnVSNetAutomatchAMSetState(MN_AM_IDLE, "reset");
 	sMnAMTicket[0] = '\0';
 	sMnAMPublicEndpoint[0] = '\0';
 #ifndef SSB64_NETPLAY_ICE
@@ -4069,6 +4115,7 @@ void mnVSNetAutomatchAMReset(void)
 #endif
 	syNetPeerClearAutomatchBootstrapContext();
 #if defined(SSB64_NETPLAY_ICE)
+	sMnAMBindSrflxLogMs = 0U;
 	mnVSNetAutomatchAMIceReset();
 	mmIceShutdown();
 	syNetPeerSetIceTransport(FALSE);
@@ -4331,10 +4378,22 @@ static void mnVSNetAutomatchAMResolvePeerLan(char *peer_lan_out, u32 cap, const 
 	}
 }
 
+static void mnVSNetAutomatchAMErrEx(const char *reason)
+{
+	const char *why;
+
+	why = (reason != NULL && reason[0] != '\0') ? reason : "connection failed";
+	if (port_log_debug_active())
+	{
+		port_log("SSB64 Automatch: error (%s)\n", why);
+	}
+	func_800269C0_275C0(nSYAudioFGMMenuDenied);
+	mnVSNetAutomatchAMAbortToCharacterSelect(why);
+}
+
 static void mnVSNetAutomatchAMErr(void)
 {
-	func_800269C0_275C0(nSYAudioFGMMenuDenied);
-	mnVSNetAutomatchAMAbortToCharacterSelect("connection failed");
+	mnVSNetAutomatchAMErrEx("connection failed");
 }
 
 #ifndef SSB64_NETPLAY_ICE
@@ -4506,7 +4565,7 @@ static void mnVSNetAutomatchAMTryPendingLanBootstrap(void)
 		         sMnAMPendingMatch.peer_lan_hostport);
 		sMnAMStagingP2PReady = TRUE;
 		sMnAMPendingLanBootstrap = FALSE;
-		sMnAMState = MN_AM_ENTER;
+		mnVSNetAutomatchAMSetState(MN_AM_ENTER, "lan bootstrap ok");
 		return;
 	}
 	sMnAMPendingLanBootstrap = FALSE;
@@ -4516,7 +4575,7 @@ static void mnVSNetAutomatchAMTryPendingLanBootstrap(void)
 	}
 	else
 	{
-		mnVSNetAutomatchAMErr();
+		mnVSNetAutomatchAMErrEx("lan bootstrap failed");
 	}
 }
 
@@ -4697,7 +4756,7 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 			snprintf(sMnAMPendingMatch.peer_lan_hostport, sizeof(sMnAMPendingMatch.peer_lan_hostport), "%s",
 			         peer_lan);
 			sMnAMPendingLanBootstrap = TRUE;
-			sMnAMState = MN_AM_BOOTSTRAP_LAN;
+			mnVSNetAutomatchAMSetState(MN_AM_BOOTSTRAP_LAN, "defer peer_lan");
 			syNetPeerPauseBetweenBootstrapAttempts();
 			return;
 		}
@@ -4723,7 +4782,7 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	}
 	else
 	{
-		mnVSNetAutomatchAMErr();
+		mnVSNetAutomatchAMErrEx("reflexive/turn bootstrap failed");
 	}
 	return;
 }
@@ -4752,7 +4811,7 @@ sb32 mnVSNetAutomatchAMConsumeStagingHandshake(void)
 		syNetPeerStartVSSession();
 		if (syNetPeerBeginStageSceneRendezvous() == FALSE)
 		{
-			mnVSNetAutomatchAMErr();
+			mnVSNetAutomatchAMErrEx("staging rendezvous failed");
 			return FALSE;
 		}
 		sMnAMStagingRendezvousStarted = TRUE;
@@ -4794,7 +4853,7 @@ void mnVSNetAutomatchAMStartSearch(void)
 	mmMatchmakingStartup();
 	(void)mmMatchmakingLoadCredentials(FALSE);
 	mmMatchmakingEnqueueEnsurePlayer(FALSE);
-	sMnAMState = MN_AM_ENSURE;
+	mnVSNetAutomatchAMSetState(MN_AM_ENSURE, "start search");
 }
 
 void mnVSNetAutomatchMatchmakingTick(void)
@@ -4830,7 +4889,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 				                                     lan_buf, (u32)sizeof(lan_buf), ice_sdp,
 				                                     (u32)sizeof(ice_sdp)) == FALSE)
 				{
-					mnVSNetAutomatchAMErr();
+					mnVSNetAutomatchAMErrEx("ICE player ready failed");
 					continue;
 				}
 				(void)mnVSNetAutomatchAMEnsureLanEndpoint(lan_buf, (u32)sizeof(lan_buf));
@@ -4838,12 +4897,12 @@ void mnVSNetAutomatchMatchmakingTick(void)
 #else
 			if (syNetPeerConfigureUdpForAutomatch(sMnAMBindSpec, MN_AM_STUB_PEER, 1U, FALSE, 2U, FALSE) == FALSE)
 			{
-				mnVSNetAutomatchAMErr();
+				mnVSNetAutomatchAMErrEx("UDP configure failed");
 				continue;
 			}
 			if (syNetPeerOpenSocket() == FALSE)
 			{
-				mnVSNetAutomatchAMErr();
+				mnVSNetAutomatchAMErrEx("UDP socket open failed");
 				continue;
 			}
 			fd = syNetPeerGetUdpSocketFd();
@@ -4855,7 +4914,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			}
 			else if (mnVSNetAutomatchAMRefreshRegisteredEndpoints(lan_buf, (u32)sizeof(lan_buf), FALSE) == FALSE)
 			{
-				mnVSNetAutomatchAMErr();
+				mnVSNetAutomatchAMErrEx("endpoint refresh failed");
 				continue;
 			}
 			if (mmTurnIsRequired() != FALSE)
@@ -4880,9 +4939,9 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			}
 #endif
 #if defined(SSB64_NETPLAY_ICE)
-			sMnAMState = MN_AM_BIND;
+			mnVSNetAutomatchAMSetState(MN_AM_BIND, "ICE player ready");
 #else
-			sMnAMState = MN_AM_JOIN;
+			mnVSNetAutomatchAMSetState(MN_AM_JOIN, "player ready");
 #endif
 			continue;
 		}
@@ -4894,7 +4953,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 #endif
 			mmMatchmakingEnqueuePollMatch(FALSE, sMnAMTicket);
 			sMnAMPollPeriodTics = 0;
-			sMnAMState = MN_AM_POLL;
+			mnVSNetAutomatchAMSetState(MN_AM_POLL, "queued");
 			continue;
 		}
 		if (ev.kind == MM_POLL_MATCHED)
@@ -4914,9 +4973,9 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			mnVSNetAutomatchAMIceBeginConnect(&ev);
 			sMnAMConnectDeadlineMs = mnVSNetAutomatchAMNowMs() + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
 			sMnAMPollPeriodTics = 0U;
-			sMnAMState = MN_AM_ICE_CONNECT;
+			mnVSNetAutomatchAMSetState(MN_AM_ICE_CONNECT, "matched");
 #else
-			sMnAMState = MN_AM_ENTER;
+			mnVSNetAutomatchAMSetState(MN_AM_ENTER, "matched");
 			mnVSNetAutomatchAMEnterVs(&ev);
 #endif
 			continue;
@@ -4927,7 +4986,7 @@ void mnVSNetAutomatchMatchmakingTick(void)
 		}
 		if (ev.kind == MM_POLL_ERROR)
 		{
-			mnVSNetAutomatchAMErr();
+			mnVSNetAutomatchAMErrEx("matchmaking error");
 		}
 	}
 
@@ -5040,14 +5099,29 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			{
 				snprintf(sMnAMPublicEndpoint, sizeof(sMnAMPublicEndpoint), "%s", reflex);
 				lan_for_queue = mnVSNetAutomatchAMLanPtr(NULL);
-				port_log("SSB64 Automatch ICE: join queue wan=%s lan=%s\n", sMnAMPublicEndpoint,
-				         (lan_for_queue != NULL) ? lan_for_queue : "(none)");
+				port_log("SSB64 Automatch ICE: join queue wan=%s lan=%s ice_sdp_len=%zu\n",
+				         sMnAMPublicEndpoint, (lan_for_queue != NULL) ? lan_for_queue : "(none)",
+				         strlen(ice_sdp_join));
+				if (ice_sdp_join[0] == '\0')
+				{
+					port_log("SSB64 Automatch ICE: WARNING join queue without local ice_sdp\n");
+				}
 				mmMatchmakingEnqueueJoinQueueIce(FALSE, sMnAMPublicEndpoint, ice_sdp_join,
 				                                 (u8)sMNVSNetAutomatchSlot.fkind,
 				                                 (sMNVSNetAutomatchSlot.is_fighter_selected != FALSE) ? TRUE
 				                                                                                      : FALSE,
 				                                 lan_for_queue);
-				sMnAMState = MN_AM_JOIN;
+				mnVSNetAutomatchAMSetState(MN_AM_JOIN, "ICE bind complete");
+			}
+			else if (port_log_debug_active())
+			{
+				u64 now_ms = mnVSNetAutomatchAMNowMs();
+
+				if ((sMnAMBindSrflxLogMs == 0U) || ((now_ms - sMnAMBindSrflxLogMs) >= 2000U))
+				{
+					port_log("SSB64 Automatch ICE: waiting for srflx/reflexive WAN endpoint\n");
+					sMnAMBindSrflxLogMs = now_ms;
+				}
 			}
 		}
 	}
@@ -5068,12 +5142,12 @@ void mnVSNetAutomatchMatchmakingTick(void)
 			if (mnVSNetAutomatchAMIceBootstrapPeer(&sMnAMIcePendingMatch, bind) != FALSE)
 			{
 				sMnAMStagingP2PReady = TRUE;
-				sMnAMState = MN_AM_ENTER;
+				mnVSNetAutomatchAMSetState(MN_AM_ENTER, "ICE connected");
 			}
 			else
 			{
 				mmIceShutdown();
-				mnVSNetAutomatchAMErr();
+				mnVSNetAutomatchAMErrEx("ICE bootstrap failed");
 			}
 		}
 	}
