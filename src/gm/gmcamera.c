@@ -755,6 +755,14 @@ void gmCameraPlayerZoomFuncCamera(GObj *camera_gobj)
         gmCameraUpdatePlayerZoom(camera_gobj);
         return;
     }
+    if ((syNetPeerIsVSSessionActive() != FALSE) &&
+        (gSCManagerBattleState != NULL) &&
+        (gSCManagerBattleState->game_status == nSCBattleGameStatusWait) &&
+        (syNetPeerGetHighestRemoteTick() == 0U))
+    {
+        dGMCameraFuncList[gGMCameraStruct.status_default](camera_gobj);
+        return;
+    }
 #endif
     if (gmCameraCheckPausePlayerOutBounds(&DObjGetStruct(gGMCameraStruct.pzoom_fighter_gobj)->translate.vec.f) != FALSE)
     {

@@ -289,6 +289,7 @@ void scVSBattleStartBattle(void)
 	syNetReplayStartVSSession(gSCManagerBattleState);
 	/* Idempotent when automatch staging already called syNetPeerStartVSSession. */
 	syNetPeerStartVSSession();
+	syNetPeerReapplySimSlotInputSources();
 
 	gSCManagerSceneData.is_reset = FALSE;
 	gSCManagerSceneData.is_suddendeath = FALSE;

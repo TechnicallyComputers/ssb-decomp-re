@@ -3,6 +3,9 @@
 #ifdef PORT
 #include <port_log.h>
 extern void portFixupMObjSub(void *mobjsub);
+#if defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+#endif
 #endif
 
 extern void syInterpCubic(Vec3f*, void*, f32);
@@ -425,6 +428,9 @@ void gcParseDObjAnimJoint(DObj *dobj)
             dobj->anim_wait -= dobj->anim_speed;
             dobj->anim_frame += dobj->anim_speed;
             dobj->parent_gobj->anim_frame = dobj->anim_frame;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            syNetplayQuantizeDObjAnimScalars(dobj);
+#endif
 
             if (dobj->anim_wait > 0.0F)
             {
@@ -997,6 +1003,9 @@ void gcPlayDObjAnimJoint(DObj *dobj)
         { 
             dobj->anim_wait = AOBJ_ANIM_NULL;
         }
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetplayQuantizeDObjTranslate(dobj);
+#endif
     }
 }
 
