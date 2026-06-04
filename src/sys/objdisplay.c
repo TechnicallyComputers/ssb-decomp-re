@@ -9,6 +9,7 @@
 #ifdef PORT
 #include "port_log.h"
 #include "port_scene_heap.h"
+#include "intro_room_draw_diag.h"
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -337,6 +338,20 @@ static void* gcTryResolveTokenArrayEntry(const char *issue, DObj *dobj, MObj *mo
     return resolved;
 }
 
+static s32 gcSuspiciousDLWarningLimit(void)
+{
+    static s32 sLimit = -1;
+
+    if (sLimit < 0)
+    {
+        const char *env = getenv("SSB64_DECOMP_DIAG");
+
+        /* SSB64_DECOMP_DIAG: raise cap so opening-room background nodes log after outside/sunlight. */
+        sLimit = (env != NULL && env[0] != '\0' && strcmp(env, "0") != 0) ? 512 : 64;
+    }
+    return sLimit;
+}
+
 static void gcLogSuspiciousDLPointer(const char *issue, DObj *dobj, unsigned long long draw_dl_raw, s32 list_id, DObjDLLink *dl_link)
 {
     void *draw_dl = (void*)draw_dl_raw;
@@ -351,7 +366,7 @@ static void gcLogSuspiciousDLPointer(const char *issue, DObj *dobj, unsigned lon
         return;
     }
     resolved_dl = PORT_RESOLVE((u32)draw_dl_raw);
-    if (sGCDLPointerWarningCount < 64)
+    if (sGCDLPointerWarningCount < gcSuspiciousDLWarningLimit())
     {
         port_log
         (
@@ -1254,8 +1269,9 @@ s32 gcPrepDObjMatrix(Gfx **dl, DObj *dobj)
                 {
                     f32 cosx, sinx;
 
-                    sinx = __sinf(dobj->rotate.vec.f.x); // sp1CC
-                    cosx = cosf(dobj->rotate.vec.f.x); // sp1C8 ?
+                    /* PORT: render MVP — SSB64_RENDER_* (netmenu: gSYSinTable). See matrix.h. */
+                    sinx = SSB64_RENDER_SINF(dobj->rotate.vec.f.x); // sp1CC
+                    cosx = SSB64_RENDER_COSF(dobj->rotate.vec.f.x); // sp1C8 ?
 
                     // f2 * f8 -> f12
                     f12 = dobj->scale.vec.f.y * gGCScaleX;
@@ -1299,8 +1315,9 @@ s32 gcPrepDObjMatrix(Gfx **dl, DObj *dobj)
                 {
                     f32 cosz, sinz;
 
-                    sinz = __sinf(dobj->rotate.vec.f.z); // sp190
-                    cosz = cosf(dobj->rotate.vec.f.z); // sp188 ?
+                    /* PORT: render MVP — SSB64_RENDER_* (case 45 comment). */
+                    sinz = SSB64_RENDER_SINF(dobj->rotate.vec.f.z); // sp190
+                    cosz = SSB64_RENDER_COSF(dobj->rotate.vec.f.z); // sp188 ?
 
                     f12 = dobj->scale.vec.f.y * gGCScaleX;
 
@@ -2253,6 +2270,9 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
         dl_link = dobj->dl_link;
         dl = sGCCurrentDL;
         num = gcPrepDObjMatrix(&sGCCurrentDL, dobj);
+#ifdef PORT
+        ssb64IntroRoomDrawDiagOnDObjMatrixPrep(dobj, num, gGCScaleX);
+#endif
 
         if ((dl_link != NULL) && !(dobj->flags & DOBJ_FLAG_NOTEXTURE))
         {
@@ -2337,6 +2357,9 @@ void gcDrawDObjTreeDLLinks(DObj *dobj)
                     }
                 set_display_list:
                     gSPDisplayList(gSYTaskmanDLHeads[dl_link->list_id]++, PORT_RESOLVE_GFX(dl_link->dl));
+#ifdef PORT
+                    ssb64IntroRoomDrawDiagOnDisplayList(dobj, dl_link->list_id, num, gGCScaleX);
+#endif
                 }
                 dl_link++;
             }

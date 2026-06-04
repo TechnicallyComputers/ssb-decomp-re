@@ -1099,7 +1099,6 @@ void grSectorArwingUpdateCollisions(void)
             if ((gGRCommonStruct.sector.is_arwing_z_collision == FALSE) || (gGRCommonStruct.sector.is_arwing_line_collision == FALSE))
             {
                 mpCollisionSetYakumonoOnID(1);
-                mpCollisionSetYakumonoPosID(1, &pos);
             }
             mpCollisionSetYakumonoPosID(1, &pos);
         }

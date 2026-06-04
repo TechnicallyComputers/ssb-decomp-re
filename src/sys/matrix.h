@@ -181,4 +181,23 @@ extern void syMatrixRotRpyD(Mtx *m, f32 r, f32 p, f32 y);
 extern void syMatrixTraRotRpyDF(Mtx44f *mf, f32 tx, f32 ty, f32 tz, f32 r, f32 p, f32 y);
 extern void syMatrixTraRotRpyD(Mtx *m, f32 tx, f32 ty, f32 tz, f32 r, f32 p, f32 y);
 
+#include <common.h>
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* PORT: Render MVP float sin/cos from gSYSinTable — netmenu only (see syMatrixSinF in matrix.c). */
+extern f32 syMatrixSinF(f32 rad);
+extern f32 syMatrixCosF(f32 rad);
+#endif
+
+/* PORT: Render MVP trig at lbcommon/objdisplay/mn* callsites. Netmenu → gSYSinTable float;
+ * else __sinf/__cosf (offline libc_compat wrappers). Not for sim/sync paths.
+ * See docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
+#if defined(PORT) && defined(SSB64_NETMENU)
+#define SSB64_RENDER_SINF(rad) syMatrixSinF(rad)
+#define SSB64_RENDER_COSF(rad) syMatrixCosF(rad)
+#else
+#define SSB64_RENDER_SINF(rad) __sinf(rad)
+#define SSB64_RENDER_COSF(rad) __cosf(rad)
+#endif
+
 #endif

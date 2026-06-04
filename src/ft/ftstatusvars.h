@@ -71,6 +71,10 @@ typedef enum FTStatusVarsOverlay
 void syNetplayStatusVarsWitnessNoteAccess(const FTStruct *fp, FTStatusVarsOverlay overlay);
 void syNetplayStatusVarsWitnessEnterDamageInit(void);
 void syNetplayStatusVarsWitnessLeaveDamageInit(void);
+void syNetplayStatusVarsWitnessProbeJumpAerialEntry(const FTStruct *fp);
+void syNetplayStatusVarsWitnessProbeAirVelTransN(const FTStruct *fp, const DObj *transn_joint,
+                                                 const DObj *topn_joint, f32 out_drift, f32 out_vy,
+                                                 f32 out_vz, f32 cos_v, f32 sin_v);
 #endif
 
 static inline void ftStatusVarsNoteAccess(const FTStruct *fp, FTStatusVarsOverlay overlay)
@@ -80,6 +84,15 @@ static inline void ftStatusVarsNoteAccess(const FTStruct *fp, FTStatusVarsOverla
 #else
     (void)fp;
     (void)overlay;
+#endif
+}
+
+static inline void ftStatusVarsProbeJumpAerialEntry(const FTStruct *fp)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayStatusVarsWitnessProbeJumpAerialEntry(fp);
+#else
+    (void)fp;
 #endif
 }
 

@@ -11,6 +11,19 @@
  **************************************************************************/
 
 #include <PR/guint.h>
+#include <string.h> /* PORT (ungated, netmenu-only TU): for ssb64_float_bits memcpy. */
+
+/* PORT (ungated, netmenu-only TU): IDO used *(int*)&x bit-pun on float exponent.
+ * Undefined behavior on Clang strict-aliasing → intermittent wrong trig / vanish.
+ * Offline (SSB64_NETMENU=OFF) does not compile this file. See
+ * docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
+static int ssb64_float_bits(float x)
+{
+	int bits;
+
+	memcpy(&bits, &x, sizeof(bits));
+	return bits;
+}
 
 /* ====================================================================
  * ====================================================================
@@ -31,28 +44,36 @@
  */
 
 #pragma weak fsin = __sinf
+#if !(defined(PORT) && defined(SSB64_NETMENU))
+/* PORT (gated): N64 ROM weak alias sinf=__sinf. Netmenu omits — sim uses __sinf
+ * explicitly; bare sinf() must stay libc for audio LFO (alCents2Ratio hang).
+ * See docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
 #pragma weak sinf = __sinf
+#endif
 #define	fsin __sinf
 
 /* coefficients for polynomial approximation of sin on +/- pi/2 */
 
+/* PORT: SSB64_DU_HL reorders the { hi, lo } halves for the host endianness so .d is the
+ * intended double. fsin dodges the broken range-reduction constants for |x|<1.5 via its
+ * fast path, but is still wrong for larger angles without this. See guint.h. */
 static const du	P[] =
 {
-	{0x3ff00000,	0x00000000},
-	{0xbfc55554,	0xbc83656d},
-	{0x3f8110ed,	0x3804c2a0},
-	{0xbf29f6ff,	0xeea56814},
-	{0x3ec5dbdf,	0x0e314bfe},
+	SSB64_DU_HL(0x3ff00000,	0x00000000),
+	SSB64_DU_HL(0xbfc55554,	0xbc83656d),
+	SSB64_DU_HL(0x3f8110ed,	0x3804c2a0),
+	SSB64_DU_HL(0xbf29f6ff,	0xeea56814),
+	SSB64_DU_HL(0x3ec5dbdf,	0x0e314bfe),
 };
 
 static const du	rpi =
-{0x3fd45f30,	0x6dc9c883};
+SSB64_DU_HL(0x3fd45f30,	0x6dc9c883);
 
 static const du	pihi =
-{0x400921fb,	0x50000000};
+SSB64_DU_HL(0x400921fb,	0x50000000);
 
 static const du	pilo =
-{0x3e6110b4,	0x611a6263};
+SSB64_DU_HL(0x3e6110b4,	0x611a6263);
 
 static const fu	zero = {0x00000000};
 
@@ -76,7 +97,8 @@ double	result;
 int	ix, xpt;
 
 
-	ix = *(int *)&x;
+	/* PORT (ungated): replaces IDO *(int*)&x — ssb64_float_bits avoids UB (see helper above). */
+	ix = ssb64_float_bits(x);
 	xpt = (ix >> 22);
 	xpt &= 0x1ff;
 

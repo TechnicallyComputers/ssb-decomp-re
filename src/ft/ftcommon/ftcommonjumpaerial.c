@@ -180,6 +180,8 @@ void ftCommonJumpAerialSetStatus(GObj *fighter_gobj, s32 input_source)
     else ftStatusVarsJumpAerial(fp)->turn_tics = 0;
 
     ftCommonJumpAerialUpdateModelYaw(fp);
+
+    ftStatusVarsProbeJumpAerialEntry(fp); /* SSB64_NETMENU diagnostic: no-op offline. */
 }
 
 // 0x8013FF38
@@ -252,6 +254,8 @@ void ftCommonJumpAerialMultiSetStatus(GObj *fighter_gobj, s32 input_source)
     else ftStatusVarsJumpAerial(fp)->turn_tics = 0;
 
     ftCommonJumpAerialUpdateModelYaw(fp);
+
+    ftStatusVarsProbeJumpAerialEntry(fp); /* SSB64_NETMENU diagnostic: no-op offline. */
 }
 
 // 0x8014012C

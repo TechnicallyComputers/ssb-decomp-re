@@ -99,6 +99,23 @@ s32 syMatrixFastCos(f32 x)
     return cosx;
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* PORT: Render-only float sin/cos from gSYSinTable (s14 fixed-point → float). Netmenu MVP
+ * paths use these instead of N64 __sinf/__cosf polynomial (degenerate FTOFIX32 matrices).
+ * Sim / sync TUs keep __sinf/__cosf. See docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
+#define SYMATRIX_S14_TO_F32(v) ((f32)(v) / 16384.0F)
+
+f32 syMatrixSinF(f32 x)
+{
+    return SYMATRIX_S14_TO_F32(syMatrixFastSin(x));
+}
+
+f32 syMatrixCosF(f32 x)
+{
+    return SYMATRIX_S14_TO_F32(syMatrixFastCos(x));
+}
+#endif /* PORT && SSB64_NETMENU */
+
 // As noticed in Kirby64 decomp, these functions are copies from libultra, but
 // with explicit float constants and other slight modifications.
 
@@ -660,8 +677,14 @@ void syMatrixPerspF
     s32 unused2;
 
     fovy *= DTOR32;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* PORT: render-only syMatrixPerspF — table sin/cos (not N64 __sinf poly). */
+    cos = syMatrixCosF(fovy / 2);
+    sin = syMatrixSinF(fovy / 2);
+#else
     cos = cosf(fovy / 2);
     sin = sinf(fovy / 2);
+#endif
     cot = cos / sin;
 
     mf[0][0] = (cot / aspect) * scale;

@@ -427,7 +427,11 @@ void ftPhysicsGetAirVelTransN(FTStruct *fp, f32 *z, f32 *y, f32 *x) // Ness / Yo
     {
     f32 anim_vel_z = (transn_joint->translate.vec.f.z - fp->anim_vel.z) * fp->lr * topn_joint->scale.vec.f.z;
     f32 anim_vel_y = (transn_joint->translate.vec.f.y - fp->anim_vel.y) * topn_joint->scale.vec.f.y;
-    f32 cos = cosf(transn_joint->rotate.vec.f.z);
+    /* PORT (ungated): __cosf pairs with __sinf for TransN anim-vel rotation (ft/ sim).
+     * Netmenu omits cosf weak alias → bare cosf() was libc while __sinf was N64 poly.
+     * NETMENU=OFF: libc_compat __cosf wraps cosf (noop). See
+     * docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
+    f32 cos = __cosf(transn_joint->rotate.vec.f.z);
     f32 sin = __sinf(transn_joint->rotate.vec.f.z);
 
     if (z != NULL)
@@ -442,6 +446,17 @@ void ftPhysicsGetAirVelTransN(FTStruct *fp, f32 *z, f32 *y, f32 *x) // Ness / Yo
     {
         *x = (transn_joint->translate.vec.f.x - fp->anim_vel.x) * -fp->lr * topn_joint->scale.vec.f.x;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU diagnostic (stripped offline): catch the tick this animated-velocity math
+     * first emits a non-finite output and dump its inputs. Logs only under
+     * SSB64_NETPLAY_STATUSVARS_WITNESS=1. Recomputed locally so vanilla writes stay untouched. */
+    syNetplayStatusVarsWitnessProbeAirVelTransN(
+        fp, transn_joint, topn_joint,
+        (anim_vel_z * cos) - (anim_vel_y * sin),
+        (anim_vel_z * sin) + (anim_vel_y * cos),
+        (transn_joint->translate.vec.f.x - fp->anim_vel.x) * -fp->lr * topn_joint->scale.vec.f.x,
+        cos, sin);
+#endif
     }
 }
 

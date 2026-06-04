@@ -212,7 +212,10 @@ sb32 wpPikachuThunderJoltGroundProcUpdate(GObj *weapon_gobj)
         efManagerDustExpandSmallMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f, 1.0F);
         return TRUE;
     }
-    wp->physics.vel_air.x = cosf(DObjGetStruct(weapon_gobj)->rotate.vec.f.z) * WPPIKACHUJOLT_VEL;
+    /* PORT (ungated): __cosf pairs with __sinf on weapon vel (wp/ sync path).
+     * Netmenu: N64 polynomial via gu/cosf.c; NETMENU=OFF: __cosf wraps cosf (noop).
+     * See docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
+    wp->physics.vel_air.x = __cosf(DObjGetStruct(weapon_gobj)->rotate.vec.f.z) * WPPIKACHUJOLT_VEL;
     wp->physics.vel_air.y = __sinf(DObjGetStruct(weapon_gobj)->rotate.vec.f.z) * WPPIKACHUJOLT_VEL;
 
     switch (wp->weapon_vars.thunder_jolt.line_type)

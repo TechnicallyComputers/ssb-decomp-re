@@ -1,6 +1,7 @@
 #include <ft/fighter.h>
 #include <sc/scene.h>
 #include <mn/menu.h>
+#include <sys/matrix.h>
 #include <sys/video.h>
 #include <sys/rdp.h>
 #include <reloc_data.h>
@@ -2554,16 +2555,17 @@ void mnCharactersMoveFighterCamera(CObj *cobj, f32 angle, s32 unused)
 
 	radians = F_CLC_DTOR32(angle);
 
-	cobj->vec.eye.y = __sinf(radians) * 3000.0F;
-	cobj->vec.eye.z = cosf(radians) * 3000.0F;
+	/* PORT: render camera — SSB64_RENDER_* (netmenu: gSYSinTable; else __sinf/__cosf). See matrix.h. */
+	cobj->vec.eye.y = SSB64_RENDER_SINF(radians) * 3000.0F;
+	cobj->vec.eye.z = SSB64_RENDER_COSF(radians) * 3000.0F;
 
 	theta = syUtilsArcTan2(370.0F, 0.0F) + radians;
-	cobj->vec.at.y = __sinf(theta) * 370.0F;
-	cobj->vec.at.z = cosf(theta) * 370.0F;
+	cobj->vec.at.y = SSB64_RENDER_SINF(theta) * 370.0F;
+	cobj->vec.at.z = SSB64_RENDER_COSF(theta) * 370.0F;
 
 	theta = syUtilsArcTan2(1.0F, 0.0F) + radians;
-	cobj->vec.up.y = __sinf(theta);
-	cobj->vec.up.z = cosf(theta);
+	cobj->vec.up.y = SSB64_RENDER_SINF(theta);
+	cobj->vec.up.z = SSB64_RENDER_COSF(theta);
 }
 
 // 0x80133840

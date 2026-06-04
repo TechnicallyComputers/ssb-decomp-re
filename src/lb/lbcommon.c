@@ -1,4 +1,5 @@
 #include <lb/library.h>
+#include <sys/matrix.h>
 #include <ft/fighter.h>
 #include <gr/ground.h>
 #include <sys/video.h>
@@ -488,7 +489,10 @@ sb32 lbCommonCheckAdjustSim2D(Vec3f *a, Vec3f *b, f32 angle)
 
     if (similarity <= 0.0F)
     {
-        if (similarity >= cosf(angle + F_CST_DTOR32(90.0F)))
+        /* PORT (ungated): cosf → __cosf for netmenu N64 poly routing (lb/ sim path).
+         * NETMENU=OFF: libc_compat __cosf wraps cosf (noop). See
+         * docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
+        if (similarity >= __cosf(angle + F_CST_DTOR32(90.0F)))
         {
             orientation = b->x * a->y - b->y * a->x;
             
@@ -1951,9 +1955,10 @@ sb32 func_ovl0_800CA194(Mtx *mtx, DObj *dobj, Gfx **dls)
 
     ai = (int*)&mtx->m[0][0];
     af = (int*)&mtx->m[2][0];
-    
-    sinz = __sinf(dobj->rotate.vec.f.z);
-    cosz = __cosf(dobj->rotate.vec.f.z);
+
+    /* PORT: render MVP — SSB64_RENDER_* (netmenu: gSYSinTable; else __sinf/__cosf). See matrix.h. */
+    sinz = SSB64_RENDER_SINF(dobj->rotate.vec.f.z);
+    cosz = SSB64_RENDER_COSF(dobj->rotate.vec.f.z);
 
     e1 = FTOFIX32(gGCMatrixPerspF[0][0] * cosz + gGCMatrixPerspF[1][0] * sinz);
     e2 = FTOFIX32(gGCMatrixPerspF[0][1] * cosz + gGCMatrixPerspF[1][1] * sinz);
@@ -2025,12 +2030,13 @@ sb32 func_ovl0_800CA5C8(Mtx *mtx, DObj *dobj, Gfx **dls)
 
     ai = (int*)&mtx->m[0][0];
     af = (int*)&mtx->m[2][0];
-    
-    sinx = __sinf(dobj->rotate.vec.f.x);
-    cosx = __cosf(dobj->rotate.vec.f.x);
-    
-    siny = __sinf(dobj->rotate.vec.f.y);
-    cosy = __cosf(dobj->rotate.vec.f.y);
+
+    /* PORT: render MVP — SSB64_RENDER_* (see func_ovl0_800CA194). */
+    sinx = SSB64_RENDER_SINF(dobj->rotate.vec.f.x);
+    cosx = SSB64_RENDER_COSF(dobj->rotate.vec.f.x);
+
+    siny = SSB64_RENDER_SINF(dobj->rotate.vec.f.y);
+    cosy = SSB64_RENDER_COSF(dobj->rotate.vec.f.y);
 
     e1 = FTOFIX32(gGCMatrixPerspF[0][0] * cosy + gGCMatrixPerspF[2][0] * -siny);
     e2 = FTOFIX32(gGCMatrixPerspF[0][1] * cosy + gGCMatrixPerspF[2][1] * -siny);
@@ -2105,13 +2111,14 @@ sb32 func_ovl0_800CAB48(Mtx *mtx, DObj *dobj, Gfx **dls)
     ai = (int*)&mtx->m[0][0];
     af = (int*)&mtx->m[2][0];
 
-    sinx = __sinf(dobj->rotate.vec.f.x);
-    cosx = __cosf(dobj->rotate.vec.f.x);
+    /* PORT: render MVP — SSB64_RENDER_* (see func_ovl0_800CA194). */
+    sinx = SSB64_RENDER_SINF(dobj->rotate.vec.f.x);
+    cosx = SSB64_RENDER_COSF(dobj->rotate.vec.f.x);
 
     p = &dobj->scale.vec.f.x;
-    
-    siny = __sinf(dobj->rotate.vec.f.y);
-    cosy = __cosf(dobj->rotate.vec.f.y);
+
+    siny = SSB64_RENDER_SINF(dobj->rotate.vec.f.y);
+    cosy = SSB64_RENDER_COSF(dobj->rotate.vec.f.y);
 
     scaley = (dobj->scale.vec.f.y * gGCScaleX);
     scalex = gGCScaleX *= *p;

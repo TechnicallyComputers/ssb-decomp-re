@@ -201,12 +201,24 @@ sb32 ftNessSpecialHiCheckCollidePKThunder(GObj *fighter_gobj)
 // 0x80153E04
 void ftNessSpecialHiStartProcUpdate(GObj *fighter_gobj)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetplayNessProbeFighterNaN(fighter_gobj, ftGetStruct(fighter_gobj), "start_tick");
+    }
+#endif
     ftAnimEndCheckSetStatus(fighter_gobj, ftNessSpecialHiHoldSetStatus);
 }
 
 // 0x80153E28
 void ftNessSpecialAirHiStartProcUpdate(GObj *fighter_gobj)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetplayNessProbeFighterNaN(fighter_gobj, ftGetStruct(fighter_gobj), "start_tick");
+    }
+#endif
     ftAnimEndCheckSetStatus(fighter_gobj, ftNessSpecialAirHiHoldSetStatus);
 }
 
@@ -376,7 +388,9 @@ void ftNessSpecialHiHoldProcUpdate(GObj *fighter_gobj)
 #if defined(PORT) && defined(SSB64_NETMENU)
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
+        syNetplayNessSyncPKThunderPosDuringHold(fighter_gobj);
         syNetplayCanonicalizeNessPKThunderHoldSimState(fighter_gobj);
+        syNetplayNessPrepareHoldSelfHitCoupling(fighter_gobj);
     }
 #endif
 
@@ -407,7 +421,9 @@ void ftNessSpecialAirHiHoldProcUpdate(GObj *fighter_gobj)
 #if defined(PORT) && defined(SSB64_NETMENU)
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
+        syNetplayNessSyncPKThunderPosDuringHold(fighter_gobj);
         syNetplayCanonicalizeNessPKThunderHoldSimState(fighter_gobj);
+        syNetplayNessPrepareHoldSelfHitCoupling(fighter_gobj);
     }
 #endif
 
@@ -1035,14 +1051,6 @@ void ftNessSpecialHiJibakuSetStatus(GObj *fighter_gobj)
     f32 angle_diff;
     s32 unused;
     Vec3f pos;
-
-#if defined(PORT) && defined(SSB64_NETMENU)
-    if (syNetplayRollbackSemanticsActive() != FALSE)
-    {
-        syNetplayNessRefreshPKThunderPosForJibakuLaunch(fighter_gobj, fp);
-        syNetplayNessNotifyJibakuTriggered(fighter_gobj, fp, fp->status_id);
-    }
-#endif
 
     if (fp->coll_data.floor_flags & MAP_VERTEX_COLL_PASS) goto setair;
     

@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 extern void port_log(const char *fmt, ...);
+#include "intro_room_draw_diag.h"
 #include <gr/ground.h>
 #if defined(SSB64_NETMENU)
 #include "gameloop.h"
@@ -1120,6 +1121,9 @@ void syTaskmanRunTask(SYTaskFunction *tfunc)
 				tfunc->task_draw(tfunc);
 
 				dSYTaskmanFrameCount++;
+#ifdef PORT
+				ssb64IntroRoomDrawDiagOnTaskFrame(dSYTaskmanFrameCount);
+#endif
 				sSYTaskmanFrameTimeDelta = (osGetCount() - sSYTaskmanTimeStart) / 2971;
 
 				if (syTaskmanCheckBreakLoop() != FALSE)
@@ -1190,6 +1194,9 @@ void syTaskmanRunTask(SYTaskFunction *tfunc)
 			tfunc->task_draw(tfunc);
 
 			dSYTaskmanFrameCount++;
+#ifdef PORT
+			ssb64IntroRoomDrawDiagOnTaskFrame(dSYTaskmanFrameCount);
+#endif
 			sSYTaskmanFrameTimeDelta = (osGetCount() - sSYTaskmanTimeStart) / 2971;
 
 			if (syTaskmanCheckBreakLoop() != FALSE)
@@ -1382,6 +1389,7 @@ void syTaskmanLoadScene(SYTaskmanSceneSetup *tscene, void (*func_start)(void))
 	dSYTaskmanUpdateCount = dSYTaskmanFrameCount = 0;
 
 #ifdef PORT
+	ssb64IntroRoomDrawDiagOnSceneReset();
 	/* Automatch staging→VS and other taskman scene loads skip scManagerRunLoop's union zero. */
 	memset(&gGRCommonStruct, 0, sizeof(gGRCommonStruct));
 #if defined(SSB64_NETMENU)

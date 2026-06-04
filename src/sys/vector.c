@@ -127,8 +127,12 @@ f32 syVectorAngleDiff3D(Vec3f *a, Vec3f *b)
 Vec3f* syVectorRotate3D(Vec3f *dst, s32 axis, f32 angle)
 {
     f32 x, y, z;
-    f32 sin = sinf(angle);
-    f32 cos = cosf(angle);
+    /* PORT (ungated): cosf/sinf → __cosf/__sinf — sync-relevant vector rotation (matcher TU).
+     * Netmenu: N64 polynomial; NETMENU=OFF: libc_compat wrappers (noop vs sinf/cosf).
+     * Bare sinf()/cosf() remain libc-only in sys/audio.c (LFO). See
+     * docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
+    f32 sin = __sinf(angle);
+    f32 cos = __cosf(angle);
 
     switch (axis)
     {
@@ -180,8 +184,9 @@ Vec3f* syVectorRotateAbout3D(Vec3f *dst, Vec3f *dir, f32 angle)
     f32 rot_z;
 
     mag_yz = sqrtf(SQUARE(dir->y) + SQUARE(dir->z));
-    sin = sinf(angle);
-    cos = cosf(angle);
+    /* PORT (ungated): same __sinf/__cosf pairing as syVectorRotate3D above. */
+    sin = __sinf(angle);
+    cos = __cosf(angle);
 
     if (mag_yz != 0.0F)
     {
