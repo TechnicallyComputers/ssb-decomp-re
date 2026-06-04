@@ -2,6 +2,8 @@
 #include <wp/weapon.h>
 #ifdef PORT
 #include <ft/ftcommon/ftcommonfunctions.h>
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <wp/wpvars.h>
 extern wpSamusChargeShotAttributes dWPSamusChargeShotWeaponAttributes[];
 #endif
@@ -20,7 +22,7 @@ extern wpSamusChargeShotAttributes dWPSamusChargeShotWeaponAttributes[];
 //                               //
 // // // // // // // // // // // //
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 static sb32 ftSamusSpecialNPortChargeShotIsCharging(WPStruct *wp)
 {
 	if (wp == NULL)
@@ -178,16 +180,14 @@ void ftSamusSpecialNSetChargeShotPosition(FTStruct *fp)
 {
     Vec3f pos;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     ftSamusSpecialNPortValidateCoupledCharge(fp);
-#if defined(SSB64_NETMENU)
     /* Netplay rollback only: reacquire charge shot pointer after rollback load. */
     if ((syNetplayRollbackSemanticsActive() != FALSE) &&
         (fp->status_vars.samus.specialn.charge_gobj == NULL))
     {
         fp->status_vars.samus.specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
     }
-#endif
 #endif
     if (fp->status_vars.samus.specialn.charge_gobj != NULL)
     {
@@ -270,7 +270,7 @@ void ftSamusSpecialNLoopProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     ftSamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
 #endif
     fp->status_vars.samus.specialn.charge_int--;
@@ -287,7 +287,7 @@ void ftSamusSpecialNLoopProcUpdate(GObj *fighter_gobj)
             {
                 ftParamCheckSetFighterColAnimID(fighter_gobj, nGMColAnimFighterCommonSpecialNCharge, 0);
                 ftSamusSpecialNDestroyChargeShot(fighter_gobj);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
                 ftSamusSpecialNPortSetStatusWait(fighter_gobj);
 #else
                 ftCommonWaitSetStatus(fighter_gobj);
@@ -338,7 +338,7 @@ void ftSamusSpecialNLoopProcInterrupt(GObj *fighter_gobj)
     else if (fp->input.pl.button_tap & fp->input.button_mask_z)
     {
         ftSamusSpecialNDestroyChargeShot(fighter_gobj);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         ftSamusSpecialNPortSetStatusWait(fighter_gobj);
 #else
         ftCommonWaitSetStatus(fighter_gobj);
@@ -351,7 +351,7 @@ void ftSamusSpecialNLoopProcMap(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     ftSamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
 #endif
     ftSamusSpecialNSetChargeShotPosition(fp);
@@ -370,7 +370,7 @@ void ftSamusSpecialNLoopSetStatus(GObj *fighter_gobj)
     fp->status_vars.samus.specialn.charge_int = FTSAMUS_CHARGE_INT;
 
     ftSamusSpecialNGetChargeShotPosition(fp, &pos);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     ftSamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
 #else
     fp->status_vars.samus.specialn.charge_gobj = wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.samus.charge_level, FALSE);
@@ -422,9 +422,7 @@ void ftSamusSpecialNEndProcUpdate(GObj *fighter_gobj)
             wp->weapon_vars.charge_shot.owner_gobj = NULL;
             fp->status_vars.samus.specialn.charge_gobj = NULL;
         }
-#ifndef PORT
         else wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.samus.charge_level, TRUE);
-#endif
 
         if (fp->ga == nMPKineticsAir)
         {
@@ -447,7 +445,7 @@ void ftSamusSpecialNEndProcUpdate(GObj *fighter_gobj)
     }
     if (fighter_gobj->anim_frame <= 0.0F)
     {
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         ftSamusSpecialNPortSetStatusWaitOrFall(fighter_gobj);
 #else
         mpCommonSetFighterWaitOrFall(fighter_gobj);

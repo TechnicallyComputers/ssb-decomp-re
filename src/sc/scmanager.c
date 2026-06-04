@@ -1,12 +1,29 @@
 #ifdef PORT
 #include <port_log.h>
-#if defined(SSB64_NETMENU)
-#include "mm_bootstrap.h"
-#endif
-#ifdef PORT
 extern char *getenv(const char *name);
 extern int atoi(const char *s);
 extern void port_coroutine_yield(void);
+#if defined(SSB64_NETMENU)
+#include "mm_bootstrap.h"
+#include <stdlib.h>
+#include <string.h>
+#include <ssb_types.h>
+
+static sb32 scManagerDecompDiagEnabled(void)
+{
+	const char *env = getenv("SSB64_DECOMP_DIAG");
+
+	return (env != NULL) && (env[0] != '\0') && (strcmp(env, "0") != 0);
+}
+
+#define SCMANAGER_DIAG_LOG(...) \
+	do { \
+		if (scManagerDecompDiagEnabled() != FALSE) { \
+			port_log(__VA_ARGS__); \
+		} \
+	} while (0)
+#else
+#define SCMANAGER_DIAG_LOG(...) ((void)0)
 #endif
 #endif
 #include <ft/fighter.h>
@@ -939,21 +956,21 @@ void scManagerRunLoop(sb32 arg)
 			 * unlocks alongside the scene override keeps backup-mask
 			 * state consistent with where the user told us to start. */
 			gSCManagerBackupData.unlock_mask |= LBBACKUP_UNLOCK_MASK_ALL;
-			port_log("SSB64: SSB64_START_SCENE override → scene=%d (unlock_mask |= ALL)\n", n);
+			SCMANAGER_DIAG_LOG("SSB64: SSB64_START_SCENE override → scene=%d (unlock_mask |= ALL)\n", n);
 		}
 		const char *stage_env = getenv("SSB64_SPGAME_STAGE");
 		if (stage_env != NULL)
 		{
 			int s = atoi(stage_env);
 			gSCManagerSceneData.spgame_stage = s;
-			port_log("SSB64: SSB64_SPGAME_STAGE override → spgame_stage=%d (13=Boss/MasterHand)\n", s);
+			SCMANAGER_DIAG_LOG("SSB64: SSB64_SPGAME_STAGE override → spgame_stage=%d (13=Boss/MasterHand)\n", s);
 		}
 		const char *fkind_env = getenv("SSB64_SPGAME_FKIND");
 		if (fkind_env != NULL)
 		{
 			int f = atoi(fkind_env);
 			gSCManagerSceneData.fkind = f;
-			port_log("SSB64: SSB64_SPGAME_FKIND override → fkind=%d\n", f);
+			SCMANAGER_DIAG_LOG("SSB64: SSB64_SPGAME_FKIND override → fkind=%d\n", f);
 		}
 		syNetReplayInitDebugEnv();
 #if defined(SSB64_NETMENU)
@@ -970,13 +987,13 @@ void scManagerRunLoop(sb32 arg)
 		gSCManagerSceneData.scene_curr = nSCKindPlayersVS;
 		gSCManagerSceneData.scene_prev = nSCKindPlayersVS;
 	}
-	port_log("SSB64: scManagerRunLoop — controllers=%d scene=%d\n",
+	SCMANAGER_DIAG_LOG("SSB64: scManagerRunLoop — controllers=%d scene=%d\n",
 	         (int)gSYControllerConnectedNum, (int)gSCManagerSceneData.scene_curr);
 #endif
 	while (TRUE)
 	{
 #ifdef PORT
-		port_log("SSB64: scManagerRunLoop — entering scene %d\n",
+		SCMANAGER_DIAG_LOG("SSB64: scManagerRunLoop — entering scene %d\n",
 		         (int)gSCManagerSceneData.scene_curr);
 
 		/* Issue #103 defence: clear cross-scene GObj pointers in the three
@@ -1028,15 +1045,25 @@ void scManagerRunLoop(sb32 arg)
 				while ((_head = gGCCommonLinks[_link]) != NULL) {
 					gcEjectGObj(_head);
 					if (gGCCommonLinks[_link] == _head) {
-						port_log("SSB64: scManagerRunLoop scene-boundary GObj "
-						         "sweep — no progress link=%d head=%p, breaking\n",
-						         (int)_link, (void*)_head);
+#if defined(SSB64_NETMENU)
+						if (scManagerDecompDiagEnabled() != FALSE)
+						{
+							port_log("SSB64: scManagerRunLoop scene-boundary GObj "
+							         "sweep — no progress link=%d head=%p, breaking\n",
+							         (int)_link, (void*)_head);
+						}
+#endif
 						break;
 					}
 					if (++_guard > 4096) {
-						port_log("SSB64: scManagerRunLoop scene-boundary GObj "
-						         "sweep — runaway link=%d, breaking\n",
-						         (int)_link);
+#if defined(SSB64_NETMENU)
+						if (scManagerDecompDiagEnabled() != FALSE)
+						{
+							port_log("SSB64: scManagerRunLoop scene-boundary GObj "
+							         "sweep — runaway link=%d, breaking\n",
+							         (int)_link);
+						}
+#endif
 						break;
 					}
 				}

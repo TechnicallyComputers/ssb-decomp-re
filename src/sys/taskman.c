@@ -37,6 +37,23 @@ extern SCCommonData gSCManagerSceneData;
 #if defined(SSB64_NETMENU)
 #include <sys/netpeer.h>
 #include <sys/netinput.h>
+#include <ssb_types.h>
+
+static sb32 syTaskmanDecompDiagEnabled(void)
+{
+	const char *env = getenv("SSB64_DECOMP_DIAG");
+
+	return (env != NULL) && (env[0] != '\0') && (strcmp(env, "0") != 0);
+}
+
+#define SYTASKMAN_DIAG_LOG(...) \
+	do { \
+		if (syTaskmanDecompDiagEnabled() != FALSE) { \
+			port_log(__VA_ARGS__); \
+		} \
+	} while (0)
+#else
+#define SYTASKMAN_DIAG_LOG(...) ((void)0)
 #endif
 _Static_assert(sizeof(uintptr_t) == 8, "PORT build requires 64-bit uintptr_t");
 #endif
@@ -287,8 +304,10 @@ void syTaskmanInitGeneralHeap(void *start, u32 size)
 #ifdef PORT
 	if ((start == NULL) || (size == 0))
 	{
+#if defined(PORT) && defined(SSB64_NETMENU)
 		port_log("SSB64: syTaskmanInitGeneralHeap received invalid PORT heap start=%p size=0x%x\n",
 		         start, (unsigned)size);
+#endif
 		while (TRUE);
 	}
 	syMallocInit(&gSYTaskmanGeneralHeap, 0x10000, start, size);
@@ -305,14 +324,16 @@ void* syTaskmanMalloc(size_t size, u32 align) // alloc_with_alignment
 	void *result = syMallocSet(&gSYTaskmanGeneralHeap, size, align);
 	if (result == NULL)
 	{
+#if defined(PORT) && defined(SSB64_NETMENU)
 		port_log("SSB64: syTaskmanMalloc returned NULL (size=%u align=%u start=%p ptr=%p end=%p)\n",
 		         (unsigned)size, (unsigned)align,
 		         gSYTaskmanGeneralHeap.start, gSYTaskmanGeneralHeap.ptr, gSYTaskmanGeneralHeap.end);
+#endif
 		syDebugPrintf("gtl : syTaskmanMalloc returned NULL (size=%d align=%d)\n", size, align);
 		while (TRUE);
 	}
 	if (sMallocDebugCount < 30) {
-		port_log("SSB64: syTaskmanMalloc(size=%u align=%u) = %p (heap ptr=%p end=%p)\n",
+		SYTASKMAN_DIAG_LOG("SSB64: syTaskmanMalloc(size=%u align=%u) = %p (heap ptr=%p end=%p)\n",
 		         (unsigned)size, (unsigned)align, result,
 		         gSYTaskmanGeneralHeap.ptr, gSYTaskmanGeneralHeap.end);
 		sMallocDebugCount++;
@@ -381,12 +402,14 @@ void syTaskmanCheckBufferLengths(void)
 		if (sSYTaskmanDLBuffers[gSYTaskmanTaskID][i].length + (uintptr_t)sSYTaskmanDLBuffers[gSYTaskmanTaskID][i].start < (uintptr_t)gSYTaskmanDLHeads[i])
 		{
 #ifdef PORT
+#if defined(SSB64_NETMENU)
 			port_log("SSB64: DLBuffer OVERFLOW kind=%d used=%llu alloc=%u start=%p head=%p\n",
 				i,
 				(unsigned long long)((uintptr_t)gSYTaskmanDLHeads[i] - (uintptr_t)sSYTaskmanDLBuffers[gSYTaskmanTaskID][i].start),
 				(unsigned int)sSYTaskmanDLBuffers[gSYTaskmanTaskID][i].length,
 				sSYTaskmanDLBuffers[gSYTaskmanTaskID][i].start,
 				gSYTaskmanDLHeads[i]);
+#endif
 #else
 			syDebugPrintf("gtl : DLBuffer over flow !  kind = %d  vol = %d byte\n", i, (uintptr_t)gSYTaskmanDLHeads[i] - (uintptr_t)sSYTaskmanDLBuffers[gSYTaskmanTaskID][i].start);
 			while (TRUE);
@@ -396,11 +419,13 @@ void syTaskmanCheckBufferLengths(void)
 	if ((uintptr_t)gSYTaskmanGraphicsHeap.end < (uintptr_t)gSYTaskmanGraphicsHeap.ptr)
 	{
 #ifdef PORT
+#if defined(SSB64_NETMENU)
 		port_log("SSB64: DynamicBuffer OVERFLOW used=%llu start=%p end=%p ptr=%p\n",
 			(unsigned long long)((uintptr_t)gSYTaskmanGraphicsHeap.ptr - (uintptr_t)gSYTaskmanGraphicsHeap.start),
 			gSYTaskmanGraphicsHeap.start,
 			gSYTaskmanGraphicsHeap.end,
 			gSYTaskmanGraphicsHeap.ptr);
+#endif
 #else
 		syDebugPrintf("gtl : DynamicBuffer over flow !  %d byte\n", (uintptr_t)gSYTaskmanGraphicsHeap.ptr - (uintptr_t)gSYTaskmanGraphicsHeap.start);
 		while (TRUE);
@@ -1130,18 +1155,6 @@ void syTaskmanRunTask(SYTaskFunction *tfunc)
 				}
 			}
 		}
-#else
-		{
-			static s32 sTaskmanLoopCount = 0;
-			if (sTaskmanLoopCount < 5) {
-				port_log("SSB64: syTaskmanRunTask — waiting for game tick (mq=%p cap=%d valid=%d) loop=%d\n",
-				         (void *)&sSYTaskmanGameTicMesgQueue,
-				         (int)sSYTaskmanGameTicMesgQueue.msgCount,
-				         (int)sSYTaskmanGameTicMesgQueue.validCount,
-				         (int)sTaskmanLoopCount);
-			}
-			sTaskmanLoopCount++;
-		}
 #endif
 #endif
 		for (i = 0; i < sSYTaskmanUpdateInterval; i++)
@@ -1379,14 +1392,14 @@ void syTaskmanLoadScene(SYTaskmanSceneSetup *tscene, void (*func_start)(void))
 		port_reset_push_frame_count_for_net_barrier();
 	}
 #endif
-	port_log("SSB64: syTaskmanLoadScene — about to call func_start=%p\n", (void *)func_start);
+	SYTASKMAN_DIAG_LOG("SSB64: syTaskmanLoadScene — about to call func_start=%p\n", (void *)func_start);
 #endif
 	if (func_start != NULL)
 	{
 		func_start();
 	}
 #ifdef PORT
-	port_log("SSB64: syTaskmanLoadScene — func_start returned, entering syTaskmanRunTask\n");
+	SYTASKMAN_DIAG_LOG("SSB64: syTaskmanLoadScene — func_start returned, entering syTaskmanRunTask\n");
 #endif
 	syTaskmanRunTask(&sSYTaskmanDefaultFunction);
 }
@@ -1422,15 +1435,17 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 	 * the symptom universally; this band-aid prevents the crash on Linux
 	 * where the allocator is unforgiving. */
 	{
-		if (gPortSceneHeap == NULL)
-		{
-			gPortSceneHeap = malloc(gPortSceneHeapSize);
 			if (gPortSceneHeap == NULL)
 			{
-				port_log("SSB64: syTaskmanStartTask — failed to allocate PORT heap size=0x%llx\n",
-				         (unsigned long long)gPortSceneHeapSize);
-				while (TRUE);
-			}
+				gPortSceneHeap = malloc(gPortSceneHeapSize);
+				if (gPortSceneHeap == NULL)
+				{
+#if defined(SSB64_NETMENU)
+					port_log("SSB64: syTaskmanStartTask — failed to allocate PORT heap size=0x%llx\n",
+					         (unsigned long long)gPortSceneHeapSize);
+#endif
+					while (TRUE);
+				}
 			/* Register the scene arena range with the DL-range registry so
 			 * gfx_step can detect walks that escape the arena. Once-only
 			 * because the arena is recycled, never freed. */
@@ -1449,7 +1464,7 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 #endif
 	syTaskmanInitGeneralHeap(tsetup->scene_setup.arena_start, tsetup->scene_setup.arena_size);
 #ifdef PORT
-	port_log("SSB64: syTaskmanStartTask — heap init done\n");
+	SYTASKMAN_DIAG_LOG("SSB64: syTaskmanStartTask — heap init done\n");
 #endif
 
 	gcsetup.gobjthreads = syTaskmanMalloc(sizeof(GObjThread) * tsetup->gobjthreads_num, 0x8);
@@ -1498,7 +1513,7 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 
 	gcSetupObjman(&gcsetup);
 #ifdef PORT
-	port_log("SSB64: syTaskmanStartTask — gcSetupObjman done, entering syTaskmanLoadScene\n");
+	SYTASKMAN_DIAG_LOG("SSB64: syTaskmanStartTask — gcSetupObjman done, entering syTaskmanLoadScene\n");
 #endif
 
 	sSYTaskmanDefaultFunction.task_update = syTaskmanCommonTaskUpdate;

@@ -1,8 +1,5 @@
 #include <ft/fighter.h>
-
-#ifdef PORT
-#include <it/itmain.h>
-#else
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <it/itmain.h>
 #endif
 
@@ -16,11 +13,6 @@
 void ftCommonWaitProcInterrupt(GObj *fighter_gobj)
 {
     !(ftCommonGroundCheckInterrupt(fighter_gobj));
-}
-
-void ftCommonWaitProcPhysics(GObj *fighter_gobj)
-{
-    ftPhysicsApplyGroundVelFriction(fighter_gobj);
 }
 
 // 0x8013E1C8
@@ -38,7 +30,8 @@ void ftCommonWaitSetStatus(GObj *fighter_gobj)
         {
             mpCommonSetFighterGround(fp);
         }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Netplay rollback: reclaim stale item owner links before Wait entry. */
         if (fp->item_gobj == NULL)
         {
             itMainSweepOrphanItemOwnersForFighter(fighter_gobj);

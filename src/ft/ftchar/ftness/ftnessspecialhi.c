@@ -29,7 +29,7 @@
 //                               //
 // // // // // // // // // // // //
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 static void ftNessSpecialHiPortCleanupPKThunder(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
@@ -119,17 +119,12 @@ void ftNessSpecialHiMakePKThunder(GObj *fighter_gobj)
     Vec3f pos;
     Vec3f vel;
 
-    if (fp->joints[FTNESS_PKTHUNDER_SPAWN_JOINT] == NULL)
-    {
-        return;
-    }
 #if defined(PORT) && defined(SSB64_NETMENU)
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
         syNetRbSnapCullOwnedPKThunderForFighter(fighter_gobj, NULL);
         fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
     }
-
 #endif
 
     pos.x = 0.0F;
@@ -170,7 +165,7 @@ sb32 ftNessSpecialHiCheckCollidePKThunder(GObj *fighter_gobj)
     {
         return FALSE;
     }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     if (wpNessPKThunderGObjIsLiveWeapon(pkthunder_gobj) == FALSE)
     {
         fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
@@ -279,7 +274,7 @@ void ftNessSpecialHiInitStatusVars(GObj *fighter_gobj)
 {
     FTStruct *fp;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     ftNessSpecialHiPortCleanupPKThunder(fighter_gobj);
 #endif
     fp = ftGetStruct(fighter_gobj);
@@ -604,7 +599,7 @@ void ftNessSpecialHiClearProcDamage(GObj *fighter_gobj)
 // 0x80154518
 void ftNessSpecialHiEndSetStatus(GObj *fighter_gobj)
 {
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     ftNessSpecialHiPortCleanupPKThunder(fighter_gobj);
 #endif
     ftNessSpecialHiClearProcDamage(fighter_gobj);
@@ -615,7 +610,7 @@ void ftNessSpecialHiEndSetStatus(GObj *fighter_gobj)
 // 0x80154558
 void ftNessSpecialAirHiEndSetStatus(GObj *fighter_gobj)
 {
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     ftNessSpecialHiPortCleanupPKThunder(fighter_gobj);
 #endif
     ftNessSpecialHiClearProcDamage(fighter_gobj);
@@ -1015,7 +1010,7 @@ void ftNessSpecialHiJibakuInitStatusVars(GObj *fighter_gobj)
 {
     FTStruct *fp;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     ftNessSpecialHiPortPrepareJibakuPKThunder(fighter_gobj);
 #endif
     fp = ftGetStruct(fighter_gobj);

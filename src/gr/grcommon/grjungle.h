@@ -17,7 +17,7 @@ extern sb32 grJungleTaruCannCheckGetDamageKind(GObj *ground_gobj, GObj *fighter_
 extern void grJungleTaruCannGetPosition(Vec3f *pos);
 extern f32 grJungleTaruCannGetRotate(void);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 extern GObj *grJungleGetTaruCannGobj(void);
 extern void grJungleRepairTaruCannPresentation(const Vec3f *translate, f32 rotate_z);
 extern sb32 grJungleEnsureTaruCannCoupling(GObj *tarucann_gobj);

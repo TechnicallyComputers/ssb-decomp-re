@@ -20,7 +20,8 @@ extern void ftMainProcUpdateInterrupt(GObj* fighter_gobj);
 extern void ftMainClearGroundElementsAll();
 extern sb32 ftMainCheckAddGroundObstacle(GObj* ogobj, sb32 (*proc_update)(GObj*, GObj*, s32*));
 extern void ftMainClearGroundObstacle(GObj* ogobj);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* Netplay rollback: repair Hyrule twister ground-obstacle slots after orphan eject. */
 extern void ftMainPurgeStaleGroundObstacles(void);
 extern sb32 ftMainEnsureGroundObstacle(GObj* ogobj, sb32 (*proc_update)(GObj*, GObj*, s32*));
 extern s32 ftMainGroundObstacleSlotsUsed(void);
@@ -81,10 +82,10 @@ extern void func_ovl2_800E6CE0(FTStruct* fp, s32 index);
 extern void func_ovl2_800E6E00(FTStruct* fp, s32 index);
 extern void ftMainSetStatus(GObj* fighter_gobj, s32 status_id, f32 frame_begin, f32 anim_speed, u32 flags);
 
-#ifdef PORT
-/* Rebind proc_update/interrupt/physics/map from fp->status_id without replaying status entry side effects. */
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* Netplay rollback: rebind proc_* from status table without SetStatus side effects. */
 extern void ftMainRebindStatusProcs(GObj* fighter_gobj);
-/* Post-rollback visual-only figatree refresh at fighter_gobj->anim_frame. */
+/* Netplay rollback: figatree-only presentation sync at gobj->anim_frame after snapshot load. */
 extern void ftMainRefreshFigatreeVisual(GObj* fighter_gobj);
 #endif
 

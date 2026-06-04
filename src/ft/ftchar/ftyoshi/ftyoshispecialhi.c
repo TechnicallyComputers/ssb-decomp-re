@@ -1,9 +1,7 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
-#ifdef PORT
-#include <ft/ftcommon/ftcommonfunctions.h>
-#endif
 #if defined(PORT) && defined(SSB64_NETMENU)
+#include <ft/ftcommon/ftcommonfunctions.h>
 #include <sys/netrollbacksnapshot.h>
 #include <sys/netplay_sim_quantize.h>
 /*
@@ -18,7 +16,7 @@
 //                               //
 // // // // // // // // // // // //
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 static sb32 ftYoshiSpecialHiPortEggIsCharging(WPStruct *wp)
 {
 	if (wp == NULL)
@@ -116,20 +114,9 @@ void ftYoshiSpecialHiGetEggPosition(FTStruct *fp, Vec3f *pos)
 void ftYoshiSpecialHiUpdateEggVectors(FTStruct *fp)
 {
     Vec3f pos;
-    WPStruct *wp;
 
-#ifdef PORT
-    ftYoshiSpecialHiPortValidateCoupledEgg(fp);
-#endif
     if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
     {
-#ifdef PORT
-        wp = wpGetStruct(fp->status_vars.yoshi.specialhi.egg_gobj);
-        if (ftYoshiSpecialHiPortEggIsCharging(wp) == FALSE)
-        {
-            return;
-        }
-#endif
         ftYoshiSpecialHiGetEggPosition(fp, &pos);
 
         DObjGetStruct(fp->status_vars.yoshi.specialhi.egg_gobj)->translate.vec.f = pos;

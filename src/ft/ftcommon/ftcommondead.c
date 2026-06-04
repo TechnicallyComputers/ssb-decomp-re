@@ -15,22 +15,29 @@ static sb32 ftCommonDeadIsDeadStatus(s32 status_id)
 
 s32 ftCommonDeadGetWait(const FTStruct *fp)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
     if (ftCommonDeadIsDeadStatus(fp->status_id))
     {
         return fp->dead_gate_wait;
     }
+#endif
     return ftStatusVarsDead((FTStruct *)(void *)fp)->wait;
 }
 
 void ftCommonDeadSetWait(FTStruct *fp, s32 wait)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
     fp->dead_gate_wait = (s16)wait;
+#endif
     ftStatusVarsDead(fp)->wait = wait;
 }
 
 void ftCommonDeadClearGateWait(FTStruct *fp)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
     fp->dead_gate_wait = 0;
+#endif
+    (void)fp;
 }
 
 // // // // // // // // // // // //

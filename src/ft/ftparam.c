@@ -2307,6 +2307,7 @@ void ftParamKirbyTryMakeMapStarEffect(GObj *fighter_gobj)
 }
 
 // 0x800EB528
+#if defined(PORT) && defined(SSB64_NETMENU)
 void ftParamInvalidateFighterTransformFromRoot(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
@@ -2331,6 +2332,7 @@ void ftParamInvalidateFighterTransformFromRoot(GObj *fighter_gobj)
         dobj = dobj->parent;
     }
 }
+#endif
 
 void ftParamsUpdateFighterPartsTransformAll(DObj *root_dobj)
 {

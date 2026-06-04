@@ -1,11 +1,9 @@
 #include <ft/fighter.h>
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 extern void port_log(const char *fmt, ...);
-#endif
-#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/net_debug_agent_log.h>
 extern u32 syNetInputGetTick(void);
 #endif
@@ -78,6 +76,7 @@ void ftCommonThrowSetStatus(GObj *fighter_gobj, sb32 is_throwf)
         }
         else status_id = nFTCommonStatusThrowF;
 #ifdef PORT
+    /* PORT (JRickey): reloc-resolved thrown_status table lookup. */
         thrown_status = &((FTThrownStatusArray*)PORT_RESOLVE(this_fp->attr->thrown_status))[catch_fp->fkind].ft_thrown[0];
 #else
         thrown_status = &this_fp->attr->thrown_status[catch_fp->fkind].ft_thrown[0];
@@ -87,6 +86,7 @@ void ftCommonThrowSetStatus(GObj *fighter_gobj, sb32 is_throwf)
     {
         status_id = nFTCommonStatusThrowB;
 #ifdef PORT
+    /* PORT (JRickey): reloc-resolved thrown_status table lookup. */
         thrown_status = &((FTThrownStatusArray*)PORT_RESOLVE(this_fp->attr->thrown_status))[catch_fp->fkind].ft_thrown[1];
 #else
         thrown_status = &this_fp->attr->thrown_status[catch_fp->fkind].ft_thrown[1];
@@ -127,7 +127,7 @@ sb32 ftCommonThrowCheckInterruptCatchWait(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     sb32 is_throwf = FALSE;
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     const char *catchwait_diag = getenv("SSB64_NETPLAY_CATCHWAIT_DIAG");
 #endif
 

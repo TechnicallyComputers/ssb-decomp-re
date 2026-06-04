@@ -5,12 +5,20 @@
 #include <reloc_data.h>
 #ifdef PORT
 #include <string.h>
+#include <stdlib.h>
 #include <sys/debug.h>
 extern void port_log(const char *fmt, ...);
-#endif
-#ifdef PORT
 extern void portFixupFTAttributes(void *attr);
 extern void portFixupStructU16(void *base, unsigned int byte_offset, unsigned int num_words);
+
+#if defined(SSB64_NETMENU)
+static sb32 ftManagerDecompDiagEnabled(void)
+{
+    const char *env = getenv("SSB64_DECOMP_DIAG");
+
+    return (env != NULL) && (env[0] != '\0') && (strcmp(env, "0") != 0);
+}
+#endif
 #endif
 
 // // // // // // // // // // // //
@@ -562,7 +570,9 @@ void ftManagerInitFighter(GObj *fighter_gobj, FTDesc *desc)
 
     fp->is_shuffle_electric = FALSE;
     fp->shuffle_tics = 0;
+#if defined(PORT) && defined(SSB64_NETMENU)
     fp->dead_gate_wait = 0;
+#endif
 
     fp->motion_attack_id = nFTMotionAttackIDNone;
     fp->motion_count = 0;
@@ -801,16 +811,19 @@ GObj* ftManagerMakeFighter(FTDesc *desc) // Create fighter
     attr = fp->attr = lbRelocGetFileData(FTAttributes*, *fp->data->p_file_main, fp->data->o_attributes);
 #ifdef PORT
     portFixupFTAttributes(attr);
+#if defined(SSB64_NETMENU)
+    if (ftManagerDecompDiagEnabled() != FALSE)
     {
-        // Dump raw memory around expected bitfield offset to find it
         u32 *raw = (u32 *)attr;
+
         port_log("SSB64: ATTR fkind=%d sizeof=%d fog_off=0x%X\n",
             (int)fp->fkind, (int)sizeof(FTAttributes),
             (int)offsetof(FTAttributes, fog_color));
         port_log("  raw[0x3E..0x43]: %08X %08X %08X %08X %08X %08X\n",
             raw[0x3E], raw[0x3F], raw[0x40], raw[0x41], raw[0x42], raw[0x43]);
+        port_log("SSB64: ftManagerMakeFighter - begin fkind=%d\n", (int)fp->fkind);
     }
-    port_log("SSB64: ftManagerMakeFighter - begin fkind=%d\n", (int)fp->fkind);
+#endif
 #endif
     fp->figatree_heap = desc->figatree_heap;
     fp->team = desc->team;
@@ -883,9 +896,12 @@ GObj* ftManagerMakeFighter(FTDesc *desc) // Create fighter
 
     fp->joints[nFTPartsJointTopN]->xobjs[0]->unk05 = desc->unk_rebirth_0x1D;
 
-#ifdef PORT
-    port_log("SSB64: ftManagerMakeFighter - before parts setup fkind=%d commonparts=%p setup_parts=%p\n",
-        fp->fkind, PORT_RESOLVE(attr->commonparts_container), PORT_RESOLVE(attr->setup_parts));
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ftManagerDecompDiagEnabled() != FALSE)
+    {
+        port_log("SSB64: ftManagerMakeFighter - before parts setup fkind=%d commonparts=%p setup_parts=%p\n",
+            fp->fkind, PORT_RESOLVE(attr->commonparts_container), PORT_RESOLVE(attr->setup_parts));
+    }
 #endif
     lbCommonSetupFighterPartsDObjs
     (
@@ -900,8 +916,11 @@ GObj* ftManagerMakeFighter(FTDesc *desc) // Create fighter
         fp->costume,
         fp->unk_ft_0x149
     );
-#ifdef PORT
-    port_log("SSB64: ftManagerMakeFighter - after parts setup fkind=%d\n", fp->fkind);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ftManagerDecompDiagEnabled() != FALSE)
+    {
+        port_log("SSB64: ftManagerMakeFighter - after parts setup fkind=%d\n", fp->fkind);
+    }
 #endif
     for (i = 0; i < ARRAY_COUNT(fp->joints); i++)
     {
@@ -927,8 +946,11 @@ GObj* ftManagerMakeFighter(FTDesc *desc) // Create fighter
             }
         }
     }
-#ifdef PORT
-    port_log("SSB64: ftManagerMakeFighter - parts metadata initialized fkind=%d\n", fp->fkind);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ftManagerDecompDiagEnabled() != FALSE)
+    {
+        port_log("SSB64: ftManagerMakeFighter - parts metadata initialized fkind=%d\n", fp->fkind);
+    }
 #endif
     for (i = nFTPartsJointCommonStart; i < ARRAY_COUNT(fp->joints); i++)
     {
@@ -995,8 +1017,11 @@ GObj* ftManagerMakeFighter(FTDesc *desc) // Create fighter
     else gcAddGObjProcess(fighter_gobj, scSubsysFighterProcUpdate, nGCProcessKindFunc, 5);
 
     ftManagerInitFighter(fighter_gobj, desc);
-#ifdef PORT
-    port_log("SSB64: ftManagerMakeFighter - fighter init complete fkind=%d pkind=%d\n", fp->fkind, fp->pkind);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ftManagerDecompDiagEnabled() != FALSE)
+    {
+        port_log("SSB64: ftManagerMakeFighter - fighter init complete fkind=%d pkind=%d\n", fp->fkind, fp->pkind);
+    }
 #endif
 
     if (fp->pkind == nFTPlayerKindCom)
@@ -1039,8 +1064,11 @@ GObj* ftManagerMakeFighter(FTDesc *desc) // Create fighter
     {
         ftShadowMakeShadow(fighter_gobj);
     }
-#ifdef PORT
-    port_log("SSB64: ftManagerMakeFighter - return fkind=%d\n", fp->fkind);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ftManagerDecompDiagEnabled() != FALSE)
+    {
+        port_log("SSB64: ftManagerMakeFighter - return fkind=%d\n", fp->fkind);
+    }
 #endif
     return fighter_gobj;
 }

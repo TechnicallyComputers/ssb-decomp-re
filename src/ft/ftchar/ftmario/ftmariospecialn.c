@@ -16,13 +16,6 @@
 //                               //
 // // // // // // // // // // // //
 
-#ifdef PORT
-/*
- * Shared by Mario and Luigi (and NMario / NLuigi / MMario): both use these callbacks
- * from dFTMarioSpecialStatusDescs / dFTLuigiSpecialStatusDescs (same status IDs).
- */
-#endif
-
 static void ftMarioSpecialNProcAccessoryVanilla(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);

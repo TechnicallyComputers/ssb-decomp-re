@@ -33,7 +33,7 @@ void ftPikachuSpecialLwMakeThunder(GObj *fighter_gobj)
     Vec3f pos;
     Vec3f vel;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     if (gMPCollisionGroundData == NULL)
     {
         return;
@@ -179,7 +179,7 @@ sb32 ftPikachuSpecialLwCheckCollideThunder(GObj *fighter_gobj)
 
     wp = wpGetStruct(thunder_gobj);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     if ((wp == NULL) || (wp->kind != nWPKindThunderHead))
     {
         fp->status_vars.pikachu.speciallw.thunder_gobj = NULL;
@@ -304,6 +304,7 @@ void ftPikachuSpecialLwLoopUpdateThunder(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
 #ifdef PORT
+    /* PORT (JRickey): ll symbol is pre-resolved; N64 uses &ll… in ROM addend. */
     if (fp->status_vars.pikachu.speciallw.thunder_gobj == NULL)
 #endif
     {

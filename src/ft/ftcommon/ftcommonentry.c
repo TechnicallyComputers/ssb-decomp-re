@@ -45,39 +45,6 @@ s32 dFTCommonEntryAppearStatusIDs[/* */][2] =
 //                               //
 // // // // // // // // // // // //
 
-static s32 ftCommonAppearGetEntryLR(const FTStruct *fp)
-{
-    s32 lr = ftStatusVarsEntry((FTStruct *)(void *)fp)->lr;
-
-    if ((lr == +1) || (lr == -1))
-    {
-        return lr;
-    }
-    if ((fp->hit_lr == +1) || (fp->hit_lr == -1))
-    {
-        return fp->hit_lr;
-    }
-    return +1;
-}
-
-static void ftCommonAppearFinishToWait(GObj *fighter_gobj)
-{
-    FTStruct *fp = ftGetStruct(fighter_gobj);
-
-    fp->lr = ftCommonAppearGetEntryLR(fp);
-
-    DObjGetStruct(fighter_gobj)->translate.vec.f = fp->entry_pos;
-
-    fp->coll_data.floor_line_id = ftStatusVarsEntry(fp)->floor_line_id;
-
-    fp->hit_lr = 0;
-    if (fp->fkind == nFTKindBoss)
-    {
-        ftBossWaitSetStatus(fighter_gobj);
-    }
-    else ftCommonWaitSetStatus(fighter_gobj);
-}
-
 // 0x8013D930
 void ftCommonEntrySetStatus(GObj *fighter_gobj)
 {
@@ -108,13 +75,11 @@ void ftCommonEntryNullProcUpdate(GObj *fighter_gobj)
             }
             else
             {
-                fp->lr = ftCommonAppearGetEntryLR(fp);
+                fp->lr = ftStatusVarsEntry(fp)->lr;
 
                 DObjGetStruct(fighter_gobj)->translate.vec.f = fp->entry_pos;
 
                 fp->coll_data.floor_line_id = ftStatusVarsEntry(fp)->floor_line_id;
-
-                fp->hit_lr = 0;
 
                 ftCommonWaitSetStatus(fighter_gobj);
             }
@@ -152,7 +117,17 @@ void ftCommonAppearProcUpdate(GObj *fighter_gobj)
 
     if (fighter_gobj->anim_frame <= 0.0F)
     {
-        ftCommonAppearFinishToWait(fighter_gobj);
+        fp->lr = ftStatusVarsEntry(fp)->lr;
+
+        DObjGetStruct(fighter_gobj)->translate.vec.f = fp->entry_pos;
+
+        fp->coll_data.floor_line_id = ftStatusVarsEntry(fp)->floor_line_id;
+
+        if (fp->fkind == nFTKindBoss)
+        {
+            ftBossWaitSetStatus(fighter_gobj);
+        }
+        else ftCommonWaitSetStatus(fighter_gobj);
     }
 }
 
@@ -208,9 +183,6 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
 
     ftStatusVarsEntry(fp)->lr = fp->lr;
 
-    fp->hit_lr = ftStatusVarsEntry(fp)->lr;
-
-    /* Vanilla: clear combat facing before SetStatus so TopN stays anim-neutral until AppearProcPhysics. */
     fp->lr = 0;
 
     ftStatusVarsEntry(fp)->floor_line_id = fp->coll_data.floor_line_id;

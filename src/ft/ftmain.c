@@ -7,6 +7,22 @@
 extern void port_log(const char *fmt, ...);
 extern void port_dump_backtrace(void);
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 ftMainDecompDiagEnabled(void)
+{
+    const char *env = getenv("SSB64_DECOMP_DIAG");
+
+    return (env != NULL) && (env[0] != '\0') && (strcmp(env, "0") != 0);
+}
+#else
+static sb32 ftMainDecompDiagEnabled(void)
+{
+    return FALSE;
+}
+#endif
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netfighterphase.h>
@@ -783,8 +799,11 @@ void ftMainUpdateMotionEventsAll(GObj *fighter_gobj)
 #ifdef PORT
                     if (++watchdog >= 256)
                     {
-                        port_log("SSB64: ftMainUpdateMotionEventsAll - watchdog script=%d opcode=%u wait=%f ptr=%p frame=%f speed=%f\n",
-                            i, ev_kind, ms->script_wait, ms->p_script, fighter_gobj->anim_frame, DObjGetStruct(fighter_gobj)->anim_speed);
+                        if (ftMainDecompDiagEnabled() != FALSE)
+                        {
+                            port_log("SSB64: ftMainUpdateMotionEventsAll - watchdog script=%d opcode=%u wait=%f ptr=%p frame=%f speed=%f\n",
+                                i, ev_kind, ms->script_wait, ms->p_script, fighter_gobj->anim_frame, DObjGetStruct(fighter_gobj)->anim_speed);
+                        }
                         ms->p_script = NULL;
                         break;
                     }
@@ -1345,7 +1364,7 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         {
         case nFTPlayerKindMan:
             controller = this_fp->input.controller;
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
             if (controller == NULL)
             {
                 if ((this_fp->player >= 0) && (this_fp->player < MAXCONTROLLERS))
@@ -1588,7 +1607,7 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             ftParamResetStatUpdateColAnim(fighter_gobj);
         }
     }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     if ((this_fp->item_gobj != NULL) && (this_fp->status_id != nFTCommonStatusLightGet))
     {
         ITStruct *item_ip = itGetStruct(this_fp->item_gobj);
@@ -1758,7 +1777,7 @@ void ftMainClearGroundObstacle(GObj *gobj)
     }
 }
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 /*
  * Hyrule twister repair only has two ground-obstacle slots. Rollback orphan eject can leave stale
  * entries pointing at freed GObjs, so ftMainCheckAddGroundObstacle fails even after Clear.
@@ -1857,7 +1876,7 @@ void ftMainSetHitHazard(GObj *gobj, GObj *fighter_gobj, FTStruct *fp, s32 kind)
     switch (kind)
     {
     case nGMHitEnvironmentTwister:
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         if ((fp != NULL) && (fp->attr != NULL) && (fp->data != NULL) && (gobj != NULL) &&
             (DObjGetStruct(gobj) != NULL) && (DObjGetStruct(fighter_gobj) != NULL))
 #endif
@@ -4265,7 +4284,7 @@ void ftMainProcParams(GObj *fighter_gobj)
             break;
 
         case TRUE:
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
             if ((fp->item_gobj != NULL) && (fp->is_item_show))
             {
                 ITStruct *item_ip = itGetStruct(fp->item_gobj);
@@ -4304,7 +4323,7 @@ void ftMainProcParams(GObj *fighter_gobj)
                     fp->afterimage.drawstatus++;
                 }
             }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
             }
 #endif
             break;
@@ -4336,25 +4355,37 @@ void ftMainUpdateHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
     {
         FTHiddenPart *hp_table = (FTHiddenPart*)PORT_RESOLVE(attr->hiddenparts);
         if (hp_table == NULL) {
-            port_log("SSB64: ftMainUpdateHiddenPartID BAIL — hp_table NULL fkind=%d hpid=%d token=0x%X\n",
-                (int)fp->fkind, hiddenpart_id, attr->hiddenparts);
+            if (ftMainDecompDiagEnabled() != FALSE)
+            {
+                port_log("SSB64: ftMainUpdateHiddenPartID BAIL — hp_table NULL fkind=%d hpid=%d token=0x%X\n",
+                    (int)fp->fkind, hiddenpart_id, attr->hiddenparts);
+            }
             return;
         }
         if (hiddenpart_id < 0 || hiddenpart_id >= 32) {
-            port_log("SSB64: ftMainUpdateHiddenPartID BAIL — hpid OOB fkind=%d hpid=%d\n",
-                (int)fp->fkind, hiddenpart_id);
+            if (ftMainDecompDiagEnabled() != FALSE)
+            {
+                port_log("SSB64: ftMainUpdateHiddenPartID BAIL — hpid OOB fkind=%d hpid=%d\n",
+                    (int)fp->fkind, hiddenpart_id);
+            }
             return;
         }
         hiddenpart = &hp_table[hiddenpart_id];
         if (hiddenpart->root_joint_id < 0 ||
             hiddenpart->root_joint_id >= FTPARTS_JOINT_NUM_MAX) {
-            port_log("SSB64: ftMainUpdateHiddenPartID BAIL — root_joint OOB fkind=%d hpid=%d joint=%d\n",
-                (int)fp->fkind, hiddenpart_id, (int)hiddenpart->root_joint_id);
+            if (ftMainDecompDiagEnabled() != FALSE)
+            {
+                port_log("SSB64: ftMainUpdateHiddenPartID BAIL — root_joint OOB fkind=%d hpid=%d joint=%d\n",
+                    (int)fp->fkind, hiddenpart_id, (int)hiddenpart->root_joint_id);
+            }
             return;
         }
-        port_log("SSB64: ftMainUpdateHiddenPartID OK fkind=%d hpid=%d joint=%d parent=%d kind=%d\n",
-            (int)fp->fkind, hiddenpart_id, (int)hiddenpart->root_joint_id,
-            (int)hiddenpart->parent_joint_id, (int)hiddenpart->joint_kind);
+        if (ftMainDecompDiagEnabled() != FALSE)
+        {
+            port_log("SSB64: ftMainUpdateHiddenPartID OK fkind=%d hpid=%d joint=%d parent=%d kind=%d\n",
+                (int)fp->fkind, hiddenpart_id, (int)hiddenpart->root_joint_id,
+                (int)hiddenpart->parent_joint_id, (int)hiddenpart->joint_kind);
+        }
     }
 #else
     hiddenpart = &((FTHiddenPart*)PORT_RESOLVE(attr->hiddenparts))[hiddenpart_id];
@@ -4650,7 +4681,7 @@ void ftMainEjectHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
 void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 anim_speed, u32 flags)
 {
 #ifdef PORT
-    if (status_id < 0) {
+    if ((status_id < 0) && (ftMainDecompDiagEnabled() != FALSE)) {
         port_log("SSB64: !!! ftMainSetStatus ENTRY status_id=0x%x (negative) "
                  "fighter_gobj=%p caller_ra=%p\n",
 #if defined(_MSC_VER)
@@ -4922,8 +4953,11 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
         }
         else fp->figatree = NULL;
 #ifdef PORT
-        port_log("SSB64: ftMainSetStatus - status=0x%x motion=%d figatree=%p anim_flags=0x%08x\n",
-            status_id, motion_id, fp->figatree, motion_desc->anim_desc.word);
+        if (ftMainDecompDiagEnabled() != FALSE)
+        {
+            port_log("SSB64: ftMainSetStatus - status=0x%x motion=%d figatree=%p anim_flags=0x%08x\n",
+                status_id, motion_id, fp->figatree, motion_desc->anim_desc.word);
+        }
 #endif
         
         if (fp->figatree != NULL)
@@ -5016,11 +5050,17 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
                 joint->flags = DOBJ_FLAG_NONE;
             }
 #ifdef PORT
-            port_log("SSB64: ftMainSetStatus - before figatree attach status=0x%x motion=%d\n", status_id, motion_id);
+            if (ftMainDecompDiagEnabled() != FALSE)
+            {
+                port_log("SSB64: ftMainSetStatus - before figatree attach status=0x%x motion=%d\n", status_id, motion_id);
+            }
 #endif
             lbCommonAddFighterPartsFigatree(fp->joints[nFTPartsJointTopN]->child, fp->figatree, frame_begin);
 #ifdef PORT
-            port_log("SSB64: ftMainSetStatus - after figatree attach status=0x%x motion=%d\n", status_id, motion_id);
+            if (ftMainDecompDiagEnabled() != FALSE)
+            {
+                port_log("SSB64: ftMainSetStatus - after figatree attach status=0x%x motion=%d\n", status_id, motion_id);
+            }
 #endif
 
             if (anim_speed != DObjGetStruct(fighter_gobj)->anim_speed)
@@ -5125,19 +5165,28 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
         if (frame_begin != 0.0F)
         {
 #ifdef PORT
-            port_log("SSB64: ftMainSetStatus - before play forward events status=0x%x motion=%d frame_begin=%f\n",
-                status_id, motion_id, frame_begin);
+            if (ftMainDecompDiagEnabled() != FALSE)
+            {
+                port_log("SSB64: ftMainSetStatus - before play forward events status=0x%x motion=%d frame_begin=%f\n",
+                    status_id, motion_id, frame_begin);
+            }
 #endif
             ftMainPlayAnimEventsForward(fighter_gobj);
         }
         else
         {
 #ifdef PORT
-            port_log("SSB64: ftMainSetStatus - before play all events status=0x%x motion=%d\n", status_id, motion_id);
+            if (ftMainDecompDiagEnabled() != FALSE)
+            {
+                port_log("SSB64: ftMainSetStatus - before play all events status=0x%x motion=%d\n", status_id, motion_id);
+            }
 #endif
             ftMainPlayAnimEventsAll(fighter_gobj);
 #ifdef PORT
-            port_log("SSB64: ftMainSetStatus - after play all events status=0x%x motion=%d\n", status_id, motion_id);
+            if (ftMainDecompDiagEnabled() != FALSE)
+            {
+                port_log("SSB64: ftMainSetStatus - after play all events status=0x%x motion=%d\n", status_id, motion_id);
+            }
 #endif
             ftMainRunUpdateColAnim(fighter_gobj);
         }
@@ -5145,13 +5194,6 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     else for (i = 0; i < ARRAY_COUNT(fp->motion_scripts[0]); i++)
     {
         fp->motion_scripts[0][i].p_script = fp->motion_scripts[1][i].p_script = NULL;
-    }
-    if ((fp->pkind != nFTPlayerKindDemo) && (fp->joints[nFTPartsJointTopN] != NULL) &&
-        ((fp->lr == +1) || (fp->lr == -1)) && (status_struct != NULL) &&
-        (status_struct[status_struct_id].proc_physics == ftCommonWaitProcPhysics))
-    {
-        /* Re-apply after figatree attach on Wait entry only — Appear anims own TopN yaw until finish. */
-        fp->joints[nFTPartsJointTopN]->rotate.vec.f.y = fp->lr * F_CLC_DTOR32(90.0F);
     }
     if (fp->pkind != nFTPlayerKindDemo)
     {
@@ -5177,7 +5219,7 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     else fp->proc_update = NULL;
 }
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 /* Rollback snapshot apply copies status_id/motion_vars but leaves stale proc_*; resim then runs the wrong handler. */
 void ftMainRebindStatusProcs(GObj *fighter_gobj)
 {

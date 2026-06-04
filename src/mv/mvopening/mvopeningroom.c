@@ -9,8 +9,61 @@
 #include <sys/scheduler.h>
 extern void func_800266A0_272A0(void);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <stdlib.h>
+#include <string.h>
 extern void port_log(const char *fmt, ...);
+
+static sb32 mvOpeningRoomDecompDiagEnabled(void)
+{
+	const char *env = getenv("SSB64_DECOMP_DIAG");
+
+	return (env != NULL) && (env[0] != '\0') && (strcmp(env, "0") != 0);
+}
+
+#define MVOPENINGROOM_DIAG_LOG(...) \
+	do { \
+		if (mvOpeningRoomDecompDiagEnabled() != FALSE) { \
+			port_log(__VA_ARGS__); \
+		} \
+	} while (0)
+
+static sb32 sMVOpeningRoomLogoDisplayLogged;
+
+static void mvOpeningRoomLogDObjTree(const char *label, GObj *gobj)
+{
+	DObj *dobj;
+	s32 index;
+
+	for (index = 0, dobj = DObjGetStruct(gobj); dobj != NULL; dobj = gcGetTreeDObjNext(dobj), index++)
+	{
+		port_log("SSB64: mvOpeningRoom %s gobj=%p dobj[%d]=%p dl=%p mobj=%p child=%p sib=%p\n",
+			label, gobj, index, dobj, dobj->dl, dobj->mobj, dobj->child, dobj->sib_next);
+	}
+}
+
+static void mvOpeningRoomLogoProcDisplay(GObj *gobj)
+{
+	if (sMVOpeningRoomLogoDisplayLogged == FALSE)
+	{
+		sMVOpeningRoomLogoDisplayLogged = TRUE;
+		if (mvOpeningRoomDecompDiagEnabled() != FALSE)
+		{
+			port_log("SSB64: mvOpeningRoom logo display-begin gobj=%p dobj=%p\n", gobj, DObjGetStruct(gobj));
+		}
+		gcDrawDObjTreeDLLinksForGObj(gobj);
+		if (mvOpeningRoomDecompDiagEnabled() != FALSE)
+		{
+			port_log("SSB64: mvOpeningRoom logo display-end gobj=%p dobj=%p\n", gobj, DObjGetStruct(gobj));
+		}
+	}
+	else
+	{
+		gcDrawDObjTreeDLLinksForGObj(gobj);
+	}
+}
+#else
+#define MVOPENINGROOM_DIAG_LOG(...) ((void)0)
 #endif
 
 
@@ -179,34 +232,6 @@ void mvOpeningRoomBackgroundProcUpdate(GObj *gobj)
 	}
 }
 
-#ifdef PORT
-static sb32 sMVOpeningRoomLogoDisplayLogged;
-
-static void mvOpeningRoomLogDObjTree(const char *label, GObj *gobj)
-{
-	DObj *dobj;
-	s32 index;
-
-	for (index = 0, dobj = DObjGetStruct(gobj); dobj != NULL; dobj = gcGetTreeDObjNext(dobj), index++)
-	{
-		port_log("SSB64: mvOpeningRoom %s gobj=%p dobj[%d]=%p dl=%p mobj=%p child=%p sib=%p\n",
-			label, gobj, index, dobj, dobj->dl, dobj->mobj, dobj->child, dobj->sib_next);
-	}
-}
-
-static void mvOpeningRoomLogoProcDisplay(GObj *gobj)
-{
-	if (sMVOpeningRoomLogoDisplayLogged == FALSE)
-	{
-		sMVOpeningRoomLogoDisplayLogged = TRUE;
-		port_log("SSB64: mvOpeningRoom logo display-begin gobj=%p dobj=%p\n", gobj, DObjGetStruct(gobj));
-		gcDrawDObjTreeDLLinksForGObj(gobj);
-		port_log("SSB64: mvOpeningRoom logo display-end gobj=%p dobj=%p\n", gobj, DObjGetStruct(gobj));
-	}
-	else gcDrawDObjTreeDLLinksForGObj(gobj);
-}
-#endif
-
 // 0x80131BA8
 void mvOpeningRoomMakeBackground(void)
 {
@@ -219,8 +244,11 @@ void mvOpeningRoomMakeBackground(void)
 	gcAddMatAnimJointAll(gobj, lbRelocGetFileData(AObjEvent32***, sMVOpeningRoomFiles[0], llMVCommonRoomBackgroundMatAnimJoint), 0.0F);
 	gcAddGObjProcess(gobj, mvOpeningRoomBackgroundProcUpdate, nGCProcessKindFunc, 1);
 	gcPlayAnimAll(gobj);
-#ifdef PORT
-	mvOpeningRoomLogDObjTree("background", gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (mvOpeningRoomDecompDiagEnabled() != FALSE)
+	{
+		mvOpeningRoomLogDObjTree("background", gobj);
+	}
 #endif
 }
 
@@ -458,7 +486,7 @@ void mvOpeningRoomMakeLogo(void)
 
 	sMVOpeningRoomLogoGObj = gobj = gcMakeGObjSPAfter(0, NULL, 21, GOBJ_PRIORITY_DEFAULT);
 	gcSetupCommonDObjs(gobj, lbRelocGetFileData(DObjDesc*, sMVOpeningRoomFiles[0], llMVCommonRoomLogoDObjDesc), NULL);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 	gcAddGObjDisplay(gobj, mvOpeningRoomLogoProcDisplay, 29, GOBJ_PRIORITY_DEFAULT, ~0);
 #else
 	gcAddGObjDisplay(gobj, gcDrawDObjTreeDLLinksForGObj, 29, GOBJ_PRIORITY_DEFAULT, ~0);
@@ -467,8 +495,11 @@ void mvOpeningRoomMakeLogo(void)
 	gcAddMatAnimJointAll(gobj, lbRelocGetFileData(AObjEvent32***, sMVOpeningRoomFiles[0], llMVCommonRoomLogoMatAnimJoint), 0.0F);
 	gcAddGObjProcess(gobj, gcPlayAnimAll, nGCProcessKindFunc, 1);
 	gcPlayAnimAll(gobj);
-#ifdef PORT
-	mvOpeningRoomLogDObjTree("logo", gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (mvOpeningRoomDecompDiagEnabled() != FALSE)
+	{
+		mvOpeningRoomLogDObjTree("logo", gobj);
+	}
 #endif
 }
 
@@ -504,8 +535,11 @@ void mvOpeningRoomMakeCloseUpEffect(void)
 	gcAddGObjProcess(gobj, gcPlayAnimAll, nGCProcessKindFunc, 1);
 	gcAddAnimJointAll(gobj, lbRelocGetFileData(AObjEvent32**, sMVOpeningRoomFiles[0], llMVCommonRoomCloseUpEffectAirAnimJoint), 0.0F);
 	gcPlayAnimAll(gobj);
-#ifdef PORT
-	mvOpeningRoomLogDObjTree("closeup-air", gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (mvOpeningRoomDecompDiagEnabled() != FALSE)
+	{
+		mvOpeningRoomLogDObjTree("closeup-air", gobj);
+	}
 #endif
 
 	// Close-up effect ground
@@ -522,8 +556,11 @@ void mvOpeningRoomMakeCloseUpEffect(void)
 	gcAddGObjProcess(gobj, gcPlayAnimAll, nGCProcessKindFunc, 1);
 	gcAddAnimJointAll(gobj, lbRelocGetFileData(AObjEvent32**, sMVOpeningRoomFiles[0], llMVCommonRoomCloseUpEffectGroundAnimJoint), 0.0F);
 	gcPlayAnimAll(gobj);
-#ifdef PORT
-	mvOpeningRoomLogDObjTree("closeup-ground", gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (mvOpeningRoomDecompDiagEnabled() != FALSE)
+	{
+		mvOpeningRoomLogDObjTree("closeup-ground", gobj);
+	}
 #endif
 }
 
@@ -586,8 +623,11 @@ void mvOpeningRoomMakeDeskGround(void)
 	gcAddMatAnimJointAll(gobj, lbRelocGetFileData(AObjEvent32***, sMVOpeningRoomFiles[0], llMVCommonRoomDeskGroundMatAnimJoint), 0.0F);
 	gcAddGObjProcess(gobj, mvOpeningRoomDeskGroundProcUpdate, nGCProcessKindFunc, 1);
 	gcPlayAnimAll(gobj);
-#ifdef PORT
-	mvOpeningRoomLogDObjTree("desk-ground", gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (mvOpeningRoomDecompDiagEnabled() != FALSE)
+	{
+		mvOpeningRoomLogDObjTree("desk-ground", gobj);
+	}
 #endif
 }
 
@@ -744,8 +784,11 @@ void mvOpeningRoomMakeSpotlight(void)
 	gcAddMatAnimJointAll(gobj, lbRelocGetFileData(AObjEvent32***, sMVOpeningRoomFiles[0], llMVCommonRoomSpotlightMatAnimJoint), 0.0F);
 	gcAddGObjProcess(gobj, gcPlayAnimAll, nGCProcessKindFunc, 1);
 	gcPlayAnimAll(gobj);
-#ifdef PORT
-	mvOpeningRoomLogDObjTree("spotlight", gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (mvOpeningRoomDecompDiagEnabled() != FALSE)
+	{
+		mvOpeningRoomLogDObjTree("spotlight", gobj);
+	}
 #endif
 
 	mvOpeningRoomSetSpotlightPosition(gobj, sMVOpeningRoomPulledFighterKind);
@@ -1423,88 +1466,58 @@ void mvOpeningRoomFuncStart(void)
 	rl_setup.force_status_buffer = sMVOpeningRoomForceStatusBuffer;
 	rl_setup.force_status_buffer_size = ARRAY_COUNT(sMVOpeningRoomForceStatusBuffer);
 
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - init reloc setup\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - init reloc setup\n");
 	lbRelocInitSetup(&rl_setup);
 	lbRelocLoadFilesListed(dMVOpeningRoomFileIDs, sMVOpeningRoomFiles);
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - reloc files loaded\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - reloc files loaded\n");
 	gcMakeGObjSPAfter(0, mvOpeningRoomFuncRun, 0, GOBJ_PRIORITY_DEFAULT);
 	sMVOpeningRoomCameraGObj = gcMakeDefaultCameraGObj(0, GOBJ_PRIORITY_DEFAULT, 100, COBJ_FLAG_FILLCOLOR | COBJ_FLAG_ZBUFFER, GPACK_RGBA8888(0x00, 0x00, 0x00, 0xFF));
 	efParticleInitAll();
 	mvOpeningRoomInitVars();
 	efManagerInitEffects();
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - scene managers initialized\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - scene managers initialized\n");
 	ftManagerAllocFighter(FTDATA_FLAG_SUBMOTION, 3);
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - fighter alloc done pulled=%d dropped=%d boss=%d\n",
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - fighter alloc done pulled=%d dropped=%d boss=%d\n",
 		sMVOpeningRoomPulledFighterKind, sMVOpeningRoomDroppedFighterKind, nFTKindBoss);
-#endif
 	ftManagerSetupFilesAllKind(sMVOpeningRoomPulledFighterKind);
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - pulled fighter files ready\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - pulled fighter files ready\n");
 	ftManagerSetupFilesAllKind(sMVOpeningRoomDroppedFighterKind);
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - dropped fighter files ready\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - dropped fighter files ready\n");
 	ftManagerSetupFilesAllKind(nFTKindBoss);
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - boss fighter files ready\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - boss fighter files ready\n");
 	
 	sMVOpeningRoomBossFigatreeHeap = syTaskmanMalloc(gFTManagerFigatreeHeapSize, 0x10);
 	sMVOpeningRoomPluckedFigatreeHeap = syTaskmanMalloc(gFTManagerFigatreeHeapSize, 0x10);
 	sMVOpeningRoomDroppedFigatreeHeap = syTaskmanMalloc(gFTManagerFigatreeHeapSize, 0x10);
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - figatree heaps allocated size=0x%x\n", (unsigned)gFTManagerFigatreeHeapSize);
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - figatree heaps allocated size=0x%x\n", (unsigned)gFTManagerFigatreeHeapSize);
 
 	mvOpeningRoomMakeScene1Cameras();
 	mvOpeningRoomMakeCloseUpOverlayCamera();
 	mvOpeningRoomMakeWallpaperCamera();
 	mvOpeningRoomMakeLogoCamera();
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - cameras created\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - cameras created\n");
 	mvOpeningRoomMakeOutside();
 	mvOpeningRoomMakeHaze();
 	mvOpeningRoomMakeBackground();
 	mvOpeningRoomMakeSunlight();
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - early room objects created\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - early room objects created\n");
 	mvOpeningRoomMakeDesk();
 	mvOpeningRoomMakeLogoWallpaper();
 	mvOpeningRoomMakeLogo();
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - desk/logo objects created\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - desk/logo objects created\n");
 	mvOpeningRoomMakeBooks();
 	mvOpeningRoomMakeLamp();
 	mvOpeningRoomMakeTissues();
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - animated prop objects created\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - animated prop objects created\n");
 	mvOpeningRoomMakeBoss();
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - boss created\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - boss created\n");
 	mvOpeningRoomMakeBossShadow();
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - boss shadow created\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - boss shadow created\n");
 	scSubsysFighterSetLightParams(45.0F, 45.0F, 0xFF, 0xFF, 0xFF, 0xFF);
 	func_800266A0_272A0();
 	syAudioPlayBGM(0, nSYAudioBGMOpening);
 	sySchedulerSetTicCount(0);
-#ifdef PORT
-	port_log("SSB64: mvOpeningRoomFuncStart - final scene init complete\n");
-#endif
+	MVOPENINGROOM_DIAG_LOG("SSB64: mvOpeningRoomFuncStart - final scene init complete\n");
 
 	gSCManagerUnkown0x800A50F0 = 0;
 }

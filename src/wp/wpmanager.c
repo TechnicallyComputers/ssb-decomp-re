@@ -23,7 +23,7 @@ s32 sWPManagerDisplayMode;
 // 0x8018CFF8
 u32 sWPManagerGroupID;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 static u32 sWPManagerInstanceID = 1U;
 #endif
 
@@ -93,7 +93,7 @@ u32 wpManagerGetGroupID()
     return group_id;
 }
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 u32 wpManagerAssignInstanceId(void)
 {
     u32 instance_id = sWPManagerInstanceID++;
@@ -289,7 +289,7 @@ GObj* wpManagerMakeWeapon(GObj *parent_gobj, WPDesc *wp_desc, Vec3f *spawn_pos, 
 
     wp->group_id = 0;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     wp->instance_id = wpManagerAssignInstanceId();
 #endif
 

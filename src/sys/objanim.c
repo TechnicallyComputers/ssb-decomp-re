@@ -785,16 +785,11 @@ void gcParseDObjAnimJoint(DObj *dobj)
                  * opcode 23 we don't implement).  The original N64 `break;`
                  * would re-parse the same event and spin — terminate the
                  * animation instead. */
-                /* Include the raw u32 word too — a halfswap-corrupted
-                 * stream surfaces here as opcode in the high 7 bits of a
-                 * shifted command word, and seeing the byte pattern
-                 * makes the corruption shape diagnosable from the log
-                 * alone.  E.g. opcode=64 with raw_u32=0x80000a03 is the
-                 * halfswapped form of a real SetValRateBlock (opcode=5)
-                 * whose stream-level un-halfswap fixup was skipped. */
+#if defined(SSB64_NETMENU)
                 port_log("SSB64: gcParseDObjAnimJoint UNHANDLED opcode=%u ev=%p raw_u32=0x%08x — ending anim\n",
                     command_kind, (void*)dobj->anim_joint.event32,
                     *(u32*)dobj->anim_joint.event32);
+#endif
                 dobj->anim_wait = AOBJ_ANIM_END;
                 return;
 #else
@@ -895,7 +890,7 @@ void gcPlayDObjAnimJoint(DObj *dobj)
     f32 temp_f20;
     f32 temp_f22;
     f32 temp_f24;
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     static s32 sGCPlayDObjTraILogCount = 0;
 #endif
 
@@ -965,7 +960,7 @@ void gcPlayDObjAnimJoint(DObj *dobj)
                         {
                             value = 1.0F;
                         }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
                         if (sGCPlayDObjTraILogCount < 16)
                         {
                             sGCPlayDObjTraILogCount++;

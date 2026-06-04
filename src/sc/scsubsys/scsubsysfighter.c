@@ -1,7 +1,16 @@
 #include <ft/fighter.h>
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <stdlib.h>
+#include <string.h>
 extern void port_log(const char *fmt, ...);
+
+static sb32 scSubsysFighterDecompDiagEnabled(void)
+{
+    const char *env = getenv("SSB64_DECOMP_DIAG");
+
+    return (env != NULL) && (env[0] != '\0') && (strcmp(env, "0") != 0);
+}
 #endif
 
 // // // // // // // // // // // //
@@ -77,12 +86,18 @@ void scSubsysFighterProcUpdate(GObj *fighter_gobj)
 // 0x803905CC
 void scSubsysFighterSetStatus(GObj *fighter_gobj, s32 status_id)
 {
-#ifdef PORT
-    port_log("SSB64: scSubsysFighterSetStatus - begin status=0x%x gobj=%p\n", status_id, fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (scSubsysFighterDecompDiagEnabled() != FALSE)
+    {
+        port_log("SSB64: scSubsysFighterSetStatus - begin status=0x%x gobj=%p\n", status_id, fighter_gobj);
+    }
 #endif
     ftMainSetStatus(fighter_gobj, status_id, FTSTATUS_PRESERVE_NONE, 1.0F, 0.0F);
-#ifdef PORT
-    port_log("SSB64: scSubsysFighterSetStatus - end status=0x%x gobj=%p\n", status_id, fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (scSubsysFighterDecompDiagEnabled() != FALSE)
+    {
+        port_log("SSB64: scSubsysFighterSetStatus - end status=0x%x gobj=%p\n", status_id, fighter_gobj);
+    }
 #endif
 }
 

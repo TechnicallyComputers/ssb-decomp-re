@@ -41,7 +41,7 @@ extern void grYamabukiMakeGate(void);
 extern void grYamabukiInitGroundVars(void);
 extern GObj* grYamabukiMakeGround(void);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 /* Re-sync tower-door yakumono + gate GObj anim after rollback snapshot apply. */
 extern void grYamabukiGateRestoreAfterRollback(f32 restore_anim_frame, f32 restore_anim_wait, u8 restore_anim_phase,
                                                sb32 has_restore_anim);

@@ -15,7 +15,7 @@ void wpManagerSetPrevStructAlloc(WPStruct* wp);
 // Get group index for weapon and increment global group count
 u32 wpManagerGetGroupID();
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 u32 wpManagerAssignInstanceId(void);
 void wpManagerResetInstanceIds(void);
 #endif

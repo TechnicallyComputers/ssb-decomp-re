@@ -23,7 +23,7 @@ DObjTransformTypes dGRJungleTaruCannTransformKinds[/* */] =
     { nGCMatrixKindTraRotRpyRSca, nGCMatrixKindNull, 0x00 }
 };
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 /*
  * Init-time barrel GObj cache (same pattern as Yoster cloud slots). The barrel shares
  * nGCCommonKindGround with other stages' ground GObjs; on DK Jungle it is the only one, but
@@ -62,7 +62,7 @@ enum grJungleTaruCannStatus
 //                               //
 // // // // // // // // // // // //
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 static void *grJungleEnsureMapHead(void)
 {
     void *map_head = gGRCommonStruct.jungle.map_head;
@@ -302,7 +302,7 @@ sb32 grJungleTaruCannIsChildShootAnimActive(GObj *ground_gobj)
 // 0x80109CB0
 void grJungleTaruCannAddAnimOffset(GObj *ground_gobj, intptr_t offset)
 {
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     DObj *root;
     DObj *dobj;
     void *map_head;
@@ -313,14 +313,12 @@ void grJungleTaruCannAddAnimOffset(GObj *ground_gobj, intptr_t offset)
     }
     if ((DObjGetStruct(ground_gobj) == NULL) || (DObjGetStruct(ground_gobj)->child == NULL))
     {
-#if defined(SSB64_NETMENU)
         /* Netplay rollback only: repair hollow tree before seating child anim joint. */
         if (syNetplayRollbackSemanticsActive() != FALSE)
         {
             grJungleRepairTaruCannFromCachedPose();
         }
         else
-#endif
         {
             return;
         }
@@ -341,6 +339,12 @@ void grJungleTaruCannAddAnimOffset(GObj *ground_gobj, intptr_t offset)
         return;
     }
     gcAddDObjAnimJoint(dobj, (AObjEvent32 *)((uintptr_t)map_head + (intptr_t)offset), 0.0F);
+    gcParseDObjAnimJoint(dobj);
+    gcPlayDObjAnimJoint(dobj);
+#elif defined(PORT)
+    DObj *dobj = DObjGetStruct(ground_gobj)->child;
+
+    gcAddDObjAnimJoint(dobj, (AObjEvent32 *)((uintptr_t)gGRCommonStruct.jungle.map_head + (intptr_t)offset), 0.0F);
     gcParseDObjAnimJoint(dobj);
     gcPlayDObjAnimJoint(dobj);
 #else
@@ -480,7 +484,7 @@ void grJungleMakeTaruCann(void)
 
     gGRCommonStruct.jungle.tarucann_gobj = tarucann_gobj = gcMakeGObjSPAfter(nGCCommonKindGround, NULL, nGCCommonLinkIDGround, GOBJ_PRIORITY_DEFAULT);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     sGRJungleTaruCannGobj = tarucann_gobj;
     sGRJungleTaruCannReestablishFailed = 0U;
 #endif
@@ -507,7 +511,7 @@ void grJungleMakeTaruCann(void)
     gGRCommonStruct.jungle.tarucann_status = nGRJungleTaruCannStatusMove;
     gGRCommonStruct.jungle.tarucann_wait = syUtilsRandIntRange(180) + 180;
     gGRCommonStruct.jungle.tarucann_rotate_step = F_CST_DTOR32(0.0F);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     grJungleRefreshTaruCannCachedPoseFromGObj(tarucann_gobj);
 #endif
 }
@@ -591,7 +595,7 @@ sb32 grJungleTaruCannCheckGetDamageKind(GObj *ground_gobj, GObj *fighter_gobj, s
 // 0x8010A104
 void grJungleTaruCannGetPosition(Vec3f *pos)
 {
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     DObj *root;
     GObj *tarucann_gobj;
 
@@ -625,7 +629,7 @@ void grJungleTaruCannGetPosition(Vec3f *pos)
 // 0x8010A12C
 f32 grJungleTaruCannGetRotate(void)
 {
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     DObj *root;
     GObj *tarucann_gobj;
 

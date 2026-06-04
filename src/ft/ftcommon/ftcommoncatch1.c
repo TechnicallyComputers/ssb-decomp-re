@@ -1,7 +1,4 @@
 #include <ft/fighter.h>
-#ifdef PORT
-extern void port_log(const char *fmt, ...);
-#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -13,19 +10,6 @@ extern void port_log(const char *fmt, ...);
 void ftCommonCatchProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
-#ifdef PORT
-    DObj *_d = DObjGetStruct(fighter_gobj);
-    port_log("SSB64: ftCommonCatchProcUpdate fkind=%d anim_frame=%f dobj_speed=%f dobj_wait=%f dobj_anim_frame=%f pull_begin=%f pull_frames=%f flag1=%u flag2=%u\n",
-        (int)fp->fkind,
-        fighter_gobj->anim_frame,
-        _d ? _d->anim_speed : -999.0F,
-        _d ? _d->anim_wait : -999.0F,
-        _d ? _d->anim_frame : -999.0F,
-        ftStatusVarsCatchMain(fp)->catch_pull_frame_begin,
-        ftStatusVarsCatchMain(fp)->catch_pull_anim_frames,
-        (unsigned)fp->motion_vars.flags.flag1,
-        (unsigned)fp->motion_vars.flags.flag2);
-#endif
 
     if (ftStatusVarsCatchMain(fp)->catch_pull_frame_begin > 0.0F)
     {

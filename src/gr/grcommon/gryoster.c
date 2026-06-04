@@ -81,7 +81,7 @@ sb32 grYosterCheckFighterCloudStand(s32 cloud_id)
 }
 
 // 0x80108634
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 /*
  * All three cloud GObjs share gobj->id == nGCCommonKindGround, so gcFindGObjByID() cannot tell
  * them apart on a rollback restore (it collapses clouds[0/1/2].gobj onto the first ground GObj).
@@ -103,6 +103,7 @@ static sb32 grYosterReestablishCloudDobjTree(s32 cloud_id);
 #endif
 
 static void grYosterRecoverCloudAltitudeIfNeeded(GRYosterCloud *cloud, s32 cloud_id);
+#if defined(PORT) && defined(SSB64_NETMENU)
 void grYosterRebindCloudDobjs(s32 cloud_id)
 {
     GRYosterCloud *cloud;
@@ -123,13 +124,10 @@ void grYosterRebindCloudDobjs(s32 cloud_id)
         return;
     }
     coll_dobj = DObjGetStruct(cloud->gobj);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     /*
-     * Netplay snapshot loads (e.g. the LOAD_HASH_DRIFT resim at tick 509) tear the cloud
-     * GObj's DObj payload down to NULL while the GObj itself survives. Rebind alone cannot
-     * recover from a null root, so re-establish the DObj tree once per hollow spell. The
-     * spawn-anchored translate (grYosterApplyCloudRootTranslate) keeps collision X/Z correct;
-     * the snapshot restore must NOT write its (possibly zeroed) saved translate onto the root.
+     * Netplay snapshot loads tear the cloud GObj DObj payload down to NULL while the GObj survives.
+     * Re-establish the tree once per hollow spell (spawn-anchored translate keeps collision X/Z).
      */
     if (coll_dobj == NULL)
     {
@@ -162,12 +160,13 @@ void grYosterRebindCloudDobjs(s32 cloud_id)
         cloud->dobj[j] = coll_dobj->child;
         coll_dobj = coll_dobj->sib_next;
     }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     grYosterEnsureCloudDisplayDobjs(cloud_id);
 #endif
 }
+#endif
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 static void grYosterApplyCloudRootTranslate(GRYosterCloud *cloud, s32 cloud_id)
 {
     DObj *root;
@@ -642,7 +641,7 @@ void grYosterUpdateCloudSolid(s32 cloud_id)
     {
         return;
     }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     grYosterApplyCloudRootTranslate(cloud, cloud_id);
 #else
     dobj->translate.vec.f.y = cloud->altitude - cloud->pressure;
@@ -736,7 +735,7 @@ void grYosterProcUpdate(GObj *ground_gobj)
 {
     s32 i;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     for (i = 0; i < (s32)ARRAY_COUNT(sGRYosterCloudReestablishedThisTick); i++)
     {
         sGRYosterCloudReestablishedThisTick[i] = 0U;
@@ -748,7 +747,7 @@ void grYosterProcUpdate(GObj *ground_gobj)
         {
             continue;
         }
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         grYosterRebindCloudDobjs(i);
 #endif
         switch (gGRCommonStruct.yoster.clouds[i].status)
@@ -790,7 +789,7 @@ void grYosterInitAll(void)
         map_gobj = gcMakeGObjSPAfter(nGCCommonKindGround, NULL, nGCCommonLinkIDGround, GOBJ_PRIORITY_DEFAULT);
 
         gGRCommonStruct.yoster.clouds[i].gobj = map_gobj;
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         sGRYosterCloudGobjs[i] = map_gobj;
 #endif
 
@@ -808,7 +807,7 @@ void grYosterInitAll(void)
             nGCMatrixKindNull, 
             nGCMatrixKindNull
         );
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         gcAddGObjProcess(map_gobj, grYosterCloudPlayAnimAllProc, nGCProcessKindFunc, 5);
 #else
         gcAddGObjProcess(map_gobj, gcPlayAnimAll, nGCProcessKindFunc, 5);
@@ -823,21 +822,33 @@ void grYosterInitAll(void)
         coll_dobj = DObjGetStruct(map_gobj);
         coll_dobj->translate.vec.f = gMPCollisionYakumonoDObjs->dobjs[dGRYosterCloudLineIDs[i]]->translate.vec.f;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         sGRYosterCloudSpawnTranslate[i] = coll_dobj->translate.vec.f;
 #endif
 
         gGRCommonStruct.yoster.clouds[i].altitude = coll_dobj->translate.vec.f.y;
+#if defined(PORT) && defined(SSB64_NETMENU)
         if (gGRCommonStruct.yoster.clouds[i].altitude == 0.0F)
         {
             gGRCommonStruct.yoster.clouds[i].altitude =
                 grYosterSampleYakumonoLineBaseY(dGRYosterCloudLineIDs[i]);
         }
+#endif
 
         coll_dobj = coll_dobj->child;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
         grYosterAttachCloudDisplayFromCollChain(&gGRCommonStruct.yoster.clouds[i], coll_dobj, map_head);
+#elif defined(PORT)
+        for (j = 0; j < ARRAY_COUNT(gGRCommonStruct.yoster.clouds[i].dobj); j++, coll_dobj = coll_dobj->sib_next)
+        {
+            cloud_dobj = gcAddChildForDObj(coll_dobj, (void *)((uintptr_t)map_head + (intptr_t)llGRYosterMapCloudDisplayList));
+            gGRCommonStruct.yoster.clouds[i].dobj[j] = cloud_dobj;
+
+            gcAddXObjForDObjFixed(cloud_dobj, nGCMatrixKindTra, 0);
+            gcAddXObjForDObjFixed(cloud_dobj, nGCMatrixKind48, 0);
+            lbCommonAddMObjForTreeDObjs(cloud_dobj, (MObjSub ***)((uintptr_t)map_head + (intptr_t)llGRYosterMap_4B8_MObjSub));
+        }
 #else
         for (j = 0; j < ARRAY_COUNT(gGRCommonStruct.yoster.clouds[i].dobj); j++, coll_dobj = coll_dobj->sib_next)
         {

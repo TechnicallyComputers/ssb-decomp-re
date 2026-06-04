@@ -25,6 +25,7 @@ extern void port_log(const char *fmt, ...);
 #else
 #define PORT_CALLER_RA() __builtin_return_address(0)
 #endif
+#if defined(SSB64_NETMENU)
 #define PORT_LOG_GOBJ_ALLOC(gobj, _id, _link)                                  \
 	do                                                                         \
 	{                                                                          \
@@ -37,6 +38,9 @@ extern void port_log(const char *fmt, ...);
 			         (unsigned) dSYTaskmanFrameCount);                         \
 		}                                                                      \
 	} while (0)
+#else
+#define PORT_LOG_GOBJ_ALLOC(gobj, _id, _link) ((void) 0)
+#endif
 #else
 #define PORT_LOG_GOBJ_ALLOC(gobj, _id, _link) ((void) 0)
 #endif
@@ -566,10 +570,12 @@ void gcAppendGObjToDLLinkedList(GObj *this_gobj, GObj *dl_link_gobj)
 	 * stale pointer. The describe_address dump above the report names the
 	 * original allocation + free sites. */
 	if (__asan_region_is_poisoned((void *)this_gobj, sizeof(GObj)) != NULL) {
+#if defined(SSB64_NETMENU)
 		port_log("SSB64: gcAppendGObjToDLLinkedList: POISONED this_gobj=%p "
 		         "(caller injected stale GObj* from freed prior-scene heap). "
 		         "ASan should halt on the next deref.\n",
 		         (void *)this_gobj);
+#endif
 		__asan_describe_address((void *)this_gobj);
 	}
 #endif
@@ -1877,7 +1883,7 @@ GObj* gcMakeGObjBefore(u32 id, void (*func_run)(GObj*), GObj *link_gobj)
  * double-ejecting a freed gobj — which corrupts the free list and
  * surfaces later as a zombie pointer deref. */
 #define GOBJ_PORT_EJECTED_SENTINEL 0xFE
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/objman_gcport.h>
 #include <sys/netinput.h>
 #include <sys/netpeer.h>
@@ -1898,16 +1904,18 @@ void gcEjectGObj(GObj *gobj)
 	 * push this gobj onto the free list a second time. Log loudly and
 	 * bail so the game stays alive long enough to diagnose the caller. */
 	if (gobj->obj_kind == GOBJ_PORT_EJECTED_SENTINEL) {
+#if defined(SSB64_NETMENU)
 		port_log("SSB64: gcEjectGObj DOUBLE-EJECT DETECTED gobj=%p id=%u "
 		         "link_id=%u dl_link_id=%u link_prev=%p link_next=%p — bailing\n",
 		         (void*)gobj, gobj->id,
 		         (unsigned)gobj->link_id, (unsigned)gobj->dl_link_id,
 		         (void*)gobj->link_prev, (void*)gobj->link_next);
+#endif
 		return;
 	}
 
 	/* PORT crash-diag: log eject so we can correlate with a later crash. */
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 	if (gcPortGObjEjectTraceEnabled() != FALSE)
 	{
 		port_log("SSB64: gcEjectGObj ENTER sim_tick=%u gobj=%p id=%u kind=%u link_id=%u dl_link_id=%u "
@@ -1917,15 +1925,7 @@ void gcEjectGObj(GObj *gobj)
 		         (void *)gobj->link_next, (void *)gobj->link_prev);
 		gcPortRecordGObjEject(gobj);
 	}
-	else
 #endif
-	{
-		port_log("SSB64: gcEjectGObj ENTER gobj=%p id=%u kind=%u link_id=%u dl_link_id=%u "
-		         "gpr_head=%p obj=%p link_next=%p link_prev=%p\n",
-		         (void *)gobj, gobj->id, (unsigned)gobj->obj_kind, (unsigned)gobj->link_id,
-		         (unsigned)gobj->dl_link_id, (void *)gobj->gobjproc_head, gobj->obj, (void *)gobj->link_next,
-		         (void *)gobj->link_prev);
-	}
 
 	gcEndProcessAll(gobj);
 
@@ -1948,7 +1948,12 @@ void gcEjectGObj(GObj *gobj)
 	 * any subsequent eject attempt is detected above. */
 	gobj->obj_kind = GOBJ_PORT_EJECTED_SENTINEL;
 
-	port_log("SSB64: gcEjectGObj EXIT gobj=%p\n", (void*)gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (gcPortGObjEjectTraceEnabled() != FALSE)
+	{
+		port_log("SSB64: gcEjectGObj EXIT gobj=%p\n", (void*)gobj);
+	}
+#endif
 }
 
 // 0x80009B48
@@ -2598,7 +2603,7 @@ void gcSetupObjman(GCSetup *setup)
 	dGCCurrentStatus = nGCStatusSystem;
 }
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/objman_gcport.h>
 #include <sys/netinput.h>
 #include <sys/netpeer.h>
@@ -2823,4 +2828,4 @@ void gcPortSnprintGcRunAllTraversalHeadPairs(char *buf, size_t bufsize, int max_
 		}
 	}
 }
-#endif /* PORT */
+#endif /* PORT && SSB64_NETMENU */

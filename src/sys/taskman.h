@@ -99,7 +99,7 @@ extern void syTaskmanAppendGfxUcodeLoad(Gfx **dlist, u32 ucodeIdx);
 extern void func_800053CC(void);
 extern void syTaskmanUpdateDLBuffers(void);
 extern void syTaskmanSetLoadScene(void);
-#ifdef PORT && defined(SSB64_NETMENU) // only in netmenu build
+#if defined(PORT) && defined(SSB64_NETMENU)
 extern void syTaskmanSetIntervals(u16 update, u16 framedraw);
 #endif
 extern void syTaskmanStartTask(SYTaskmanSetup *arg);

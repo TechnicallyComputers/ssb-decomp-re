@@ -22,7 +22,7 @@ static sb32 grHyruleTwisterDiagEnabled(void)
 
 #endif
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 static void grHyruleTwisterCanonicalizeSimScalars(void)
 {
 #if defined(SSB64_NETMENU)
@@ -177,7 +177,7 @@ GObj* grHyruleMakeTwister(Vec3f *pos)
         else gGRCommonStruct.hyrule.twister_rightedge_x = edge_pos.x - 300.0F;
         
         gGRCommonStruct.hyrule.twister_xf = pc->xf;
-#if defined(PORT)
+#if defined(PORT) && defined(SSB64_NETMENU)
         grHyruleTwisterCanonicalizeSimScalars();
         grHyruleTwisterCanonicalizeDObjPose(twister_dobj);
 #endif
@@ -218,7 +218,7 @@ sb32 grHyruleTwisterRestorePoseFromPos(GObj *twister_gobj, Vec3f *pos)
         mpCollisionGetFCCommonFloor(line_id, &twister_dobj->translate.vec.f, &ground_level, NULL, NULL);
         twister_dobj->translate.vec.f.y += ground_level;
     }
-#if defined(PORT)
+#if defined(PORT) && defined(SSB64_NETMENU)
     grHyruleTwisterCanonicalizeSimScalars();
     grHyruleTwisterCanonicalizeDObjPose(twister_dobj);
 #endif
@@ -279,7 +279,7 @@ void grHyruleTwisterUpdateSummon(void)
         gGRCommonStruct.hyrule.twister_turn_wait = 0;
         gGRCommonStruct.hyrule.twister_vel = lr * 10.0F;
         gGRCommonStruct.hyrule.twister_speed_wait = syUtilsRandIntRange(120) + 180;
-#if defined(PORT)
+#if defined(PORT) && defined(SSB64_NETMENU)
         grHyruleTwisterCanonicalizeSimScalars();
 #endif
 
@@ -457,7 +457,7 @@ void grHyruleTwisterUpdateMove(void)
         {
             gGRCommonStruct.hyrule.twister_xf->translate = *pos;
         }
-#if defined(PORT)
+#if defined(PORT) && defined(SSB64_NETMENU)
         grHyruleTwisterCanonicalizeSimScalars();
         grHyruleTwisterCanonicalizeDObjPose(twister_dobj);
 #endif
@@ -476,7 +476,7 @@ void grHyruleTwisterUpdateTurn(void)
             gGRCommonStruct.hyrule.twister_status = nGRHyruleTwisterStatusMove;
             gGRCommonStruct.hyrule.twister_turn_wait = 0;
             gGRCommonStruct.hyrule.twister_vel = -gGRCommonStruct.hyrule.twister_vel;
-#if defined(PORT)
+#if defined(PORT) && defined(SSB64_NETMENU)
             grHyruleTwisterCanonicalizeSimScalars();
 #endif
         }

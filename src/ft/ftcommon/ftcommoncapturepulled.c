@@ -67,7 +67,7 @@ void ftCommonCapturePulledProcMap(GObj *fighter_gobj)
     Vec3f capture_pos;
     f32 dist_y;
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     if (capture_gobj == NULL)
     {
         return;

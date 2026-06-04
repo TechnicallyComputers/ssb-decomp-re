@@ -29,7 +29,7 @@ static f32 sGRYamabukiGateDiagLastChildAnimFrame = -1.0F;
 /* PORT: while Open, gate_wait is reused as the minimum post-spawn egress grace timer. */
 #define GRYAMABUKI_GATE_SPAWN_EGRESS_WAIT 60
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 /*
  * 21st pass — held-pose drift detection (THE static-door fix).
  *
@@ -411,7 +411,7 @@ u16 dGRYamabukiMonsterMapObjKinds[/* */] =
 
 static void grYamabukiGateSyncCollisionFromState(void);
 static void grYamabukiGateOpenForSpawn(void);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 static void grYamabukiGateEnsureMapHead(void);
 static sb32 grYamabukiGateRepairDObjTreeIfHollow(void);
 static void grYamabukiGateUpdateOpenForRestore(void);
@@ -1548,14 +1548,10 @@ void grYamabukiMakeGate(void)
         nGCMatrixKindNull, 
         nGCMatrixKindNull
     );
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     /*
-     * PORT: do NOT register the door anim as a separate priority-5 GObj process on the gate GObj.
-     * Under rollback netplay that process does not advance the door across the resim cycle (the
-     * gate GObj's process list does not re-run in lockstep with the rolled-back/resimmed sim, while
-     * the priority-4 ground proc — grYamabukiGateProcUpdate — does). Instead the door anim is stepped
-     * once per sim tick at the end of grYamabukiGateProcUpdate so the open/close pose is a pure
-     * function of the (snapshotted, hashed) gate state and reproduces deterministically on resim.
+     * Netplay rollback only: do NOT register priority-5 gcPlayAnimAll on the gate GObj — stepped from
+     * grYamabukiGateProcUpdate instead so door pose tracks snapshotted gate state across resim.
      */
 #else
     gcAddGObjProcess(gate_gobj, gcPlayAnimAll, nGCProcessKindFunc, 5);

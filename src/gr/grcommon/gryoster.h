@@ -14,8 +14,8 @@ extern intptr_t lGRYosterParticleTextureBankHi; // 0x00B22C30
 extern u8 dGRYosterCloudLineIDs[/* */];
 
 extern LBGenerator* grYosterCloudVaporMakeEffect(Vec3f *pos);
+#if defined(PORT) && defined(SSB64_NETMENU)
 extern void grYosterRebindCloudDobjs(s32 cloud_id);
-#ifdef PORT
 extern void grYosterRepairCloudPresentation(s32 cloud_id);
 extern void grYosterAnchorCloudRootTranslate(s32 cloud_id);
 extern void grYosterGetCloudSpawnTranslate(s32 cloud_id, Vec3f *out);

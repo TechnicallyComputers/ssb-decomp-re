@@ -97,7 +97,8 @@ extern void ftParamUpdate1PGameDamageStats(FTStruct *fp, s32 damage_player, s32 
 extern void ftParamGetEffectJointPosition(FTStruct *fp, Vec3f *pos);
 extern void* ftParamMakeEffect(GObj *fighter_gobj, s32 effect_id, s32 joint_id, Vec3f *effect_pos, Vec3f *effect_scatter, s32 lr, sb32 is_scale_pos, u32 arg7);
 extern void ftParamKirbyTryMakeMapStarEffect(GObj *fighter_gobj);
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* Netplay rollback: clear joint transform caches before grab-coupling geometry refresh. */
 extern void ftParamInvalidateFighterTransformFromRoot(GObj *fighter_gobj);
 #endif
 extern void ftParamsUpdateFighterPartsTransformAll(DObj *arg0);

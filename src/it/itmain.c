@@ -310,26 +310,32 @@ void itMainDestroyItem(GObj *item_gobj)
      * be a valid user-space address on LP64. Either case would fault on
      * the very next field read. */
     if (item_gobj == NULL) {
+#if defined(SSB64_NETMENU)
         port_log("SSB64: itMainDestroyItem NULL gobj — bailing\n");
+#endif
         return;
     }
     if ((uintptr_t)item_gobj < (uintptr_t)0x100000000ULL) {
+#if defined(SSB64_NETMENU)
         port_log("SSB64: itMainDestroyItem SUSPECT gobj=%p (low addr) — bailing\n",
                  (void*)item_gobj);
+#endif
         return;
     }
     if (item_gobj->obj_kind == 0xFE /* GOBJ_PORT_EJECTED_SENTINEL */) {
+#if defined(SSB64_NETMENU)
         port_log("SSB64: itMainDestroyItem ZOMBIE gobj=%p id=%u link_id=%u "
                  "dl_link_id=%u — caller holds a freed GObj; bailing\n",
                  (void*)item_gobj, item_gobj->id,
                  (unsigned)item_gobj->link_id,
                  (unsigned)item_gobj->dl_link_id);
+#endif
         return;
     }
 #endif
     ITStruct *ip = itGetStruct(item_gobj);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     port_log("SSB64: itMainDestroyItem ENTER gobj=%p id=%u kind=%u ip=%p "
              "ip->kind=%u is_hold=%u owner=%p arrow=%p\n",
              (void*)item_gobj, item_gobj->id, (unsigned)item_gobj->obj_kind,
@@ -378,6 +384,7 @@ void itMainDestroyItem(GObj *item_gobj)
          * and keep the game alive. The worst visible consequence of skipping
          * is a leaked red-arrow interface gobj. */
         if ((uintptr_t)ip->arrow_gobj < (uintptr_t)0x100000000ULL) {
+#if defined(SSB64_NETMENU)
             const unsigned char *bytes = (const unsigned char *)&ip->arrow_gobj;
             port_log("SSB64: itMainDestroyItem TRUNC arrow_gobj=%p ip=%p "
                      "raw_bytes=[%02x %02x %02x %02x %02x %02x %02x %02x] "
@@ -385,6 +392,7 @@ void itMainDestroyItem(GObj *item_gobj)
                      (void*)ip->arrow_gobj, (void*)ip,
                      bytes[0], bytes[1], bytes[2], bytes[3],
                      bytes[4], bytes[5], bytes[6], bytes[7]);
+#endif
         } else {
             gcEjectGObj(ip->arrow_gobj);
         }
@@ -395,7 +403,7 @@ void itMainDestroyItem(GObj *item_gobj)
     itManagerSetPrevStructAlloc(ip);
     gcEjectGObj(item_gobj);
 
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     port_log("SSB64: itMainDestroyItem EXIT gobj=%p\n", (void*)item_gobj);
 #endif
 }

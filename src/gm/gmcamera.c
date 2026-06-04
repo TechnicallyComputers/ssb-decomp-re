@@ -6,6 +6,8 @@
 #include <sys/rdp.h>
 #ifdef PORT
 #include <sys/debug.h>
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netpeer.h>
 #include <sc/scmanager.h>
 #endif
@@ -747,7 +749,8 @@ sb32 gmCameraCheckPausePlayerOutBounds(Vec3f *pos)
 // 0x8010CAE0
 void gmCameraPlayerZoomFuncCamera(GObj *camera_gobj)
 {
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: pause/wait camera policy during VS bootstrap. */
     if ((syNetPeerIsVSSessionActive() != FALSE) &&
         (gSCManagerBattleState != NULL) &&
         (gSCManagerBattleState->game_status == nSCBattleGameStatusPause))
@@ -1133,18 +1136,7 @@ GObj* gmCameraMakeDefaultCamera(u8 tk1, u8 tk2, void (*proc)(GObj*))
     f32 temp_f0;
 
 #ifdef PORT
-    /* Issue #128 follow-on: gGMCameraGObj and gGMCameraStruct.{pzoom,pfollow}
-     * _fighter_gobj are BSS-resident GObj* fields. gGMCameraGObj is written
-     * unconditionally at the bottom of this function, but the {pzoom,pfollow}
-     * fighter fields are only written by gmCameraSetZoomFighter/gmCameraSet
-     * FollowFighter (lines 899/912) — paths that don't fire in bonus stages,
-     * the menu, or any non-multi-player scene. They are read during gameplay
-     * (lines 711-712, 748, 847-848) via DObjGetStruct/ftGetStruct, which
-     * deref the GObj. On N64, BSS re-DMA cleared these between scenes; on
-     * the port the BSS persists, so a previous match's fighter_gobj survives
-     * even after taskman.c:1352 frees its arena. NULL all three on every
-     * camera setup so any stale read after this point is a clean NULL deref
-     * instead of an arena-freed deref. */
+    /* PORT (JRickey): stale zoom/follow GObj* cleared on camera setup (Issue #128). */
     gGMCameraGObj = NULL;
     gGMCameraStruct.pzoom_fighter_gobj = NULL;
     gGMCameraStruct.pfollow_fighter_gobj = NULL;

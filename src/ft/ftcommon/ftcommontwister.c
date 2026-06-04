@@ -158,12 +158,10 @@ void ftCommonTwisterProcPhysics(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     GObj *tornado_gobj = ftStatusVarsTwister(fp)->tornado_gobj;
 
-#ifdef PORT
-    /* Port null-guard: stale tornado_gobj shoots rider out (offline + netmenu offline modes). */
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: stale tornado_gobj rebind + early shoot guard. */
     if ((tornado_gobj == NULL) || (DObjGetStruct(tornado_gobj) == NULL))
     {
-#if defined(PORT) && defined(SSB64_NETMENU)
-        /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
         /* Netplay rollback only: rebind twister after snapshot coupled-GObj scrub. */
         if (syNetplayRollbackSemanticsActive() != FALSE)
         {
@@ -179,13 +177,10 @@ void ftCommonTwisterProcPhysics(GObj *fighter_gobj)
                 }
             }
         }
-#endif
     }
     if ((tornado_gobj == NULL) || (DObjGetStruct(tornado_gobj) == NULL))
     {
-#if defined(PORT) && defined(SSB64_NETMENU)
         ftCommonTwisterDiagShoot(fighter_gobj, "stale_tornado_gobj");
-#endif
         ftCommonTwisterShootFighter(fighter_gobj);
         return;
     }

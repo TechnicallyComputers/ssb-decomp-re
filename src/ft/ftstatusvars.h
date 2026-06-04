@@ -1,7 +1,7 @@
 /*
  * FTStatusVars overlay accessors — Milestone 1 (Approach C scaffolding).
  * Returns the same union member pointers as direct status_vars.common.* access.
- * PORT: ftStatusVarsNoteAccess() feeds netplay_statusvars_witness when env-gated.
+ * PORT + SSB64_NETMENU: ftStatusVarsNoteAccess() feeds netplay_statusvars_witness when env-gated.
  *
  * Include from ftcommon.h (enum). Inline accessors require FTStruct complete —
  * fttypes.h re-includes this header after FTStruct is defined.
@@ -67,25 +67,15 @@ typedef enum FTStatusVarsOverlay
 #ifndef _FTSTATUSVARS_INLINE_DONE_
 #define _FTSTATUSVARS_INLINE_DONE_
 
-#ifdef PORT
-#if defined(SSB64_NETMENU)
+#if defined(PORT) && defined(SSB64_NETMENU)
 void syNetplayStatusVarsWitnessNoteAccess(const FTStruct *fp, FTStatusVarsOverlay overlay);
 void syNetplayStatusVarsWitnessEnterDamageInit(void);
 void syNetplayStatusVarsWitnessLeaveDamageInit(void);
-#else
-static inline void syNetplayStatusVarsWitnessNoteAccess(const FTStruct *fp, FTStatusVarsOverlay overlay)
-{
-    (void)fp;
-    (void)overlay;
-}
-static inline void syNetplayStatusVarsWitnessEnterDamageInit(void) {}
-static inline void syNetplayStatusVarsWitnessLeaveDamageInit(void) {}
-#endif
 #endif
 
 static inline void ftStatusVarsNoteAccess(const FTStruct *fp, FTStatusVarsOverlay overlay)
 {
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
     syNetplayStatusVarsWitnessNoteAccess(fp, overlay);
 #else
     (void)fp;

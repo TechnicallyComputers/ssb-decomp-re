@@ -56,7 +56,6 @@ void ftCommonRebirthWaitSetStatus(GObj* fighter_gobj);
 
 // Wait
 void ftCommonWaitProcInterrupt(GObj* fighter_gobj);
-void ftCommonWaitProcPhysics(GObj* fighter_gobj);
 void ftCommonWaitSetStatus(GObj* fighter_gobj);
 sb32 ftCommonWaitCheckInputSuccess(GObj* fighter_gobj);
 sb32 ftCommonWaitCheckInterruptCommon(GObj* fighter_gobj);

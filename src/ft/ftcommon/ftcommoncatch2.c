@@ -1,9 +1,7 @@
 #include <ft/fighter.h>
 
-#ifdef PORT
-#include <stdio.h>
-#endif
 #if defined(PORT) && defined(SSB64_NETMENU)
+#include <stdio.h>
 #include <sys/netinput.h>
 #include <sys/net_debug_agent_log.h>
 #endif
