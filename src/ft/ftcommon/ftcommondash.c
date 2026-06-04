@@ -147,10 +147,10 @@ sb32 ftCommonDashCheckTurn(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (((fp->input.pl.stick_range.x * fp->status_vars.common.turn.lr_turn) >= FTCOMMON_DASH_STICK_RANGE_MIN) && (fp->tap_stick_x < FTCOMMON_DASH_BUFFER_TICS_MAX))
+    if (((fp->input.pl.stick_range.x * ftStatusVarsTurn(fp)->lr_turn) >= FTCOMMON_DASH_STICK_RANGE_MIN) && (fp->tap_stick_x < FTCOMMON_DASH_BUFFER_TICS_MAX))
     {
-        fp->status_vars.common.turn.lr_dash = fp->status_vars.common.turn.lr_turn;
-        fp->status_vars.common.turn.attacks4_buffer = 0;
+        ftStatusVarsTurn(fp)->lr_dash = ftStatusVarsTurn(fp)->lr_turn;
+        ftStatusVarsTurn(fp)->attacks4_buffer = 0;
 
         return TRUE;
     }

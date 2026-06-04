@@ -22,22 +22,22 @@ void ftCommonGuardSetStatusFromEscape(GObj *fighter_gobj)
     {
         if (fp->fkind == nFTKindYoshi)
         {
-            fp->status_vars.common.guard.effect_gobj = efManagerYoshiShieldMakeEffect(fighter_gobj);
+            ftStatusVarsGuard(fp)->effect_gobj = efManagerYoshiShieldMakeEffect(fighter_gobj);
 
             ftParamHideModelPartAll(fighter_gobj);
             ftCommonGuardSetHitStatusYoshi(fighter_gobj);
         }
-        else fp->status_vars.common.guard.effect_gobj = efManagerShieldMakeEffect(fighter_gobj);
+        else ftStatusVarsGuard(fp)->effect_gobj = efManagerShieldMakeEffect(fighter_gobj);
 
         fp->is_shield = TRUE;
     }
     ftCommonGuardUpdateJoints(fighter_gobj);
 
-    fp->status_vars.common.guard.release_lag = FTCOMMON_GUARD_RELEASE_LAG;
-    fp->status_vars.common.guard.shield_decay_wait = FTCOMMON_GUARD_DECAY_INT;
-    fp->status_vars.common.guard.is_release = FALSE;
-    fp->status_vars.common.guard.slide_tics = 0;
-    fp->status_vars.common.guard.is_setoff = FALSE;
+    ftStatusVarsGuard(fp)->release_lag = FTCOMMON_GUARD_RELEASE_LAG;
+    ftStatusVarsGuard(fp)->shield_decay_wait = FTCOMMON_GUARD_DECAY_INT;
+    ftStatusVarsGuard(fp)->is_release = FALSE;
+    ftStatusVarsGuard(fp)->slide_tics = 0;
+    ftStatusVarsGuard(fp)->is_setoff = FALSE;
 
     ftMainSetStatus(fighter_gobj, nFTCommonStatusGuard, 0.0F, 1.0F, (FTSTATUS_PRESERVE_MODELPART | FTSTATUS_PRESERVE_HITSTATUS | FTSTATUS_PRESERVE_EFFECT));
 
@@ -100,11 +100,11 @@ void ftCommonGuardSetOffProcUpdate(GObj *fighter_gobj)
 
     ftCommonGuardCheckScheduleRelease(fp);
 
-    fp->status_vars.common.guard.setoff_frames--;
+    ftStatusVarsGuard(fp)->setoff_frames--;
 
-    if (fp->status_vars.common.guard.setoff_frames <= 0.0F)
+    if (ftStatusVarsGuard(fp)->setoff_frames <= 0.0F)
     {
-        if (fp->status_vars.common.guard.is_release != FALSE)
+        if (ftStatusVarsGuard(fp)->is_release != FALSE)
         {
             ftCommonGuardOffSetStatus(fighter_gobj);
         }
@@ -120,17 +120,17 @@ void ftCommonGuardSetOffSetStatus(GObj *fighter_gobj)
 
     ftMainSetStatus(fighter_gobj, nFTCommonStatusGuardSetOff, 0.0F, 1.0F, (FTSTATUS_PRESERVE_MODELPART | FTSTATUS_PRESERVE_HITSTATUS | FTSTATUS_PRESERVE_EFFECT));
 
-    fp->status_vars.common.guard.setoff_frames = (fp->shield_damage * FTCOMMON_GUARD_SETOFF_MUL) + FTCOMMON_GUARD_SETOFF_ADD;
+    ftStatusVarsGuard(fp)->setoff_frames = (fp->shield_damage * FTCOMMON_GUARD_SETOFF_MUL) + FTCOMMON_GUARD_SETOFF_ADD;
 
-    fp->physics.vel_ground.x = ((fp->lr == fp->shield_lr) ? -1 : +1) * (fp->status_vars.common.guard.setoff_frames * FTCOMMON_GUARD_VEL_MUL);
+    fp->physics.vel_ground.x = ((fp->lr == fp->shield_lr) ? -1 : +1) * (ftStatusVarsGuard(fp)->setoff_frames * FTCOMMON_GUARD_VEL_MUL);
 
-    if (fp->status_vars.common.guard.effect_gobj != NULL)
+    if (ftStatusVarsGuard(fp)->effect_gobj != NULL)
     {
-        EFStruct *ep = efGetStruct(fp->status_vars.common.guard.effect_gobj);
+        EFStruct *ep = efGetStruct(ftStatusVarsGuard(fp)->effect_gobj);
 
         ep->effect_vars.shield.is_damage_shield = TRUE;
     }
     fp->is_shield = TRUE;
 
-    fp->status_vars.common.guard.is_setoff = TRUE;
+    ftStatusVarsGuard(fp)->is_setoff = TRUE;
 }

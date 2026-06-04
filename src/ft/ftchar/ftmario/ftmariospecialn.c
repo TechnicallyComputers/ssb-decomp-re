@@ -1,7 +1,13 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+/*
+ * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
+ * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
+ * See CLAUDE.md §7 and docs/netplay_rollback_refactor_contracts.md.
+ */
 #endif
 
 // // // // // // // // // // // //
@@ -17,27 +23,8 @@
  */
 #endif
 
-// 0x80155E40
-void ftMarioSpecialNProcUpdate(GObj *fighter_gobj)
+static void ftMarioSpecialNProcAccessoryVanilla(GObj *fighter_gobj)
 {
-#ifdef PORT
-    FTStruct *fp = ftGetStruct(fighter_gobj);
-
-    if ((syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE) ||
-        ((fp != NULL) && (fp->proc_accessory == NULL)))
-    {
-        syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
-    }
-#endif
-    ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
-}
-
-// 0x80155E64
-void ftMarioSpecialNProcAccessory(GObj *fighter_gobj)
-{
-#ifdef PORT
-    syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
-#else
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     s32 fireball_item_id; // 0 = Mario, 1 = Luigi
@@ -74,7 +61,41 @@ void ftMarioSpecialNProcAccessory(GObj *fighter_gobj)
         }
         wpMarioFireballMakeWeapon(fighter_gobj, &pos, fireball_item_id);
     }
+}
+
+// 0x80155E40
+void ftMarioSpecialNProcUpdate(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: rollback fireball spawn when vanilla ProcAccessory is skipped. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        FTStruct *fp = ftGetStruct(fighter_gobj);
+
+        if ((syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+            ((fp != NULL) && (fp->proc_accessory == NULL)))
+        {
+            syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
+        }
+    }
 #endif
+    ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
+}
+
+// 0x80155E64
+void ftMarioSpecialNProcAccessory(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: snapshot-driven fireball spawn; offline uses vanilla below. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
+        return;
+    }
+#endif
+    ftMarioSpecialNProcAccessoryVanilla(fighter_gobj);
 }
 
 // 0x80155F04
@@ -119,8 +140,13 @@ void ftMarioSpecialNInitStatusVars(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     fp->motion_vars.flags.flag0 = FALSE;
-#ifdef PORT
-    fp->motion_vars.flags.flag1 = 0;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: clear motion flag1 during active rollback session. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        fp->motion_vars.flags.flag1 = 0;
+    }
 #endif
     fp->proc_accessory = ftMarioSpecialNProcAccessory;
 }

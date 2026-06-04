@@ -193,12 +193,12 @@ void ftKirbySpecialNCatchProcUpdate(GObj *fighter_gobj)
     {
         victim_fp = ftGetStruct(kirby_fp->catch_gobj); // No NULL check?
 
-        victim_fp->status_vars.common.capturekirby.is_goto_capturewait = TRUE;
+        ftStatusVarsCaptureKirby(victim_fp)->is_goto_capturewait = TRUE;
 
         if ((victim_fp->fkind == nFTKindKirby) || (victim_fp->fkind == nFTKindNKirby))
         {
             kirby_fp->status_vars.kirby.specialn.copy_id = victim_fp->passive_vars.kirby.copy_id;
-            victim_fp->status_vars.common.capturekirby.is_kirby = TRUE;
+            ftStatusVarsCaptureKirby(victim_fp)->is_kirby = TRUE;
         }
         else kirby_fp->status_vars.kirby.specialn.copy_id = copy[victim_fp->fkind].copy_id;
         

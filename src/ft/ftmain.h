@@ -20,6 +20,11 @@ extern void ftMainProcUpdateInterrupt(GObj* fighter_gobj);
 extern void ftMainClearGroundElementsAll();
 extern sb32 ftMainCheckAddGroundObstacle(GObj* ogobj, sb32 (*proc_update)(GObj*, GObj*, s32*));
 extern void ftMainClearGroundObstacle(GObj* ogobj);
+#ifdef PORT
+extern void ftMainPurgeStaleGroundObstacles(void);
+extern sb32 ftMainEnsureGroundObstacle(GObj* ogobj, sb32 (*proc_update)(GObj*, GObj*, s32*));
+extern s32 ftMainGroundObstacleSlotsUsed(void);
+#endif
 extern sb32 ftMainCheckAddGroundHazard(GObj* egobj, sb32 (*proc_update)(GObj*, GObj*, GRAttackColl**, s32*));
 extern void ftMainClearHazard(GObj* egobj);
 extern void ftMainSetHitHazard(GObj* ogobj, GObj* fighter_gobj, FTStruct* fp, s32 kind);

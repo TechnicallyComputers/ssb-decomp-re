@@ -1,5 +1,13 @@
 #include <ft/fighter.h>
 
+#ifdef PORT
+#include <stdio.h>
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netinput.h>
+#include <sys/net_debug_agent_log.h>
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //       INITIALIZED DATA        //
@@ -24,7 +32,7 @@ void ftCommonCatchPullProcUpdate(GObj *fighter_gobj)
     {
         FTStruct *catch_fp = ftGetStruct(this_fp->catch_gobj);
 
-        catch_fp->status_vars.common.capture.is_goto_pulled_wait = TRUE;
+        ftStatusVarsCapture(catch_fp)->is_goto_pulled_wait = TRUE;
     }
 }
 
@@ -34,7 +42,7 @@ void ftCommonCatchPullProcCatch(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
 
-    ftMainSetStatus(fighter_gobj, nFTCommonStatusCatchPull, fp->status_vars.common.catchmain.catch_pull_frame_begin, 1.0F, (FTSTATUS_PRESERVE_SLOPECONTOUR | FTSTATUS_PRESERVE_EFFECT));
+    ftMainSetStatus(fighter_gobj, nFTCommonStatusCatchPull, ftStatusVarsCatchMain(fp)->catch_pull_frame_begin, 1.0F, (FTSTATUS_PRESERVE_SLOPECONTOUR | FTSTATUS_PRESERVE_EFFECT));
 
     fp->catch_gobj = fp->search_gobj;
 
@@ -58,9 +66,9 @@ void ftCommonCatchWaitProcInterrupt(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->status_vars.common.catchwait.throw_wait != 0)
+    if (ftStatusVarsCatchWait(fp)->throw_wait != 0)
     {
-        fp->status_vars.common.catchwait.throw_wait--;
+        ftStatusVarsCatchWait(fp)->throw_wait--;
     }
     ftCommonThrowCheckInterruptCatchWait(fighter_gobj);
 }
@@ -72,7 +80,21 @@ void ftCommonCatchWaitSetStatus(GObj *fighter_gobj)
 
     ftMainSetStatus(fighter_gobj, nFTCommonStatusCatchWait, 0.0F, 1.0F, FTSTATUS_PRESERVE_SLOPECONTOUR);
 
-    fp->status_vars.common.catchwait.throw_wait = FTCOMMON_CATCH_THROW_WAIT;
+    ftStatusVarsCatchWait(fp)->throw_wait = FTCOMMON_CATCH_THROW_WAIT;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    // #region agent log
+    {
+        char agent_data[256];
+
+        snprintf(agent_data, sizeof(agent_data),
+                 "{\"tick\":%u,\"player\":%d,\"fkind\":%d,\"throw_wait\":%d}",
+                 (unsigned int)syNetInputGetTick(), (int)fp->player, (int)fp->fkind,
+                 (int)ftStatusVarsCatchWait(fp)->throw_wait);
+        net_debug_agent_log_line("G", "ftcommoncatch2.c:CatchWaitSetStatus", "catchwait_set_status", agent_data);
+    }
+    // #endregion
+#endif
 
     ftParamSetCaptureImmuneMask(fp, FTCATCHKIND_MASK_ALL);
 

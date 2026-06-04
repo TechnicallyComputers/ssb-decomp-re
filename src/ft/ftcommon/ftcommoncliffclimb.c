@@ -13,7 +13,7 @@ void ftCommonCliffQuickProcUpdate(GObj *fighter_gobj)
 
     if (fighter_gobj->anim_frame <= 0.0F)
     {
-        switch (fp->status_vars.common.cliffmotion.status_id)
+        switch (ftStatusVarsCliffMotion(fp)->status_id)
         {
         case nFTCommonCliffKindClimbQuick:
             ftCommonCliffClimbQuick1SetStatus(fighter_gobj);
@@ -37,7 +37,7 @@ void ftCommonCliffSlowProcUpdate(GObj *fighter_gobj)
 
     if (fighter_gobj->anim_frame <= 0.0F)
     {
-        switch (fp->status_vars.common.cliffmotion.status_id)
+        switch (ftStatusVarsCliffMotion(fp)->status_id)
         {
         case nFTCommonCliffKindClimbSlow:
             ftCommonCliffClimbSlow1SetStatus(fighter_gobj);
@@ -70,8 +70,8 @@ void ftCommonCliffQuickOrSlowSetStatus(GObj *fighter_gobj, s32 status_input)
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftMainPlayAnimEventsAll(fighter_gobj);
 
-    fp->status_vars.common.cliffmotion.status_id = status_input + status_queue;
-    fp->status_vars.common.cliffmotion.cliff_id = fp->coll_data.cliff_id;
+    ftStatusVarsCliffMotion(fp)->status_id = status_input + status_queue;
+    ftStatusVarsCliffMotion(fp)->cliff_id = fp->coll_data.cliff_id;
 
     fp->is_cliff_hold = TRUE;
 
@@ -89,7 +89,7 @@ sb32 ftCommonCliffClimbOrFallCheckInterruptCommon(GObj *fighter_gobj)
 
         if ((angle > F_CST_DTOR32(50.0F)) || ((angle > F_CST_DTOR32(-50.0F)) && ((fp->input.pl.stick_range.x * fp->lr) >= 0)))
         {
-            if (fp->status_vars.common.cliffwait.is_allow_interrupt != FALSE)
+            if (ftStatusVarsCliffWait(fp)->is_allow_interrupt != FALSE)
             {
                 ftCommonCliffQuickOrSlowSetStatus(fighter_gobj, 0);
 
@@ -97,7 +97,7 @@ sb32 ftCommonCliffClimbOrFallCheckInterruptCommon(GObj *fighter_gobj)
             }
             else return FALSE;
         }
-        else if (fp->status_vars.common.cliffwait.is_allow_interrupt != FALSE)
+        else if (ftStatusVarsCliffWait(fp)->is_allow_interrupt != FALSE)
         {
             fp->cliffcatch_wait = FTCOMMON_CLIFF_CATCH_WAIT;
 
@@ -108,7 +108,7 @@ sb32 ftCommonCliffClimbOrFallCheckInterruptCommon(GObj *fighter_gobj)
         }
         else return FALSE;
     }
-    else fp->status_vars.common.cliffwait.is_allow_interrupt = TRUE;
+    else ftStatusVarsCliffWait(fp)->is_allow_interrupt = TRUE;
 
     return FALSE;
 }
@@ -179,11 +179,11 @@ void ftCommonCliffCommon2ProcPhysics(GObj *fighter_gobj)
         pos.x += vel.x;
         pos.z += vel.z;
 
-        mpCollisionGetSpeedLineID(fp->status_vars.common.cliffmotion.cliff_id, &vel);
+        mpCollisionGetSpeedLineID(ftStatusVarsCliffMotion(fp)->cliff_id, &vel);
 
         pos.x += vel.x;
 
-        if (mpCollisionGetFCCommonFloor(fp->status_vars.common.cliffmotion.cliff_id, &pos, &y, NULL, NULL) != FALSE)
+        if (mpCollisionGetFCCommonFloor(ftStatusVarsCliffMotion(fp)->cliff_id, &pos, &y, NULL, NULL) != FALSE)
         {
             pos.y += y;
 
@@ -234,7 +234,7 @@ void ftCommonCliffCommon2UpdateCollData(GObj *fighter_gobj)
     MPCollData *coll_data = &fp->coll_data;
     Vec3f *translate = &DObjGetStruct(fighter_gobj)->translate.vec.f;
 
-    if (fp->attr->cliff_status_ga[fp->status_vars.common.cliffmotion.status_id] == nMPKineticsGround)
+    if (fp->attr->cliff_status_ga[ftStatusVarsCliffMotion(fp)->status_id] == nMPKineticsGround)
     {
         mpCommonSetFighterGround(fp);
     }

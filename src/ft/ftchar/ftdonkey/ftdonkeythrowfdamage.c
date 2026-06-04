@@ -13,13 +13,13 @@ void ftDonkeyThrowFDamageProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    fp->status_vars.common.throwfdamage.hitstun_tics -= 1.0F;
+    ftStatusVarsThrowFDamage(fp)->hitstun_tics -= 1.0F;
 
-    if (fp->status_vars.common.throwfdamage.hitstun_tics <= 0.0F)
+    if (ftStatusVarsThrowFDamage(fp)->hitstun_tics <= 0.0F)
     {
         if (fp->ga == nMPKineticsAir)
         {
-            fp->public_knockback = fp->status_vars.common.throwfdamage.public_knockback;
+            fp->public_knockback = ftStatusVarsThrowFDamage(fp)->public_knockback;
 
             ftDonkeyThrowFFallSetStatus(fighter_gobj);
         }

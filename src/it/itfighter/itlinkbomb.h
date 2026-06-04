@@ -35,4 +35,15 @@ extern sb32 itLinkBombExplodeProcUpdate(GObj* item_gobj);
 extern void itLinkBombExplodeSetStatus(GObj* item_gobj);
 extern GObj* itLinkBombMakeItem(GObj* fighter_gobj, Vec3f* pos, Vec3f* vel);
 
+enum itLinkBombStatus
+{
+	nITLinkBombStatusWait,
+	nITLinkBombStatusFall,
+	nITLinkBombStatusHold,
+	nITLinkBombStatusThrown,
+	nITLinkBombStatusDropped,
+	nITLinkBombStatusExplode,
+	nITLinkBombStatusEnumCount
+};
+
 #endif

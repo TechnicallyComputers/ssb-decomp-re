@@ -79,13 +79,13 @@ sb32 ftCommonSquatCheckGotoPass(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->status_vars.common.squat.is_allow_pass != FALSE)
+    if (ftStatusVarsSquat(fp)->is_allow_pass != FALSE)
     {
-        if (fp->status_vars.common.squat.pass_wait != 0)
+        if (ftStatusVarsSquat(fp)->pass_wait != 0)
         {
-            fp->status_vars.common.squat.pass_wait--;
+            ftStatusVarsSquat(fp)->pass_wait--;
 
-            if (fp->status_vars.common.squat.pass_wait == 0)
+            if (ftStatusVarsSquat(fp)->pass_wait == 0)
             {
                 ftCommonPassSetStatusParam(fighter_gobj, nFTCommonStatusPass, 1.0F, 0);
 
@@ -93,9 +93,9 @@ sb32 ftCommonSquatCheckGotoPass(GObj *fighter_gobj)
             }
         }
     }
-    if (fp->status_vars.common.squat.unk_0x8 != 0)
+    if (ftStatusVarsSquat(fp)->unk_0x8 != 0)
     {
-        fp->status_vars.common.squat.unk_0x8--;
+        ftStatusVarsSquat(fp)->unk_0x8--;
     }
     return FALSE;
 }
@@ -125,14 +125,14 @@ void ftCommonSquatSetStatusNoPass(GObj *fighter_gobj)
 
     fp->is_special_interrupt = TRUE;
 
-    fp->status_vars.common.squat.is_allow_pass = FALSE;
-    fp->status_vars.common.squat.pass_wait = 0;
+    ftStatusVarsSquat(fp)->is_allow_pass = FALSE;
+    ftStatusVarsSquat(fp)->pass_wait = 0;
 
     if ((fp->input.pl.stick_range.y <= FTCOMMON_SQUAT_STICK_RANGE_MIN) && (fp->tap_stick_y < FTCOMMON_SQUAT_BUFFER_TICS_MAX))
     {
-        fp->status_vars.common.squat.unk_0x8 = 3;
+        ftStatusVarsSquat(fp)->unk_0x8 = 3;
     }
-    else fp->status_vars.common.squat.unk_0x8 = 0;
+    else ftStatusVarsSquat(fp)->unk_0x8 = 0;
 }
 
 // 0x801430A8
@@ -145,9 +145,9 @@ void ftCommonSquatSetStatusPass(GObj *fighter_gobj)
 
     fp->is_special_interrupt = TRUE;
 
-    fp->status_vars.common.squat.is_allow_pass = TRUE;
-    fp->status_vars.common.squat.pass_wait = FTCOMMON_SQUAT_PASS_WAIT;
-    fp->status_vars.common.squat.unk_0x8 = 3;
+    ftStatusVarsSquat(fp)->is_allow_pass = TRUE;
+    ftStatusVarsSquat(fp)->pass_wait = FTCOMMON_SQUAT_PASS_WAIT;
+    ftStatusVarsSquat(fp)->unk_0x8 = 3;
 }
 
 // 0x8014310C
@@ -202,9 +202,9 @@ void ftCommonSquatWaitSetStatusNoPass(GObj *fighter_gobj)
 
     ftParamSetPlayerTagWait(fighter_gobj, 120);
 
-    fp->status_vars.common.squat.is_allow_pass = FALSE;
-    fp->status_vars.common.squat.unk_0x8 = 0;
-    fp->status_vars.common.squat.pass_wait = 0;
+    ftStatusVarsSquat(fp)->is_allow_pass = FALSE;
+    ftStatusVarsSquat(fp)->unk_0x8 = 0;
+    ftStatusVarsSquat(fp)->pass_wait = 0;
 }
 
 // 0x80143354

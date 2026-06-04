@@ -1,6 +1,14 @@
 #include <ft/fighter.h>
-
-extern void ftParamSetCaptureImmuneMask(FTStruct*, u8);
+#ifdef PORT
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+extern void port_log(const char *fmt, ...);
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/net_debug_agent_log.h>
+extern u32 syNetInputGetTick(void);
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -119,8 +127,11 @@ sb32 ftCommonThrowCheckInterruptCatchWait(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     sb32 is_throwf = FALSE;
+#ifdef PORT
+    const char *catchwait_diag = getenv("SSB64_NETPLAY_CATCHWAIT_DIAG");
+#endif
 
-    if ((fp->status_vars.common.catchwait.throw_wait == 0) || (fp->input.pl.button_tap & (fp->input.button_mask_a | fp->input.button_mask_b)))
+    if ((ftStatusVarsCatchWait(fp)->throw_wait == 0) || (fp->input.pl.button_tap & (fp->input.button_mask_a | fp->input.button_mask_b)))
     {
         is_throwf = TRUE;
     }
@@ -131,6 +142,35 @@ sb32 ftCommonThrowCheckInterruptCatchWait(GObj *fighter_gobj)
             return FALSE;
         }
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if ((catchwait_diag != NULL) && (catchwait_diag[0] != '\0') && (strcmp(catchwait_diag, "0") != 0))
+    {
+        port_log(
+            "SSB64 NetCatch: catchwait_throw tick=%u player=%d throw_wait=%d button_tap=0x%04X mask_a=0x%04X "
+            "mask_b=0x%04X stick_prev_x=%d stick_x=%d is_throwf=%d catch_gobj=%p\n",
+            (unsigned int)syNetInputGetTick(), (int)fp->player, (int)ftStatusVarsCatchWait(fp)->throw_wait,
+            (unsigned int)fp->input.pl.button_tap, (unsigned int)fp->input.button_mask_a,
+            (unsigned int)fp->input.button_mask_b, (int)fp->input.pl.stick_prev.x, (int)fp->input.pl.stick_range.x,
+            (int)is_throwf, (void *)fp->catch_gobj);
+    }
+    if (is_throwf != FALSE)
+    {
+        // #region agent log
+        char agent_data[384];
+
+        snprintf(agent_data, sizeof(agent_data),
+                 "{\"tick\":%u,\"player\":%d,\"throw_wait\":%d,\"shuffle_tics\":%d,\"button_tap\":%u,\"mask_a\":%u,\"mask_b\":%u,"
+                 "\"stick_prev_x\":%d,\"stick_x\":%d,\"premature\":%d}",
+                 (unsigned int)syNetInputGetTick(), (int)fp->player,
+                 (int)ftStatusVarsCatchWait(fp)->throw_wait, (int)fp->shuffle_tics,
+                 (unsigned int)fp->input.pl.button_tap,
+                 (unsigned int)fp->input.button_mask_a, (unsigned int)fp->input.button_mask_b,
+                 (int)fp->input.pl.stick_prev.x, (int)fp->input.pl.stick_range.x,
+                 (ftStatusVarsCatchWait(fp)->throw_wait > 0) ? 1 : 0);
+        net_debug_agent_log_line("G", "ftcommonthrow.c:CatchWait", "catchwait_throw_decision", agent_data);
+        // #endregion
+    }
+#endif
     ftCommonThrowSetStatus(fighter_gobj, is_throwf);
 
     return TRUE;

@@ -5,6 +5,13 @@
 #include <sc/scmanager.h>
 #include <sys/debug.h>
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+/*
+ * SSB64_NETMENU compile gate: stripped from offline builds.
+ * Runtime: syNetplaySimQuantizeActive() gates quantized collision compares.
+ */
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -514,7 +521,13 @@ void func_ovl2_800EDE5C(DObj *main_dobj)
 void gmCollisionGetFighterPartsWorldPosition(DObj *main_dobj, Vec3f *vec)
 {
     FTParts *parts;
-    u32 flag = ftGetStruct(main_dobj->parent_gobj)->is_use_animlocks;
+    u32 flag;
+
+    if ((main_dobj == NULL) || (main_dobj->parent_gobj == NULL))
+    {
+        return;
+    }
+    flag = ftGetStruct(main_dobj->parent_gobj)->is_use_animlocks;
 
     if (flag == FALSE)
     {
@@ -1171,15 +1184,50 @@ sb32 gmCollisionCheckFighterInFighterRange(FTAttackColl *attack_coll, GObj *figh
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     FTAttributes *attr = fp->attr;
+    DObj *root_dobj;
+    Vec3f *victim_translate;
+#ifdef PORT
+    Vec3f q_pos_curr;
+    Vec3f q_pos_prev;
+    Vec3f q_victim_translate;
+#endif
+
+    root_dobj = DObjGetStruct(fighter_gobj);
+    victim_translate = (root_dobj != NULL) ? &root_dobj->translate.vec.f : NULL;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if ((syNetplaySimQuantizeActive() != FALSE) && (victim_translate != NULL))
+    {
+        syNetplayQuantizeVec3fInto(&q_victim_translate, victim_translate);
+        syNetplayQuantizeVec3fInto(&q_pos_curr, &attack_coll->pos_curr);
+        victim_translate = &q_victim_translate;
+
+        if (attack_coll->attack_state == nGMAttackStateTransfer)
+        {
+            return gmCollisionCheckAttackInFighterRange(&q_pos_curr, victim_translate, &attr->hit_detect_range, attack_coll->size);
+        }
+        syNetplayQuantizeVec3fInto(&q_pos_prev, &attack_coll->pos_prev);
+        if
+        (
+            (gmCollisionCheckAttackInFighterRange(&q_pos_curr, victim_translate, &attr->hit_detect_range, attack_coll->size) != FALSE) ||
+            (gmCollisionCheckAttackInFighterRange(&q_pos_prev, victim_translate, &attr->hit_detect_range, attack_coll->size) != FALSE)
+        )
+        {
+            return TRUE;
+        }
+        return FALSE;
+    }
+
+#endif
 
     if (attack_coll->attack_state == nGMAttackStateTransfer)
     {
-        return gmCollisionCheckAttackInFighterRange(&attack_coll->pos_curr, &DObjGetStruct(fighter_gobj)->translate.vec.f, &attr->hit_detect_range, attack_coll->size);
+        return gmCollisionCheckAttackInFighterRange(&attack_coll->pos_curr, victim_translate, &attr->hit_detect_range, attack_coll->size);
     }
     else if
     (
-        (gmCollisionCheckAttackInFighterRange(&attack_coll->pos_curr, &DObjGetStruct(fighter_gobj)->translate.vec.f, &attr->hit_detect_range, attack_coll->size) != FALSE)      ||
-        (gmCollisionCheckAttackInFighterRange(&attack_coll->pos_prev, &DObjGetStruct(fighter_gobj)->translate.vec.f, &attr->hit_detect_range, attack_coll->size) != FALSE)
+        (gmCollisionCheckAttackInFighterRange(&attack_coll->pos_curr, victim_translate, &attr->hit_detect_range, attack_coll->size) != FALSE)      ||
+        (gmCollisionCheckAttackInFighterRange(&attack_coll->pos_prev, victim_translate, &attr->hit_detect_range, attack_coll->size) != FALSE)
     )
     {
         return TRUE;
@@ -1419,11 +1467,43 @@ sb32 gmCollisionCheckFighterAttackDamageCollide(FTAttackColl *attack_coll, FTDam
     FTParts *parts;
     DObj *dobj;
 
+    if ((damage_coll->joint == NULL) || (damage_coll->joint->parent_gobj == NULL))
+    {
+        return FALSE;
+    }
     dobj = damage_coll->joint;
     parts = ftGetParts(dobj);
 
     func_ovl2_800EDE00(dobj);
     func_ovl2_800EDE5C(dobj);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplaySimQuantizeActive() != FALSE)
+    {
+        Vec3f q_pos_curr;
+        Vec3f q_pos_prev;
+        Vec3f q_damage_offset;
+        Vec3f q_damage_size;
+
+        syNetplayQuantizeVec3fInto(&q_pos_curr, &attack_coll->pos_curr);
+        syNetplayQuantizeVec3fInto(&q_pos_prev, &attack_coll->pos_prev);
+        syNetplayQuantizeVec3fInto(&q_damage_offset, &damage_coll->offset);
+        syNetplayQuantizeVec3fInto(&q_damage_size, &damage_coll->size);
+
+        return gmCollisionTestRectangle
+        (
+            &q_pos_curr,
+            &q_pos_prev,
+            attack_coll->size,
+            attack_coll->attack_state,
+            parts->unk_dobjtrans_0x9C,
+            &q_damage_offset,
+            &q_damage_size,
+            &parts->vec_scale
+        );
+    }
+
+#endif
 
     return gmCollisionTestRectangle
     (

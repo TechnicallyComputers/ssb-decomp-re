@@ -1,7 +1,9 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+
 #endif
 
 // // // // // // // // // // // //
@@ -18,32 +20,16 @@
 //                               //
 // // // // // // // // // // // //
 
-// 0x80153950
-void ftNessSpecialNProcUpdate(GObj *fighter_gobj)
+static void ftNessSpecialNProcAccessoryVanilla(GObj *fighter_gobj)
 {
-#ifdef PORT
-    if (syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE)
-    {
-        syNetRbSnapTrySpawnPKFireFromAccessory(fighter_gobj);
-    }
-#endif
-    ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
-}
-
-// 0x80153950
-void ftNessSpecialNProcAccessory(GObj *fighter_gobj) // PK Fire setup
-{
-#ifdef PORT
-    syNetRbSnapTrySpawnPKFireFromAccessory(fighter_gobj);
-#else
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     Vec3f vel;
     f32 angle;
 
-    if (fp->motion_vars.flags.flag0 != FALSE) // Check if flag to summon PK Fire is true
+    if (fp->motion_vars.flags.flag0 != FALSE)
     {
-        fp->motion_vars.flags.flag0 = FALSE; // Revert to 0 if PK Fire is summoned, so it doesn't repeat on every frame of the move
+        fp->motion_vars.flags.flag0 = FALSE;
 
         pos.x = 0.0F;
         pos.y = 0.0F;
@@ -69,9 +55,38 @@ void ftNessSpecialNProcAccessory(GObj *fighter_gobj) // PK Fire setup
             vel.x = __cosf(FTNESS_PKFIRE_SPARK_ANGLE_GROUND) * FTNESS_PKFIRE_SPARK_VEL_GROUND * fp->lr;
             vel.y = __sinf(FTNESS_PKFIRE_SPARK_ANGLE_GROUND) * FTNESS_PKFIRE_SPARK_VEL_GROUND;
         }
-        wpNessPKFireMakeWeapon(fighter_gobj, &pos, &vel, angle); // Spawn PK Fire
+        wpNessPKFireMakeWeapon(fighter_gobj, &pos, &vel, angle);
     }
+}
+
+// 0x80153950
+void ftNessSpecialNProcUpdate(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        if (syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE)
+        {
+            syNetRbSnapTrySpawnPKFireFromAccessory(fighter_gobj);
+        }
+    }
+
 #endif
+    ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
+}
+
+// 0x80153950
+void ftNessSpecialNProcAccessory(GObj *fighter_gobj) // PK Fire setup
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapTrySpawnPKFireFromAccessory(fighter_gobj);
+        return;
+    }
+
+#endif
+    ftNessSpecialNProcAccessoryVanilla(fighter_gobj);
 }
 
 // 0x80153AC0

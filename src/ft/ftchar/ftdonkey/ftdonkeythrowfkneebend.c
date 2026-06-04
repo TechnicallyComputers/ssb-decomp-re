@@ -12,18 +12,18 @@ void ftDonkeyThrowFKneeBendProcUpdate(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     FTAttributes *attr = fp->attr;
 
-    fp->status_vars.common.throwf.kneebend_anim_frame++;
+    ftStatusVarsThrowF(fp)->kneebend_anim_frame++;
 
     if
     (
-        (fp->status_vars.common.throwf.input_source == FTCOMMON_KNEEBEND_INPUT_TYPE_BUTTON)     &&
-        (fp->status_vars.common.throwf.kneebend_anim_frame <= FTCOMMON_KNEEBEND_SHORTHOP_FRAMES)&&
+        (ftStatusVarsThrowF(fp)->input_source == FTCOMMON_KNEEBEND_INPUT_TYPE_BUTTON)     &&
+        (ftStatusVarsThrowF(fp)->kneebend_anim_frame <= FTCOMMON_KNEEBEND_SHORTHOP_FRAMES)&&
         (fp->input.pl.button_release & (R_CBUTTONS | L_CBUTTONS | D_CBUTTONS | U_CBUTTONS))
     )
     {
-        fp->status_vars.common.throwf.is_shorthop = TRUE;
+        ftStatusVarsThrowF(fp)->is_shorthop = TRUE;
     }
-    if (attr->kneebend_anim_length <= fp->status_vars.common.throwf.kneebend_anim_frame)
+    if (attr->kneebend_anim_length <= ftStatusVarsThrowF(fp)->kneebend_anim_frame)
     {
         ftDonkeyThrowFJumpSetStatus(fighter_gobj);
     }
@@ -38,9 +38,9 @@ void ftDonkeyThrowFKneeBendProcInterrupt(GObj *fighter_gobj)
     {
         if (ftDonkeyThrowFFCheckInterruptThrowFCommon(fighter_gobj) == FALSE)
         {
-            if (fp->status_vars.common.throwf.jump_force < fp->input.pl.stick_range.y)
+            if (ftStatusVarsThrowF(fp)->jump_force < fp->input.pl.stick_range.y)
             {
-                fp->status_vars.common.throwf.jump_force = fp->input.pl.stick_range.y;
+                ftStatusVarsThrowF(fp)->jump_force = fp->input.pl.stick_range.y;
             }
         }
     }
@@ -53,10 +53,10 @@ void ftDonkeyThrowFKneeBendSetStatus(GObj *fighter_gobj, s32 input_source)
 
     ftMainSetStatus(fighter_gobj, nFTDonkeyStatusThrowFKneeBend, 0.0F, 0.0F, FTSTATUS_PRESERVE_NONE);
 
-    fp->status_vars.common.throwf.jump_force = fp->input.pl.stick_range.y;
-    fp->status_vars.common.throwf.kneebend_anim_frame = 0.0F;
-    fp->status_vars.common.throwf.input_source = input_source;
-    fp->status_vars.common.throwf.is_shorthop = FALSE;
+    ftStatusVarsThrowF(fp)->jump_force = fp->input.pl.stick_range.y;
+    ftStatusVarsThrowF(fp)->kneebend_anim_frame = 0.0F;
+    ftStatusVarsThrowF(fp)->input_source = input_source;
+    ftStatusVarsThrowF(fp)->is_shorthop = FALSE;
 }
 
 // 0x8014D9B8

@@ -297,7 +297,7 @@ void gmCameraUpdateInterests(Vec3f *vec, f32 *hz, f32 *vt)
                 break;
 
             case nFTCameraModeDeadUp:
-                cams[players_num].target_pos = fp->status_vars.common.dead.pos;
+                cams[players_num].target_pos = ftStatusVarsDead(fp)->pos;
                 break;
             }
             cams[players_num].target_pos.y += fp->attr->cam_offset_y;
@@ -354,7 +354,7 @@ void gmCameraUpdateInterests(Vec3f *vec, f32 *hz, f32 *vt)
             adjust = gmCameraCalcFighterZoomRange(cam_fp, zoom);
 
             lr = ((cam_fp->camera_mode == nFTCameraModeEntry) || (cam_fp->camera_mode == nFTCameraModeExplain)) ?
-            cam_fp->status_vars.common.entry.lr : cam_fp->lr;
+            ftStatusVarsEntry(cam_fp)->lr : cam_fp->lr;
 
             if (lr == -1)
             {

@@ -10,6 +10,17 @@ extern intptr_t lGRPupupuParticleScriptBankHi;                  // 0x00B1E7E0
 extern intptr_t lGRPupupuParticleTextureBankLo;                 // 0x00B1E7E0
 extern intptr_t lGRPupupuParticleTextureBankHi;                 // 0x00B1F960
 
+enum grPupupuWhispyWindStatus
+{
+	nGRPupupuWhispyWindStatusSleep,
+	nGRPupupuWhispyWindStatusWait,
+	nGRPupupuWhispyWindStatusTurn,
+	nGRPupupuWhispyWindStatusOpen,
+	nGRPupupuWhispyWindStatusBlow,
+	nGRPupupuWhispyWindStatusStop,
+	nGRPupupuWhispyWindStatusEnumCount
+};
+
 extern s32 grPupupuWhispyGetLR(GObj *ground_gobj);
 extern void grPupupuWhispySetWindPush(void);
 extern void grPupupuWhispyUpdateSleep(void);

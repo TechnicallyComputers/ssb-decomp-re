@@ -16,5 +16,9 @@ extern sb32 itHitokageWeaponFlameProcHit(GObj *weapon_gobj);
 extern sb32 itHitokageWeaponFlameProcReflector(GObj *weapon_gobj);
 extern GObj* itHitokageWeaponFlameMakeWeapon(GObj *item_gobj, Vec3f *pos, Vec3f *vel);
 extern void itHitokageCommonMakeFlame(GObj *item_gobj, Vec3f *pos);
+#ifdef PORT
+extern void itHitokageReemitFlameParticles(GObj *weapon_gobj);
+extern void itHitokageFlameWeaponSyncPresentation(GObj *weapon_gobj);
+#endif
 
 #endif

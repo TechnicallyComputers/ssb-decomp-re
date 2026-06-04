@@ -123,8 +123,12 @@ extern void lbCommonPrepSObjAttr(Gfx **dls, SObj *sobj);
 extern void lbCommonPrepSObjDraw(Gfx **dls, SObj *sobj);
 extern void lbCommonClearExternSpriteParams(void);
 extern void lbCommonSetExternSpriteParams(Sprite *sprite);
+extern void lbCommonInvalidatePrevBitmapBuf(void);
 extern void lbCommonDrawSObjAttr(GObj *gobj);
 extern void lbCommonDrawSObjNoAttr(GObj *gobj);
+#ifdef SSB64_NETMENU
+extern void lbCommonDrawSObjChainDecalAsPrimMultiply(GObj *gobj);
+#endif
 extern SObj* lbCommonMakeSObjForGObj(GObj *gobj, Sprite *sprite);
 extern GObj* lbCommonMakeSpriteGObj
 (

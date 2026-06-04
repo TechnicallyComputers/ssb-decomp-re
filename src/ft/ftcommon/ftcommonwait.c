@@ -2,6 +2,8 @@
 
 #ifdef PORT
 #include <it/itmain.h>
+#else
+#include <it/itmain.h>
 #endif
 
 // // // // // // // // // // // //
@@ -14,6 +16,11 @@
 void ftCommonWaitProcInterrupt(GObj *fighter_gobj)
 {
     !(ftCommonGroundCheckInterrupt(fighter_gobj));
+}
+
+void ftCommonWaitProcPhysics(GObj *fighter_gobj)
+{
+    ftPhysicsApplyGroundVelFriction(fighter_gobj);
 }
 
 // 0x8013E1C8

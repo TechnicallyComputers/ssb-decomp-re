@@ -80,12 +80,12 @@ sb32 ftCommonPassCheckInterruptSquat(GObj *fighter_gobj)
     {
         return ftCommonHammerFallCheckInterruptCommon(fighter_gobj);
     }
-    if (fp->status_vars.common.squat.is_allow_pass == FALSE)
+    if (ftStatusVarsSquat(fp)->is_allow_pass == FALSE)
     {
         if (ftCommonPassCheckInputSuccess(fp) != FALSE)
         {
-            fp->status_vars.common.squat.is_allow_pass = TRUE;
-            fp->status_vars.common.squat.pass_wait = FTCOMMON_SQUAT_PASS_WAIT;
+            ftStatusVarsSquat(fp)->is_allow_pass = TRUE;
+            ftStatusVarsSquat(fp)->pass_wait = FTCOMMON_SQUAT_PASS_WAIT;
 
             return TRUE;
         }

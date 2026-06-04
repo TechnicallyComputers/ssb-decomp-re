@@ -11,7 +11,7 @@ void ftCommonAttackLw3ProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if ((fp->motion_vars.flags.flag1 != 0) && (fp->status_vars.common.attacklw3.is_goto_attacklw3 != FALSE))
+    if ((fp->motion_vars.flags.flag1 != 0) && (ftStatusVarsAttackLw3(fp)->is_goto_attacklw3 != FALSE))
     {
         ftCommonAttackLw3SetStatus(fighter_gobj);
     }
@@ -38,7 +38,7 @@ sb32 ftCommonAttackLw3CheckInterruptSelf(GObj *fighter_gobj)
 
             return TRUE;
         }
-        else fp->status_vars.common.attacklw3.is_goto_attacklw3 = TRUE;
+        else ftStatusVarsAttackLw3(fp)->is_goto_attacklw3 = TRUE;
     }
     return FALSE;
 }
@@ -50,7 +50,7 @@ void ftCommonAttackLw3InitStatusVars(GObj *fighter_gobj)
 
     fp->motion_vars.flags.flag1 = 0;
 
-    fp->status_vars.common.attacklw3.is_goto_attacklw3 = FALSE;
+    ftStatusVarsAttackLw3(fp)->is_goto_attacklw3 = FALSE;
 
     ftParamSetMotionID(fp, nFTMotionAttackIDAttackLw3);
     ftParamSetStatUpdate(fp, fp->stat_flags.halfword);

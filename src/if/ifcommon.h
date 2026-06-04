@@ -87,6 +87,7 @@ extern void ifCommonTimerMakeInterface(void (*proc)(void));
 extern GObj* ifCommonAnnounceGameSetMakeInterface(void);
 extern void ifCommonBattleInitPlacement(void);
 #ifdef PORT
+extern sb32 ifCommonBattleUsesTimedStockLimit(void);
 extern void ifCommonBattleInterfacePauseGObj(GObj *interface_gobj, uintptr_t unused);
 extern void ifCommonBattleInterfaceResumeGObj(GObj *interface_gobj, uintptr_t unused);
 #else
@@ -108,6 +109,9 @@ extern void ifCommonBattlePauseEjectGObjs(void);
 extern void ifCommonInterfaceSetGObjFlagsAll(u32 flags);
 extern void ifCommonBattlePauseSetGObjFlagsAll(u32 flags);
 extern void ifCommonBattlePauseInitInterface(s32 player);
+#if defined(PORT)
+extern sb32 ifCommonBattlePauseSetupFromPlayer(s32 player);
+#endif
 extern void ifCommonBattleGoUpdateInterface(void);
 extern void ifCommonBattleInterfaceProcSet(void);
 extern void ifCommonBattlePauseUpdateInterface(void);

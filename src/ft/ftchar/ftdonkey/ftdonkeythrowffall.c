@@ -54,16 +54,16 @@ void ftDonkeyThrowFJumpSetStatus(GObj *fighter_gobj)
     mpCommonSetFighterAir(fp);
     ftMainSetStatus(fighter_gobj, nFTDonkeyStatusThrowFFall, 0.0F, 0.0F, FTSTATUS_PRESERVE_NONE);
 
-    switch (fp->status_vars.common.throwf.input_source)
+    switch (ftStatusVarsThrowF(fp)->input_source)
     {
     case FTCOMMON_KNEEBEND_INPUT_TYPE_BUTTON:
-        ftCommonJumpGetJumpForceButton(fp->input.pl.stick_range.x, &vel_x, &vel_y, fp->status_vars.common.throwf.is_shorthop);
+        ftCommonJumpGetJumpForceButton(fp->input.pl.stick_range.x, &vel_x, &vel_y, ftStatusVarsThrowF(fp)->is_shorthop);
         break;
 
     case FTCOMMON_KNEEBEND_INPUT_TYPE_STICK:
     default:
         vel_x = fp->input.pl.stick_range.x;
-        vel_y = fp->status_vars.common.throwf.jump_force;
+        vel_y = ftStatusVarsThrowF(fp)->jump_force;
     }
     fp->physics.vel_air.y = (vel_y * attr->jump_height_mul) + attr->jump_height_base;
     fp->physics.vel_air.x = vel_x * attr->jump_vel_x;

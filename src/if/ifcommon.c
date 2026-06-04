@@ -17,8 +17,16 @@ extern void syAudioSetBGMVolume(u32, u32);
 #include <sys/objman.h>
 #include <sys/scheduler.h>
 extern sb32 syNetPeerIsVSSessionActive(void);
+extern u32 syNetSyncNetplayEffectiveTimeLimitMinutes(void);
+extern void syNetSyncOnNetplayBattleGo(void);
+#include <stdio.h>
 #if defined(SSB64_NETMENU)
+#include <sys/net_debug_agent_log.h>
+#include <sys/netinput.h>
 void syNetFighterPhaseTraceGcRunAllBegin(void);
+#if defined(SSB64_NETPLAY_ICE)
+#include <sys/netreconnect.h>
+#endif
 #endif
 extern void func_800266A0_272A0(void);
 extern s32 func_80026594_27194(void);
@@ -2292,9 +2300,24 @@ void ifCommonAnnounceGoSetStatus(void)
 
         fighter_gobj = fighter_gobj->link_next;
     }
+    // #region agent log
+#if defined(PORT) && defined(SSB64_NETMENU)
+    {
+        char agent_data[128];
+
+        snprintf(agent_data, sizeof(agent_data), "{\"tick\":%u,\"game_status\":%u}",
+                 (unsigned int)syNetInputGetTick(), (unsigned int)nSCBattleGameStatusGo);
+        net_debug_agent_log_line("A", "ifcommon.c:AnnounceGoSetStatus", "announce_go", agent_data);
+    }
+#endif
+    // #endregion
     gSCManagerBattleState->game_status = nSCBattleGameStatusGo;
 
     gIFCommonPlayerInterface.is_magnify_display = TRUE;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetSyncOnNetplayBattleGo();
+#endif
 }
 
 // 0x80112234
@@ -2716,6 +2739,29 @@ void ifCommonTimerInitAnnouncedSeconds(void)
     }
 }
 
+#ifdef PORT
+sb32 ifCommonBattleUsesTimedStockLimit(void)
+{
+    if (gSCManagerBattleState->time_limit == SCBATTLE_TIMELIMIT_INFINITE)
+    {
+        return FALSE;
+    }
+    if (gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME)
+    {
+        return TRUE;
+    }
+    {
+        extern int port_get_comp_ruleset(void);
+
+        if ((port_get_comp_ruleset() != 0) && (gSCManagerSceneData.scene_curr == nSCKindVSBattle))
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+#endif
+
 // 0x80112F68
 SObj* ifCommonTimerMakeDigits(void)
 {
@@ -2729,9 +2775,8 @@ SObj* ifCommonTimerMakeDigits(void)
     }
     */
 
-    // Decouple timer HUD for Competitive Ruleset
-    extern int port_get_comp_ruleset(void);
-    if ((!(gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME) && !(port_get_comp_ruleset() && gSCManagerSceneData.scene_curr == nSCKindVSBattle)) || (gSCManagerBattleState->time_limit == SCBATTLE_TIMELIMIT_INFINITE))
+    // Decouple timer HUD for Competitive Ruleset / automatch stock+timer
+    if (ifCommonBattleUsesTimedStockLimit() == FALSE)
     {
         return NULL;
     }
@@ -2783,9 +2828,7 @@ void ifCommonTimerFuncRun(GObj *interface_gobj)
 
             //if ((gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME) && (gSCManagerBattleState->time_limit != SCBATTLE_TIMELIMIT_INFINITE))
 
-            // decouple timer logic for comp. ruleset
-            extern int port_get_comp_ruleset(void);
-            if (((gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_TIME) || (port_get_comp_ruleset() && gSCManagerSceneData.scene_curr == nSCKindVSBattle)) && (gSCManagerBattleState->time_limit != SCBATTLE_TIMELIMIT_INFINITE))
+            if (ifCommonBattleUsesTimedStockLimit() != FALSE)
             {
                 if (gSCManagerBattleState->time_remain != 0)
                 {
@@ -2833,7 +2876,25 @@ void ifCommonTimerFuncRun(GObj *interface_gobj)
 // 0x80113398
 void ifCommonTimerMakeInterface(void (*proc)(void))
 {
-    gSCManagerBattleState->time_remain = sIFCommonTimerLimit = I_MIN_TO_TICS(gSCManagerBattleState->time_limit);
+#ifdef PORT
+    if (syNetPeerIsVSSessionActive() != FALSE)
+    {
+        u32 limit_min = syNetSyncNetplayEffectiveTimeLimitMinutes();
+
+        if ((limit_min != 0U) && (limit_min != (u32)SCBATTLE_TIMELIMIT_INFINITE))
+        {
+            gSCManagerBattleState->time_remain = sIFCommonTimerLimit = I_MIN_TO_TICS((s32)limit_min);
+        }
+        else
+        {
+            gSCManagerBattleState->time_remain = sIFCommonTimerLimit = I_MIN_TO_TICS(gSCManagerBattleState->time_limit);
+        }
+    }
+    else
+#endif
+    {
+        gSCManagerBattleState->time_remain = sIFCommonTimerLimit = I_MIN_TO_TICS(gSCManagerBattleState->time_limit);
+    }
     gSCManagerBattleState->time_passed = 0;
 
     sIFCommonTimerIsStarted = FALSE;
@@ -3232,6 +3293,10 @@ sb32 ifCommonBattlePausePlayerCanRequestPause(s32 player)
     }
     fighter_gobj = gSCManagerBattleState->players[player].fighter_gobj;
 
+    if (fighter_gobj == NULL)
+    {
+        return FALSE;
+    }
     fp = ftGetStruct(fighter_gobj);
 
     if ((fp->status_id == nFTCommonStatusSleep) && (ftCommonSleepCheckIgnorePauseMenu(fighter_gobj) != FALSE))
@@ -3454,6 +3519,12 @@ void ifCommonBattlePauseUpdateInterface(void)
     {
         if (button_tap & START_BUTTON)
         {
+#if defined(PORT) && defined(SSB64_NETMENU) && defined(SSB64_NETPLAY_ICE)
+            if (syNetReconnectBlocksUnpause() != FALSE)
+            {
+                return;
+            }
+#endif
             ifCommonBattlePauseBeginUnpause();
 
             return;

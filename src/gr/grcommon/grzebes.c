@@ -2,6 +2,14 @@
 #include <ft/fighter.h>
 #include <sc/scene.h>
 #include <reloc_data.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+/*
+ * Netplay rollback forward-sim: acid level quantize uses syNetplaySimQuantizeActive().
+ * See CLAUDE.md §7.
+ */
+
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -188,6 +196,15 @@ void grZebesAcidUpdateShake(void)
 void grZebesAcidUpdateRise(void)
 {
     gGRCommonStruct.zebes.acid_level_curr += gGRCommonStruct.zebes.acid_level_step;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: shared-grid acid rise for cross-peer agreement. */
+    if (syNetplaySimQuantizeActive() != FALSE)
+    {
+        gGRCommonStruct.zebes.acid_level_curr = syNetplayQuantizeF32(gGRCommonStruct.zebes.acid_level_curr);
+        gGRCommonStruct.zebes.acid_level_step = syNetplayQuantizeF32(gGRCommonStruct.zebes.acid_level_step);
+    }
+
+#endif
 
     DObjGetStruct(gGRCommonStruct.zebes.map_gobj)->translate.vec.f.y = gGRCommonStruct.zebes.acid_level_curr;
 
@@ -250,8 +267,25 @@ sb32 grZebesAcidCheckGetDamageKind(GObj *ground_gobj, GObj *fighter_gobj, GRAtta
     if (fp->acid_wait == 0)
     {
         DObj *dobj = DObjGetStruct(ground_gobj);
+        f32 fighter_y;
+        f32 acid_surface_y;
 
-        if (DObjGetStruct(fighter_gobj)->translate.vec.f.y < (dobj->translate.vec.f.y + dobj->child->translate.vec.f.y))
+        if ((dobj == NULL) || (dobj->child == NULL))
+        {
+            return FALSE;
+        }
+        fighter_y = DObjGetStruct(fighter_gobj)->translate.vec.f.y;
+        acid_surface_y = dobj->translate.vec.f.y + dobj->child->translate.vec.f.y;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Netplay rollback only: shared-grid acid surface compare. */
+        if (syNetplaySimQuantizeActive() != FALSE)
+        {
+            fighter_y = syNetplayQuantizeF32(fighter_y);
+            acid_surface_y = syNetplayQuantizeF32(acid_surface_y);
+        }
+
+#endif
+        if (fighter_y < acid_surface_y)
         {
             *gr_attack_coll = gGRCommonStruct.zebes.attack_coll;
             *kind = nGMHitEnvironmentAcid;

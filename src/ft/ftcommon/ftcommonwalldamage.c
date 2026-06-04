@@ -16,7 +16,7 @@ void ftCommonWallDamageProcUpdate(GObj *fighter_gobj)
     ftCommonDamageUpdateDustEffect(fighter_gobj);
     ftCommonDamageDecHitStunSetPublic(fighter_gobj);
 
-    if (fp->status_vars.common.damage.hitstun_tics == 0)
+    if (ftStatusVarsDamage(fp)->hitstun_tics == 0)
     {
         ftCommonDamageFallSetStatusFromDamage(fighter_gobj);
     }
@@ -46,7 +46,7 @@ void ftCommonWallDamageSetStatus(GObj *fighter_gobj, Vec3f *angle, Vec3f *pos)
 
     knockback = lbCommonMag2D(&vel_air);
 
-    fp->status_vars.common.damage.hitstun_tics = ftParamGetHitStun(knockback);
+    ftStatusVarsDamage(fp)->hitstun_tics = ftParamGetHitStun(knockback);
 
     ftMainSetStatus(fighter_gobj, nFTCommonStatusWallDamage, 0.0F, 2.0F, (FTSTATUS_PRESERVE_DAMAGEPLAYER | FTSTATUS_PRESERVE_PLAYERTAG));
 
@@ -69,7 +69,7 @@ sb32 ftCommonWallDamageCheckGoto(GObj *fighter_gobj)
     pos.y = DObjGetStruct(fighter_gobj)->translate.vec.f.y;
     pos.z = 0.0F;
 
-    if (fp->status_vars.common.damage.coll_mask_curr & MAP_FLAG_LWALL)
+    if (ftStatusVarsDamage(fp)->coll_mask_curr & MAP_FLAG_LWALL)
     {
         pos.x += fp->coll_data.map_coll.width;
         pos.y += fp->coll_data.map_coll.center;
@@ -78,7 +78,7 @@ sb32 ftCommonWallDamageCheckGoto(GObj *fighter_gobj)
 
         return TRUE;
     }
-    else if (fp->status_vars.common.damage.coll_mask_curr & MAP_FLAG_RWALL)
+    else if (ftStatusVarsDamage(fp)->coll_mask_curr & MAP_FLAG_RWALL)
     {
         pos.x -= fp->coll_data.map_coll.width;
         pos.y += fp->coll_data.map_coll.center;
@@ -87,7 +87,7 @@ sb32 ftCommonWallDamageCheckGoto(GObj *fighter_gobj)
 
         return TRUE;
     }
-    else if (fp->status_vars.common.damage.coll_mask_curr & MAP_FLAG_CEIL)
+    else if (ftStatusVarsDamage(fp)->coll_mask_curr & MAP_FLAG_CEIL)
     {
         pos.y += fp->coll_data.map_coll.top;
 

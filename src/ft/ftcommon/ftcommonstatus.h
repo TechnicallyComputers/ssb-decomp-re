@@ -226,7 +226,7 @@ FTStatusDesc dFTCommonActionStatusDescs[/* */] =
 		//////////////////////// Process Callbacks /////////////////////////////
 		NULL,									// Proc Update
 		ftCommonWaitProcInterrupt,				// Proc Interrupt
-		ftPhysicsApplyGroundVelFriction,		// Proc Physics
+		ftCommonWaitProcPhysics,				// Proc Physics
 		mpCommonProcFighterOnCliffEdge			// Proc Map
 	},
 

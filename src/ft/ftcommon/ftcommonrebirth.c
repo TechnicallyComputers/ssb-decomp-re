@@ -4,6 +4,10 @@
 #include <ft/ftmanager.h>
 #include <if/ifcommon.h>
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_rebirth_gate.h>
+#include <sys/netplay_sim_quantize.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -54,7 +58,7 @@ loop: // This makes no sense
                 (other_fp->status_id <= nFTCommonStatusRebirthWait)
             )
             {
-                if (halo_number == other_fp->status_vars.common.rebirth.halo_number)
+                if (halo_number == ftStatusVarsRebirth(other_fp)->halo_number)
                 {
                     halo_number++;
 
@@ -69,8 +73,23 @@ loop: // This makes no sense
     rebirth_vars.pos.x = dFTCommonRebirthOffsetsX[halo_number] + halo_spawn_pos.x;
     rebirth_vars.pos.y = gMPCollisionGroundData->map_bound_top;
     rebirth_vars.pos.z = 0.0F;
+#ifdef PORT
+    gFTManagerInitFighterSkipFloorProject = TRUE;
+#endif
 
     ftManagerInitFighter(this_gobj, &rebirth_vars);
+#ifdef PORT
+    gFTManagerInitFighterSkipFloorProject = FALSE;
+    {
+        Vec3f *root_translate = &DObjGetStruct(this_gobj)->translate.vec.f;
+
+        *root_translate = rebirth_vars.pos;
+        this_fp->coll_data.pos_prev = rebirth_vars.pos;
+        this_fp->coll_data.pos_diff.x = 0.0F;
+        this_fp->coll_data.pos_diff.y = 0.0F;
+        this_fp->coll_data.pos_diff.z = 0.0F;
+    }
+#endif
     ifCommonPlayerDamageStopBreakAnim(this_fp);
     mpCommonSetFighterGround(this_fp);
 
@@ -84,12 +103,16 @@ loop: // This makes no sense
     ftMainPlayAnimEventsAll(this_gobj);
     ftPhysicsStopVelAll(this_gobj);
 
-    this_fp->status_vars.common.rebirth.halo_lower_wait = FTCOMMON_REBIRTH_HALO_LOWER_WAIT;
-    this_fp->status_vars.common.rebirth.halo_despawn_wait = FTCOMMON_REBIRTH_HALO_DESPAWN_WAIT;
-    this_fp->status_vars.common.rebirth.pos = DObjGetStruct(this_gobj)->translate.vec.f;
-    this_fp->status_vars.common.rebirth.halo_offset.x = dFTCommonRebirthOffsetsX[halo_number] + halo_spawn_pos.x;
-    this_fp->status_vars.common.rebirth.halo_offset.y = halo_spawn_pos.y;
-    this_fp->status_vars.common.rebirth.halo_offset.z = 0.0F;
+    ftStatusVarsRebirth(this_fp)->halo_lower_wait = FTCOMMON_REBIRTH_HALO_LOWER_WAIT;
+    ftStatusVarsRebirth(this_fp)->halo_despawn_wait = FTCOMMON_REBIRTH_HALO_DESPAWN_WAIT;
+#ifdef PORT
+    ftStatusVarsRebirth(this_fp)->pos = rebirth_vars.pos;
+#else
+    ftStatusVarsRebirth(this_fp)->pos = DObjGetStruct(this_gobj)->translate.vec.f;
+#endif
+    ftStatusVarsRebirth(this_fp)->halo_offset.x = dFTCommonRebirthOffsetsX[halo_number] + halo_spawn_pos.x;
+    ftStatusVarsRebirth(this_fp)->halo_offset.y = halo_spawn_pos.y;
+    ftStatusVarsRebirth(this_fp)->halo_offset.z = 0.0F;
 
     this_fp->is_menu_ignore = TRUE;
     this_fp->is_ghost = TRUE;
@@ -97,7 +120,7 @@ loop: // This makes no sense
     this_fp->is_rebirth = TRUE;
     this_fp->camera_mode = nFTCameraModeGhost;
 
-    this_fp->status_vars.common.rebirth.halo_number = halo_number;
+    ftStatusVarsRebirth(this_fp)->halo_number = halo_number;
 
     this_fp->camera_zoom_range = 0.6F;
 
@@ -105,8 +128,14 @@ loop: // This makes no sense
     {
         this_fp->is_effect_attach = TRUE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayCanonicalizeRebirthFighterMapPose(this_gobj);
+#endif
     ftParamCheckSetFighterColAnimID(this_gobj, nGMColAnimFighterRebirth, 0);
     ftParamSetPlayerTagWait(this_gobj, 1);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayRebirthGateLogRebirthDownSetStatus(this_gobj, this_fp, halo_number);
+#endif
 }
 
 // 0x8013D1D4
@@ -114,13 +143,13 @@ void ftCommonRebirthCommonUpdateHaloWait(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->status_vars.common.rebirth.halo_despawn_wait != 0)
+    if (ftStatusVarsRebirth(fp)->halo_despawn_wait != 0)
     {
-        fp->status_vars.common.rebirth.halo_despawn_wait--;
+        ftStatusVarsRebirth(fp)->halo_despawn_wait--;
     }
-    if (fp->status_vars.common.rebirth.halo_lower_wait != 0)
+    if (ftStatusVarsRebirth(fp)->halo_lower_wait != 0)
     {
-        fp->status_vars.common.rebirth.halo_lower_wait--;
+        ftStatusVarsRebirth(fp)->halo_lower_wait--;
     }
 }
 
@@ -131,11 +160,11 @@ void ftCommonRebirthDownProcUpdate(GObj *fighter_gobj)
 
     ftCommonRebirthCommonUpdateHaloWait(fighter_gobj);
 
-    if (fp->status_vars.common.rebirth.halo_despawn_wait == (FTCOMMON_REBIRTH_HALO_DESPAWN_WAIT - FTCOMMON_REBIRTH_HALO_UNK_WAIT))
+    if (ftStatusVarsRebirth(fp)->halo_despawn_wait == (FTCOMMON_REBIRTH_HALO_DESPAWN_WAIT - FTCOMMON_REBIRTH_HALO_UNK_WAIT))
     {
         fp->camera_mode = nFTCameraModeDefault;
     }
-    if (fp->status_vars.common.rebirth.halo_despawn_wait == (FTCOMMON_REBIRTH_HALO_DESPAWN_WAIT - FTCOMMON_REBIRTH_HALO_STAND_WAIT))
+    if (ftStatusVarsRebirth(fp)->halo_despawn_wait == (FTCOMMON_REBIRTH_HALO_DESPAWN_WAIT - FTCOMMON_REBIRTH_HALO_STAND_WAIT))
     {
         ftCommonRebirthStandSetStatus(fighter_gobj);
     }
@@ -146,8 +175,11 @@ void ftCommonRebirthCommonProcMap(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    DObjGetStruct(fighter_gobj)->translate.vec.f.y = (((fp->status_vars.common.rebirth.pos.y - fp->status_vars.common.rebirth.halo_offset.y) / 8100.0F) *
-                                               SQUARE(fp->status_vars.common.rebirth.halo_lower_wait)) + fp->status_vars.common.rebirth.halo_offset.y;
+    DObjGetStruct(fighter_gobj)->translate.vec.f.y = (((ftStatusVarsRebirth(fp)->pos.y - ftStatusVarsRebirth(fp)->halo_offset.y) / 8100.0F) *
+                                               SQUARE(ftStatusVarsRebirth(fp)->halo_lower_wait)) + ftStatusVarsRebirth(fp)->halo_offset.y;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayCanonicalizeRebirthFighterMapPose(fighter_gobj);
+#endif
 }
 
 // 0x8013D2AC
@@ -180,7 +212,7 @@ void ftCommonRebirthWaitProcUpdate(GObj *fighter_gobj)
 
     ftCommonRebirthCommonUpdateHaloWait(fighter_gobj);
 
-    if (fp->status_vars.common.rebirth.halo_despawn_wait == 0)
+    if (ftStatusVarsRebirth(fp)->halo_despawn_wait == 0)
     {
         ftParamSetTimedHitStatusInvincible(fp, FTCOMMON_REBIRTH_INVINCIBLE_FRAMES);
         ftCommonFallSetStatus(fighter_gobj);

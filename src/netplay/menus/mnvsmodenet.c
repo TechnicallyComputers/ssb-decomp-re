@@ -11,9 +11,8 @@
 #include "mn_vs_submenu_png.h"
 
 /*
- * Netmenu fork of decomp/src/mn/mnvsmode/mnvsmode.c (VS Mode scene).
- * Compiled only when CMake SSB64_NETMENU=ON; it replaces the decomp TU of the
- * same path/name. Do not edit the decomp original for net VS menu behavior.
+ * Netmenu VS Mode hub — replaces stock mn/mnvsmode/mnvsmode.c when SSB64_NETMENU=ON
+ * (see cmake/Ssb64NetmenuSources.cmake). Offline builds use the stock decomp TU.
  */
 
 extern void* func_800269C0_275C0(u16);

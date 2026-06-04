@@ -196,7 +196,14 @@ typedef enum SCKind
 	nSCKindData,              	  	// Data menu
 	nSCKindSoundTest,        	  	// Sound Test
 	nSCKindExplain,         	  	// How to Play
-	nSCKindAutoDemo               	// Auto-Demo
+	nSCKindAutoDemo,               	// Auto-Demo
+#ifdef SSB64_NETMENU
+	nSCKindVSOfflineClassic,      	// Netmenu: ROM-faithful VS rules submenu (offline)
+	nSCKindVSOnline,               	// Netmenu: online netplay features submenu
+	nSCKindVSNetAutomatch,         	// Netmenu: automatch (1P CSS fork) entry
+	nSCKindVSNetLevelPrefs,	       	// Netmenu: level-prefs stage-select fork
+	nSCKindVSNetMatchStaging       	// Netmenu: automatch P2P/barrier staging (between CSS and VS)
+#endif
 
 } SCKind;
 

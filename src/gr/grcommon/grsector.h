@@ -38,4 +38,30 @@ extern void grSectorProcUpdate(GObj *ground_gobj);
 extern void grSectorInitAll(void);
 extern GObj* grSectorMakeGround(void);
 
+#ifdef PORT
+typedef struct GRSectorArwingPresentationDiag
+{
+	sb32 root_matches_d0;
+	s32 drawable_dobj_count;
+	sb32 dl_valid_root;
+	sb32 dl_valid_mesh;
+	u32 tree_child_count;
+	void *proc_display;
+	u8 dl_link_id;
+} GRSectorArwingPresentationDiag;
+
+extern sb32 grSectorReestablishArwingVisualTree(void);
+extern void grSectorSyncArwingMapGObjFlags(u32 snap_map_gobj_flags);
+extern void grSectorArwingFillPresentationDiag(GRSectorArwingPresentationDiag *out);
+extern s8 grSectorInferFlightPatternIdx(void);
+extern void grSectorArwingReattachFlightAnims(s8 flight_pattern_idx);
+extern void grSectorArwingApplyAnimTransforms(GObj *map_gobj);
+extern void grSectorRepairArwingPresentation(sb32 tree_was_reestablished, s8 flight_pattern_idx,
+                                             const Vec3f *dobj_translate, const Vec3f *dobj_rotate,
+                                             u16 dobj_valid_mask);
+#if defined(SSB64_NETMENU)
+extern void grSectorArwingCanonicalizeSimState(void);
+#endif
+#endif
+
 #endif

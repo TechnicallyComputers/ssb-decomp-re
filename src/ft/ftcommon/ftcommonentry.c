@@ -45,6 +45,39 @@ s32 dFTCommonEntryAppearStatusIDs[/* */][2] =
 //                               //
 // // // // // // // // // // // //
 
+static s32 ftCommonAppearGetEntryLR(const FTStruct *fp)
+{
+    s32 lr = ftStatusVarsEntry((FTStruct *)(void *)fp)->lr;
+
+    if ((lr == +1) || (lr == -1))
+    {
+        return lr;
+    }
+    if ((fp->hit_lr == +1) || (fp->hit_lr == -1))
+    {
+        return fp->hit_lr;
+    }
+    return +1;
+}
+
+static void ftCommonAppearFinishToWait(GObj *fighter_gobj)
+{
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+
+    fp->lr = ftCommonAppearGetEntryLR(fp);
+
+    DObjGetStruct(fighter_gobj)->translate.vec.f = fp->entry_pos;
+
+    fp->coll_data.floor_line_id = ftStatusVarsEntry(fp)->floor_line_id;
+
+    fp->hit_lr = 0;
+    if (fp->fkind == nFTKindBoss)
+    {
+        ftBossWaitSetStatus(fighter_gobj);
+    }
+    else ftCommonWaitSetStatus(fighter_gobj);
+}
+
 // 0x8013D930
 void ftCommonEntrySetStatus(GObj *fighter_gobj)
 {
@@ -63,11 +96,11 @@ void ftCommonEntryNullProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->status_vars.common.entry.entry_wait != 0)
+    if (ftStatusVarsEntry(fp)->entry_wait != 0)
     {
-        fp->status_vars.common.entry.entry_wait--;
+        ftStatusVarsEntry(fp)->entry_wait--;
 
-        if (fp->status_vars.common.entry.entry_wait == 0)
+        if (ftStatusVarsEntry(fp)->entry_wait == 0)
         {
             if (fp->fkind == nFTKindBoss)
             {
@@ -75,11 +108,13 @@ void ftCommonEntryNullProcUpdate(GObj *fighter_gobj)
             }
             else
             {
-                fp->lr = fp->status_vars.common.entry.lr;
+                fp->lr = ftCommonAppearGetEntryLR(fp);
 
                 DObjGetStruct(fighter_gobj)->translate.vec.f = fp->entry_pos;
 
-                fp->coll_data.floor_line_id = fp->status_vars.common.entry.floor_line_id;
+                fp->coll_data.floor_line_id = ftStatusVarsEntry(fp)->floor_line_id;
+
+                fp->hit_lr = 0;
 
                 ftCommonWaitSetStatus(fighter_gobj);
             }
@@ -117,17 +152,7 @@ void ftCommonAppearProcUpdate(GObj *fighter_gobj)
 
     if (fighter_gobj->anim_frame <= 0.0F)
     {
-        fp->lr = fp->status_vars.common.entry.lr;
-
-        DObjGetStruct(fighter_gobj)->translate.vec.f = fp->entry_pos;
-
-        fp->coll_data.floor_line_id = fp->status_vars.common.entry.floor_line_id;
-
-        if (fp->fkind == nFTKindBoss)
-        {
-            ftBossWaitSetStatus(fighter_gobj);
-        }
-        else ftCommonWaitSetStatus(fighter_gobj);
+        ftCommonAppearFinishToWait(fighter_gobj);
     }
 }
 
@@ -140,7 +165,7 @@ void ftCommonAppearProcPhysics(GObj *fighter_gobj)
 
     topn_joint->translate.vec.f.y = fp->entry_pos.y + transn_joint->translate.vec.f.y;
 
-    if (fp->status_vars.common.entry.is_rotate != FALSE)
+    if (ftStatusVarsEntry(fp)->is_rotate != FALSE)
     {
         topn_joint->translate.vec.f.x = fp->entry_pos.x - transn_joint->translate.vec.f.x;
         topn_joint->translate.vec.f.z = fp->entry_pos.z - transn_joint->translate.vec.f.z;
@@ -179,13 +204,16 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
 
     fp->entry_pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
 
-    fp->status_vars.common.entry.is_rotate = FALSE;
+    ftStatusVarsEntry(fp)->is_rotate = FALSE;
 
-    fp->status_vars.common.entry.lr = fp->lr;
+    ftStatusVarsEntry(fp)->lr = fp->lr;
 
+    fp->hit_lr = ftStatusVarsEntry(fp)->lr;
+
+    /* Vanilla: clear combat facing before SetStatus so TopN stays anim-neutral until AppearProcPhysics. */
     fp->lr = 0;
 
-    fp->status_vars.common.entry.floor_line_id = fp->coll_data.floor_line_id;
+    ftStatusVarsEntry(fp)->floor_line_id = fp->coll_data.floor_line_id;
 
     status_id = dFTCommonEntryAppearStatusIDs[fp->fkind][entry_id];
 
@@ -198,7 +226,7 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
         break;
 
     case nFTKindFox:
-        efManagerFoxEntryArwingMakeEffect(&fp->entry_pos, fp->status_vars.common.entry.lr);
+        efManagerFoxEntryArwingMakeEffect(&fp->entry_pos, ftStatusVarsEntry(fp)->lr);
         break;
 
     case nFTKindDonkey:
@@ -220,20 +248,20 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
         break;
 
     case nFTKindKirby:
-        efManagerKirbyEntryStarMakeEffect(&fp->entry_pos, fp->status_vars.common.entry.lr);
+        efManagerKirbyEntryStarMakeEffect(&fp->entry_pos, ftStatusVarsEntry(fp)->lr);
         break;
 
     case nFTKindPikachu:
     case nFTKindPurin:
-        efManagerMBallThrownMakeEffect(&fp->entry_pos, fp->status_vars.common.entry.lr);
+        efManagerMBallThrownMakeEffect(&fp->entry_pos, ftStatusVarsEntry(fp)->lr);
         break;
 
     case nFTKindCaptain:
-        if (fp->status_vars.common.entry.lr == -1)
+        if (ftStatusVarsEntry(fp)->lr == -1)
         {
-            fp->status_vars.common.entry.is_rotate = TRUE;
+            ftStatusVarsEntry(fp)->is_rotate = TRUE;
         }
-        efManagerCaptainEntryCarMakeEffect(&fp->entry_pos, fp->status_vars.common.entry.lr);
+        efManagerCaptainEntryCarMakeEffect(&fp->entry_pos, ftStatusVarsEntry(fp)->lr);
         break;
 
     case nFTKindBoss:
@@ -255,13 +283,13 @@ void ftCommonAppearSetStatus(GObj *fighter_gobj)
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftCommonAppearInitStatusVars(fighter_gobj);
 
-    fp->status_vars.common.entry.entry_wait = FTCOMMON_ENTRY_WAIT;
+    ftStatusVarsEntry(fp)->entry_wait = FTCOMMON_ENTRY_WAIT;
 
     fp->motion_vars.flags.flag1 = 0;
     fp->motion_vars.flags.flag2 = 0;
     fp->motion_vars.flags.flag0 = 0;
 
-    if ((fp->fkind == nFTKindCaptain) && (fp->status_vars.common.entry.lr == -1))
+    if ((fp->fkind == nFTKindCaptain) && (ftStatusVarsEntry(fp)->lr == -1))
     {
         ftParamMoveDLLink(fighter_gobj, 1);
     }
@@ -311,7 +339,7 @@ void ftNessAppearEndSetStatus(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    ftMainSetStatus(fighter_gobj, ((fp->status_vars.common.entry.lr == +1) ? nFTNessStatusAppearREnd : nFTNessStatusAppearLEnd), 0.0F, 1.0F, (FTSTATUS_PRESERVE_MODELPART | FTSTATUS_PRESERVE_COLANIM));
+    ftMainSetStatus(fighter_gobj, ((ftStatusVarsEntry(fp)->lr == +1) ? nFTNessStatusAppearREnd : nFTNessStatusAppearLEnd), 0.0F, 1.0F, (FTSTATUS_PRESERVE_MODELPART | FTSTATUS_PRESERVE_COLANIM));
     ftCommonAppearInitStatusVars(fighter_gobj);
 
     fp->is_shadow_hide = FALSE;
@@ -324,7 +352,7 @@ void ftCaptainAppearStartProcUpdate(GObj *fighter_gobj)
 
     ftCommonAppearUpdateEffects(fighter_gobj);
 
-    if ((fp->status_vars.common.entry.lr == -1) && (fp->dl_link != FTDISPLAY_DLLINK_DEFAULT) && (DObjGetStruct(fighter_gobj)->translate.vec.f.z > -1000.0F))
+    if ((ftStatusVarsEntry(fp)->lr == -1) && (fp->dl_link != FTDISPLAY_DLLINK_DEFAULT) && (DObjGetStruct(fighter_gobj)->translate.vec.f.z > -1000.0F))
     {
         ftParamMoveDLLink(fighter_gobj, FTDISPLAY_DLLINK_DEFAULT);
     }
@@ -336,7 +364,7 @@ void ftCaptainAppearEndSetStatus(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    ftMainSetStatus(fighter_gobj, ((fp->status_vars.common.entry.lr == +1) ? nFTCaptainStatusAppearREnd : nFTCaptainStatusAppearLEnd), 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
+    ftMainSetStatus(fighter_gobj, ((ftStatusVarsEntry(fp)->lr == +1) ? nFTCaptainStatusAppearREnd : nFTCaptainStatusAppearLEnd), 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftCommonAppearInitStatusVars(fighter_gobj);
 
     fp->is_shadow_hide = FALSE;

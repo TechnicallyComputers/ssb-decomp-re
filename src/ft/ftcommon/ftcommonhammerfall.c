@@ -66,16 +66,16 @@ void ftCommonHammerFallSetStatusJump(GObj *fighter_gobj)
     ftMainSetStatus(fighter_gobj, nFTCommonStatusHammerFall, ftHammerGetAnimFrame(fighter_gobj), 1.0F, ftHammerGetStatUpdateFlags(fighter_gobj));
     ftHammerSetColAnim(fighter_gobj);
 
-    switch (fp->status_vars.common.hammer.input_source)
+    switch (ftStatusVarsHammer(fp)->input_source)
     {
     case FTCOMMON_KNEEBEND_INPUT_TYPE_BUTTON:
-        ftCommonJumpGetJumpForceButton(fp->input.pl.stick_range.x, &vel_x, &vel_y, fp->status_vars.common.hammer.is_shorthop);
+        ftCommonJumpGetJumpForceButton(fp->input.pl.stick_range.x, &vel_x, &vel_y, ftStatusVarsHammer(fp)->is_shorthop);
         break;
 
     case FTCOMMON_KNEEBEND_INPUT_TYPE_STICK:
     default:
         vel_x = fp->input.pl.stick_range.x;
-        vel_y = fp->status_vars.common.hammer.jump_force;
+        vel_y = ftStatusVarsHammer(fp)->jump_force;
         break;
     }
     fp->physics.vel_air.y = (vel_y * attr->jump_height_mul) + attr->jump_height_base;

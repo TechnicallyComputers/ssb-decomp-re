@@ -15,8 +15,8 @@ void ftCommonTurnProcUpdate(GObj *fighter_gobj)
     {
         fp->motion_vars.flags.flag1 = 0;
 
-        fp->status_vars.common.turn.is_allow_turn_direction = TRUE;
-        fp->status_vars.common.turn.is_disable_sa_interrupts = TRUE;
+        ftStatusVarsTurn(fp)->is_allow_turn_direction = TRUE;
+        ftStatusVarsTurn(fp)->is_disable_sa_interrupts = TRUE;
 
         fp->lr = -fp->lr;
         fp->physics.vel_ground.x = -fp->physics.vel_ground.x;
@@ -33,12 +33,12 @@ void ftCommonTurnProcInterrupt(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     sb32 is_interrupt_attacks4;
 
-    if (fp->status_vars.common.turn.is_allow_turn_direction != FALSE)
+    if (ftStatusVarsTurn(fp)->is_allow_turn_direction != FALSE)
     {
-        fp->input.pl.button_tap |= fp->status_vars.common.turn.button_mask;
+        fp->input.pl.button_tap |= ftStatusVarsTurn(fp)->button_mask;
     }
 
-    if (fp->status_vars.common.turn.is_disable_sa_interrupts == FALSE)
+    if (ftStatusVarsTurn(fp)->is_disable_sa_interrupts == FALSE)
     {
         goto skip_interrupt_specials;
     } 
@@ -49,15 +49,15 @@ void ftCommonTurnProcInterrupt(GObj *fighter_gobj)
 skip_interrupt_specials:
     if (ftCommonCatchCheckInterruptCommon(fighter_gobj) == FALSE)
     {
-        if (fp->status_vars.common.turn.attacks4_buffer < 256)
+        if (ftStatusVarsTurn(fp)->attacks4_buffer < 256)
         {
-            fp->status_vars.common.turn.attacks4_buffer++;
+            ftStatusVarsTurn(fp)->attacks4_buffer++;
         } 
-        is_interrupt_attacks4 = (fp->status_vars.common.turn.attacks4_buffer < 6) ? ftCommonAttackS4CheckInterruptTurn(fighter_gobj) : ftCommonAttackS4CheckInterruptCommon(fighter_gobj);
+        is_interrupt_attacks4 = (ftStatusVarsTurn(fp)->attacks4_buffer < 6) ? ftCommonAttackS4CheckInterruptTurn(fighter_gobj) : ftCommonAttackS4CheckInterruptCommon(fighter_gobj);
 
         if (is_interrupt_attacks4 == FALSE)
         {
-            if (fp->status_vars.common.turn.is_disable_sa_interrupts == FALSE) 
+            if (ftStatusVarsTurn(fp)->is_disable_sa_interrupts == FALSE) 
             {
                 goto skip_interrupt_attacks;
             }
@@ -80,11 +80,11 @@ skip_interrupt_specials:
             }
             ftCommonDashCheckTurn(fighter_gobj);
 
-            if (fp->status_vars.common.turn.is_allow_turn_direction != FALSE)
+            if (ftStatusVarsTurn(fp)->is_allow_turn_direction != FALSE)
             {
-                if (fp->status_vars.common.turn.lr_dash != 0)
+                if (ftStatusVarsTurn(fp)->lr_dash != 0)
                 {
-                    if ((fp->input.pl.stick_range.x * fp->status_vars.common.turn.lr_turn) >= FTCOMMON_DASH_STICK_RANGE_MIN)
+                    if ((fp->input.pl.stick_range.x * ftStatusVarsTurn(fp)->lr_turn) >= FTCOMMON_DASH_STICK_RANGE_MIN)
                     {
                         ftCommonDashSetStatus(fighter_gobj, 0);
                     }
@@ -92,15 +92,15 @@ skip_interrupt_specials:
             }
             if (fp->input.pl.button_tap & fp->input.button_mask_a)
             {
-                fp->status_vars.common.turn.button_mask |= fp->input.button_mask_a;
+                ftStatusVarsTurn(fp)->button_mask |= fp->input.button_mask_a;
             }
             if (fp->input.pl.button_tap & fp->input.button_mask_b)
             {
-                fp->status_vars.common.turn.button_mask |= fp->input.button_mask_b;
+                ftStatusVarsTurn(fp)->button_mask |= fp->input.button_mask_b;
             }
-            if (fp->status_vars.common.turn.is_allow_turn_direction != FALSE)
+            if (ftStatusVarsTurn(fp)->is_allow_turn_direction != FALSE)
             {
-                fp->status_vars.common.turn.is_allow_turn_direction = FALSE;
+                ftStatusVarsTurn(fp)->is_allow_turn_direction = FALSE;
             }
         }
     }
@@ -116,12 +116,12 @@ void ftCommonTurnSetStatus(GObj *fighter_gobj, s32 lr_dash)
     ftMainSetStatus(fighter_gobj, nFTCommonStatusTurn, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftMainPlayAnimEventsAll(fighter_gobj);
 
-    fp->status_vars.common.turn.is_allow_turn_direction = FALSE;
-    fp->status_vars.common.turn.is_disable_sa_interrupts = FALSE;
-    fp->status_vars.common.turn.button_mask = 0;
-    fp->status_vars.common.turn.lr_dash = lr_dash;
-    fp->status_vars.common.turn.attacks4_buffer = (lr_dash != 0) ? 0 : 256;
-    fp->status_vars.common.turn.lr_turn = -fp->lr;
+    ftStatusVarsTurn(fp)->is_allow_turn_direction = FALSE;
+    ftStatusVarsTurn(fp)->is_disable_sa_interrupts = FALSE;
+    ftStatusVarsTurn(fp)->button_mask = 0;
+    ftStatusVarsTurn(fp)->lr_dash = lr_dash;
+    ftStatusVarsTurn(fp)->attacks4_buffer = (lr_dash != 0) ? 0 : 256;
+    ftStatusVarsTurn(fp)->lr_turn = -fp->lr;
 }
 
 // 0x8013E988

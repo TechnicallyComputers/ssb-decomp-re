@@ -1,7 +1,13 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+/*
+ * Netplay rollback forward-sim: gate policy on syNetplayRollbackSemanticsActive().
+ * See docs/netplay_rollback_refactor_contracts.md.
+ */
+
 #endif
 // // // // // // // // // // // //
 //                               //
@@ -58,14 +64,19 @@ void ftPikachuSpecialLwStartUpdateThunder(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-#ifdef PORT
-    syNetRbSnapTrySpawnThunderFromSpecialLw(fighter_gobj);
-#else
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: snapshot-driven thunder spawn; offline uses vanilla below. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapTrySpawnThunderFromSpecialLw(fighter_gobj);
+        return;
+    }
+
+#endif
     if (fp->motion_vars.flags.flag0 != 0)
     {
         ftPikachuSpecialLwMakeThunder(fighter_gobj);
     }
-#endif
 }
 
 // 0x80151E74
@@ -298,9 +309,14 @@ void ftPikachuSpecialLwLoopUpdateThunder(GObj *fighter_gobj)
     {
         if (fp->motion_vars.flags.flag0 == 0)
         {
-#ifdef PORT
-            syNetRbSnapTrySpawnThunderFromSpecialLw(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* Netplay rollback only: try snapshot re-spawn before vanilla MakeThunder. */
+            if (syNetplayRollbackSemanticsActive() != FALSE)
+            {
+                syNetRbSnapTrySpawnThunderFromSpecialLw(fighter_gobj);
+            }
             if (fp->status_vars.pikachu.speciallw.thunder_gobj == NULL)
+
 #endif
             ftPikachuSpecialLwMakeThunder(fighter_gobj);
         }

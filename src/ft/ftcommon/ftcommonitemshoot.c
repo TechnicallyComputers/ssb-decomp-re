@@ -132,26 +132,26 @@ void ftCommonFireFlowerShootUpdateAmmoStats(FTStruct *fp, s32 ammo_sub)
 
         gmCollisionGetFighterPartsWorldPosition(fp->joints[fp->attr->joint_itemlight_id], &make_flame_offset);
 
-        if (fp->status_vars.common.fireflower.flame_vel_index >= FTCOMMON_FIREFLOWERSHOOT_AMMO_INDEX_LOOP)
+        if (ftStatusVarsFireFlower(fp)->flame_vel_index >= FTCOMMON_FIREFLOWERSHOOT_AMMO_INDEX_LOOP)
         {
-            flame_vel_index = FTCOMMON_FIREFLOWERSHOOT_AMMO_INDEX_MAX - fp->status_vars.common.fireflower.flame_vel_index;
+            flame_vel_index = FTCOMMON_FIREFLOWERSHOOT_AMMO_INDEX_MAX - ftStatusVarsFireFlower(fp)->flame_vel_index;
         }
-        else flame_vel_index = fp->status_vars.common.fireflower.flame_vel_index;
+        else flame_vel_index = ftStatusVarsFireFlower(fp)->flame_vel_index;
 
         itFFlowerShootFlame(fp->fighter_gobj, &make_flame_offset, flame_vel_index, ammo_sub);
         ftParamMakeRumble(fp, 6, 0);
     }
-    fp->status_vars.common.fireflower.ammo_fire_count++;
+    ftStatusVarsFireFlower(fp)->ammo_fire_count++;
 
-    if (fp->status_vars.common.fireflower.ammo_fire_count > (U16_MAX + 1))
+    if (ftStatusVarsFireFlower(fp)->ammo_fire_count > (U16_MAX + 1))
     {
-        fp->status_vars.common.fireflower.ammo_fire_count = (U16_MAX + 1);
+        ftStatusVarsFireFlower(fp)->ammo_fire_count = (U16_MAX + 1);
     }
-    fp->status_vars.common.fireflower.flame_vel_index++;
+    ftStatusVarsFireFlower(fp)->flame_vel_index++;
 
-    if (fp->status_vars.common.fireflower.flame_vel_index >= FTCOMMON_FIREFLOWERSHOOT_AMMO_INDEX_MAX)
+    if (ftStatusVarsFireFlower(fp)->flame_vel_index >= FTCOMMON_FIREFLOWERSHOOT_AMMO_INDEX_MAX)
     {
-        fp->status_vars.common.fireflower.flame_vel_index = 0;
+        ftStatusVarsFireFlower(fp)->flame_vel_index = 0;
 
         ftParamSetMotionID(fp, nFTMotionAttackIDFireFlowerShoot);
         ftParamSetStatUpdate(fp, fp->stat_flags.halfword);
@@ -168,15 +168,15 @@ void ftCommonFireFlowerShootProcAccessory(GObj *fighter_gobj)
 
     if (!(fp->input.pl.button_hold & fp->input.button_mask_a))
     {
-        fp->status_vars.common.fireflower.is_release = TRUE;
+        ftStatusVarsFireFlower(fp)->is_release = TRUE;
     }
-    if (fp->status_vars.common.fireflower.release_lag < FTCOMMON_FIREFLOWERSHOOT_RELEASE_LAG)
+    if (ftStatusVarsFireFlower(fp)->release_lag < FTCOMMON_FIREFLOWERSHOOT_RELEASE_LAG)
     {
-        fp->status_vars.common.fireflower.release_lag++;
+        ftStatusVarsFireFlower(fp)->release_lag++;
     }
-    if ((fp->status_vars.common.fireflower.release_lag < FTCOMMON_FIREFLOWERSHOOT_RELEASE_LAG) && (fp->input.pl.button_tap & fp->input.button_mask_a))
+    if ((ftStatusVarsFireFlower(fp)->release_lag < FTCOMMON_FIREFLOWERSHOOT_RELEASE_LAG) && (fp->input.pl.button_tap & fp->input.button_mask_a))
     {
-        fp->status_vars.common.fireflower.release_lag = 0;
+        ftStatusVarsFireFlower(fp)->release_lag = 0;
     }
     if (fp->item_gobj != NULL)
     {
@@ -184,13 +184,13 @@ void ftCommonFireFlowerShootProcAccessory(GObj *fighter_gobj)
         {
             ip = itGetStruct(fp->item_gobj);
 
-            ammo_sub = (fp->status_vars.common.fireflower.ammo_fire_count == 0) ? 2 : 1;
+            ammo_sub = (ftStatusVarsFireFlower(fp)->ammo_fire_count == 0) ? 2 : 1;
 
-            fp->status_vars.common.fireflower.effect_make_int--;
+            ftStatusVarsFireFlower(fp)->effect_make_int--;
 
-            if (fp->status_vars.common.fireflower.effect_make_int == 0)
+            if (ftStatusVarsFireFlower(fp)->effect_make_int == 0)
             {
-                fp->status_vars.common.fireflower.effect_make_int = FTCOMMON_FIREFLOWERSHOOT_EFFECT_SPAWN_INT;
+                ftStatusVarsFireFlower(fp)->effect_make_int = FTCOMMON_FIREFLOWERSHOOT_EFFECT_SPAWN_INT;
 
                 if (ip->multi < ammo_sub)
                 {
@@ -209,11 +209,11 @@ void ftCommonFireFlowerShootProcAccessory(GObj *fighter_gobj)
                     func_800269C0_275C0(nSYAudioFGMBurnE);
                 }
             }
-            fp->status_vars.common.fireflower.ammo_sub--;
+            ftStatusVarsFireFlower(fp)->ammo_sub--;
 
-            if (fp->status_vars.common.fireflower.ammo_sub == 0)
+            if (ftStatusVarsFireFlower(fp)->ammo_sub == 0)
             {
-                fp->status_vars.common.fireflower.ammo_sub = FTCOMMON_FIREFLOWERSHOOT_AMMO_INDEX_MAX;
+                ftStatusVarsFireFlower(fp)->ammo_sub = FTCOMMON_FIREFLOWERSHOOT_AMMO_INDEX_MAX;
 
                 ftCommonFireFlowerShootUpdateAmmoStats(fp, ammo_sub);
             }
@@ -238,7 +238,7 @@ void ftCommonFireFlowerShootProcAccessory(GObj *fighter_gobj)
                 gcSetAnimSpeed(fighter_gobj, 0.0F);
             }
         }
-        if ((fp->status_vars.common.fireflower.ammo_fire_count >= 5) && (fp->status_vars.common.fireflower.is_release != FALSE) && (fp->status_vars.common.fireflower.release_lag >= 20))
+        if ((ftStatusVarsFireFlower(fp)->ammo_fire_count >= 5) && (ftStatusVarsFireFlower(fp)->is_release != FALSE) && (ftStatusVarsFireFlower(fp)->release_lag >= 20))
         {
             fp->motion_vars.flags.flag0 = 0;
 
@@ -285,12 +285,12 @@ void ftCommonFireFlowerShootSwitchStatusAir(GObj *fighter_gobj)
 // 0x80147824
 void ftCommonFireFlowerShootInitStatusVars(FTStruct *fp)
 {
-    fp->status_vars.common.fireflower.flame_vel_index = 0;
-    fp->status_vars.common.fireflower.ammo_sub = 1;
-    fp->status_vars.common.fireflower.effect_make_int = 1;
-    fp->status_vars.common.fireflower.ammo_fire_count = 0;
-    fp->status_vars.common.fireflower.is_release = FALSE;
-    fp->status_vars.common.fireflower.release_lag = 0;
+    ftStatusVarsFireFlower(fp)->flame_vel_index = 0;
+    ftStatusVarsFireFlower(fp)->ammo_sub = 1;
+    ftStatusVarsFireFlower(fp)->effect_make_int = 1;
+    ftStatusVarsFireFlower(fp)->ammo_fire_count = 0;
+    ftStatusVarsFireFlower(fp)->is_release = FALSE;
+    ftStatusVarsFireFlower(fp)->release_lag = 0;
 }
 
 // 0x80147844

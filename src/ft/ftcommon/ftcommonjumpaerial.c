@@ -25,15 +25,15 @@ f32 dFTPurinJumpAerialFVelocities[/* */] = { 60.0F, 40.0F, 20.0F, 0.0F };
 // 0x8013FA90
 void ftCommonJumpAerialUpdateModelYaw(FTStruct *fp)
 {
-    if (fp->status_vars.common.jumpaerial.turn_tics != 0)
+    if (ftStatusVarsJumpAerial(fp)->turn_tics != 0)
     {
-        fp->status_vars.common.jumpaerial.turn_tics--;
+        ftStatusVarsJumpAerial(fp)->turn_tics--;
 
         fp->joints[nFTPartsJointTopN]->rotate.vec.f.y += FTCOMMON_JUMPAERIAL_TURN_ROTATE_STEP;
 
         ftParamsUpdateFighterPartsTransformAll(fp->joints[nFTPartsJointTopN]);
 
-        if (fp->status_vars.common.jumpaerial.turn_tics == (FTCOMMON_JUMPAERIAL_TURN_FRAMES / 2))
+        if (ftStatusVarsJumpAerial(fp)->turn_tics == (FTCOMMON_JUMPAERIAL_TURN_FRAMES / 2))
         {
             fp->lr = -fp->lr;
         }
@@ -80,18 +80,18 @@ void ftNessJumpAerialProcPhysics(GObj *fighter_gobj)
     FTAttributes *attr = fp->attr;
     f32 vel_x;
 
-    ftPhysicsGetAirVelTransN(fp, &fp->status_vars.common.jumpaerial.drift, &fp->physics.vel_air.y, &fp->physics.vel_air.z);
+    ftPhysicsGetAirVelTransN(fp, &ftStatusVarsJumpAerial(fp)->drift, &fp->physics.vel_air.y, &fp->physics.vel_air.z);
 
-    fp->physics.vel_air.x = fp->status_vars.common.jumpaerial.vel_x;
+    fp->physics.vel_air.x = ftStatusVarsJumpAerial(fp)->vel_x;
 
     if (ftPhysicsCheckClampAirVelXDecMax(fp, attr) == FALSE)
     {
         ftPhysicsClampAirVelXStickDefault(fp, attr);
         ftPhysicsApplyAirVelXFriction(fp, attr);
     }
-    fp->status_vars.common.jumpaerial.vel_x = fp->physics.vel_air.x;
+    ftStatusVarsJumpAerial(fp)->vel_x = fp->physics.vel_air.x;
 
-    fp->physics.vel_air.x += fp->status_vars.common.jumpaerial.drift;
+    fp->physics.vel_air.x += ftStatusVarsJumpAerial(fp)->drift;
 }
 
 // 0x8013FC4C
@@ -146,7 +146,7 @@ void ftCommonJumpAerialSetStatus(GObj *fighter_gobj, s32 input_source)
     else if ((fp->fkind == nFTKindNess) || (fp->fkind == nFTKindNNess))
     {
         fp->proc_physics = ftNessJumpAerialProcPhysics;
-        fp->status_vars.common.jumpaerial.drift = 0.0F;
+        ftStatusVarsJumpAerial(fp)->drift = 0.0F;
     }
     switch (input_source) // Last minute bruh moment from HAL
     {
@@ -163,7 +163,7 @@ void ftCommonJumpAerialSetStatus(GObj *fighter_gobj, s32 input_source)
 
     if ((fp->fkind == nFTKindNess) || (fp->fkind == nFTKindNNess))
     {
-        fp->status_vars.common.jumpaerial.vel_x = stick_range_x * attr->jumpaerial_vel_x;
+        ftStatusVarsJumpAerial(fp)->vel_x = stick_range_x * attr->jumpaerial_vel_x;
     }
     else fp->physics.vel_air.x = stick_range_x * attr->jumpaerial_vel_x;
 
@@ -175,9 +175,9 @@ void ftCommonJumpAerialSetStatus(GObj *fighter_gobj, s32 input_source)
 
     if (((fp->fkind == nFTKindYoshi) || (fp->fkind == nFTKindNYoshi)) && ((fp->input.pl.stick_range.x * fp->lr) < FTCOMMON_JUMPAERIAL_TURN_STICK_RANGE_MIN))
     {
-        fp->status_vars.common.jumpaerial.turn_tics = FTCOMMON_JUMPAERIAL_TURN_FRAMES;
+        ftStatusVarsJumpAerial(fp)->turn_tics = FTCOMMON_JUMPAERIAL_TURN_FRAMES;
     }
-    else fp->status_vars.common.jumpaerial.turn_tics = 0;
+    else ftStatusVarsJumpAerial(fp)->turn_tics = 0;
 
     ftCommonJumpAerialUpdateModelYaw(fp);
 }
@@ -247,9 +247,9 @@ void ftCommonJumpAerialMultiSetStatus(GObj *fighter_gobj, s32 input_source)
 
     if ((fp->input.pl.stick_range.x * fp->lr) < FTCOMMON_JUMPAERIAL_TURN_STICK_RANGE_MIN)
     {
-        fp->status_vars.common.jumpaerial.turn_tics = FTCOMMON_JUMPAERIAL_TURN_FRAMES;
+        ftStatusVarsJumpAerial(fp)->turn_tics = FTCOMMON_JUMPAERIAL_TURN_FRAMES;
     }
-    else fp->status_vars.common.jumpaerial.turn_tics = 0;
+    else ftStatusVarsJumpAerial(fp)->turn_tics = 0;
 
     ftCommonJumpAerialUpdateModelYaw(fp);
 }

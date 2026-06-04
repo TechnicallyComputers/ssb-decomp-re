@@ -19,7 +19,7 @@ sb32 ftCommonDownAttackCheckInterruptDownBounce(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     s32 status_id;
 
-    if (fp->status_vars.common.downbounce.attack_buffer != 0)
+    if (ftStatusVarsDownBounce(fp)->attack_buffer != 0)
     {
         if (fp->status_id == nFTCommonStatusDownBounceD)
         {

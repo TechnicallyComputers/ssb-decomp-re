@@ -734,9 +734,9 @@ sb32 mpCommonProcFighterDamage(MPCollData *coll_data, GObj *fighter_gobj, u32 fl
     {
         mpProcessRunLWallCollisionAdjNew(coll_data);
 
-        if (!(fp->status_vars.common.damage.coll_mask_prev & MAP_FLAG_LWALL) && (lbCommonMag2D(&coll_data->pos_diff) > 30.0F) && (syVectorAngleDiff3D(&coll_data->pos_diff, &coll_data->lwall_angle) > F_CLC_DTOR32(110.0F))) // 1.9198622F
+        if (!(ftStatusVarsDamage(fp)->coll_mask_prev & MAP_FLAG_LWALL) && (lbCommonMag2D(&coll_data->pos_diff) > 30.0F) && (syVectorAngleDiff3D(&coll_data->pos_diff, &coll_data->lwall_angle) > F_CLC_DTOR32(110.0F))) // 1.9198622F
         {
-            fp->status_vars.common.damage.coll_mask_curr |= MAP_FLAG_LWALL;
+            ftStatusVarsDamage(fp)->coll_mask_curr |= MAP_FLAG_LWALL;
 
             is_collide = TRUE;
 
@@ -744,16 +744,16 @@ sb32 mpCommonProcFighterDamage(MPCollData *coll_data, GObj *fighter_gobj, u32 fl
         }
         else if (!(coll_data->mask_prev & MAP_FLAG_LWALL))
         {
-            fp->status_vars.common.damage.coll_mask_ignore |= MAP_FLAG_LWALL;
+            ftStatusVarsDamage(fp)->coll_mask_ignore |= MAP_FLAG_LWALL;
         }
     }
     if (mpProcessCheckTestRWallCollisionAdjNew(coll_data) != FALSE)
     {
         mpProcessRunRWallCollisionAdjNew(coll_data);
 
-        if (!(fp->status_vars.common.damage.coll_mask_prev & MAP_FLAG_RWALL) && (lbCommonMag2D(&coll_data->pos_diff) > 30.0F) && (syVectorAngleDiff3D(&coll_data->pos_diff, &coll_data->rwall_angle) > F_CLC_DTOR32(110.0F))) // 1.9198622F
+        if (!(ftStatusVarsDamage(fp)->coll_mask_prev & MAP_FLAG_RWALL) && (lbCommonMag2D(&coll_data->pos_diff) > 30.0F) && (syVectorAngleDiff3D(&coll_data->pos_diff, &coll_data->rwall_angle) > F_CLC_DTOR32(110.0F))) // 1.9198622F
         {
-            fp->status_vars.common.damage.coll_mask_curr |= MAP_FLAG_RWALL;
+            ftStatusVarsDamage(fp)->coll_mask_curr |= MAP_FLAG_RWALL;
 
             is_collide = TRUE;
 
@@ -761,7 +761,7 @@ sb32 mpCommonProcFighterDamage(MPCollData *coll_data, GObj *fighter_gobj, u32 fl
         }
         else if (!(coll_data->mask_prev & MAP_FLAG_RWALL))
         {
-            fp->status_vars.common.damage.coll_mask_ignore |= MAP_FLAG_RWALL;
+            ftStatusVarsDamage(fp)->coll_mask_ignore |= MAP_FLAG_RWALL;
         }
     }
     if (mpProcessCheckTestCeilCollisionAdjNew(coll_data) != FALSE)
@@ -772,9 +772,9 @@ sb32 mpCommonProcFighterDamage(MPCollData *coll_data, GObj *fighter_gobj, u32 fl
         {
             mpProcessRunCeilEdgeAdjust(coll_data);
         }
-        if (!(fp->status_vars.common.damage.coll_mask_prev & MAP_FLAG_CEIL) && (lbCommonMag2D(&coll_data->pos_diff) > 30.0F) && (syVectorAngleDiff3D(&coll_data->pos_diff, &coll_data->ceil_angle) > F_CLC_DTOR32(110.0F)))
+        if (!(ftStatusVarsDamage(fp)->coll_mask_prev & MAP_FLAG_CEIL) && (lbCommonMag2D(&coll_data->pos_diff) > 30.0F) && (syVectorAngleDiff3D(&coll_data->pos_diff, &coll_data->ceil_angle) > F_CLC_DTOR32(110.0F)))
         {
-            fp->status_vars.common.damage.coll_mask_curr |= MAP_FLAG_CEIL;
+            ftStatusVarsDamage(fp)->coll_mask_curr |= MAP_FLAG_CEIL;
 
             is_collide = TRUE;
 
@@ -782,7 +782,7 @@ sb32 mpCommonProcFighterDamage(MPCollData *coll_data, GObj *fighter_gobj, u32 fl
         }
         else if (!(coll_data->mask_prev & MAP_FLAG_CEIL))
         {
-            fp->status_vars.common.damage.coll_mask_ignore |= MAP_FLAG_CEIL;
+            ftStatusVarsDamage(fp)->coll_mask_ignore |= MAP_FLAG_CEIL;
         }
     }
     if (mpProcessRunFloorCollisionAdjNewNULL(coll_data) != FALSE)
@@ -808,7 +808,7 @@ sb32 mpCommonProcFighterDamage(MPCollData *coll_data, GObj *fighter_gobj, u32 fl
                 {
                     mpProcessRunFloorEdgeAdjust(coll_data);
 
-                    fp->status_vars.common.damage.coll_mask_curr |= MAP_FLAG_FLOOR;
+                    ftStatusVarsDamage(fp)->coll_mask_curr |= MAP_FLAG_FLOOR;
 
                     is_collide = TRUE;
 
@@ -825,9 +825,9 @@ sb32 mpCommonProcFighterDamage(MPCollData *coll_data, GObj *fighter_gobj, u32 fl
 
                     if (!(coll_data->mask_prev & MAP_FLAG_FLOOR))
                     {
-                        fp->status_vars.common.damage.coll_mask_ignore |= MAP_FLAG_FLOOR;
+                        ftStatusVarsDamage(fp)->coll_mask_ignore |= MAP_FLAG_FLOOR;
 
-                        fp->status_vars.common.damage.wall_collide_angle = coll_data->floor_angle;
+                        ftStatusVarsDamage(fp)->wall_collide_angle = coll_data->floor_angle;
                     }
                 }
                 else mpProcessSetCollProjectFloorID(coll_data);
@@ -844,9 +844,9 @@ sb32 mpCommonCheckFighterDamageCollision(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    fp->status_vars.common.damage.coll_mask_prev = fp->status_vars.common.damage.coll_mask_curr;
-    fp->status_vars.common.damage.coll_mask_curr = 0;
-    fp->status_vars.common.damage.coll_mask_ignore = 0;
+    ftStatusVarsDamage(fp)->coll_mask_prev = ftStatusVarsDamage(fp)->coll_mask_curr;
+    ftStatusVarsDamage(fp)->coll_mask_curr = 0;
+    ftStatusVarsDamage(fp)->coll_mask_ignore = 0;
 
     return mpProcessUpdateMain(&fp->coll_data, mpCommonProcFighterDamage, fighter_gobj, MAP_PROC_TYPE_DEFAULT);
 }

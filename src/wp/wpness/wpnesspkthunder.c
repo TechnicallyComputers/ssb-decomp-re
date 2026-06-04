@@ -3,6 +3,16 @@
 #include <ef/effect.h>
 #include <sys/objman.h>
 #include <reloc_data.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+/*
+ * Netplay rollback forward-sim: PK Thunder weapon procs defer teardown and canonicalize
+ * sim pose via syNetplayNessShouldDeferPKThunderHeadProcTeardown / syNetplayCanonicalize*.
+ * Gate helpers no-op offline; see netplay_ness_pkthunder_gate.h stubs.
+ */
+#include <sys/netplay_ness_pkthunder_gate.h>
+#include <sys/netplay_sim_quantize.h>
+
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -246,6 +256,13 @@ void wpNessPKThunderHeadSetDestroyTrails(GObj *weapon_gobj, sb32 is_destroy)
     {
         return;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(head_wp) != FALSE)
+    {
+        return;
+    }
+
+#endif
 
     if (!(head_wp->weapon_vars.pkthunder.status & nWPNessPKThunderStatusDestroy))
     {
@@ -315,6 +332,14 @@ void wpNessPKThunderTrailUpdatePositions(GObj *weapon_gobj)
         }
         fp->passive_vars.ness.pkthunder_trail_x[trail_id] = DObjGetStruct(weapon_gobj)->translate.vec.f.x;
         fp->passive_vars.ness.pkthunder_trail_y[trail_id] = DObjGetStruct(weapon_gobj)->translate.vec.f.y;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Netplay rollback only: trail history on F32 grid (no-op offline). */
+        fp->passive_vars.ness.pkthunder_trail_x[trail_id] =
+            (s16)syNetplayQuantizeF32((f32)fp->passive_vars.ness.pkthunder_trail_x[trail_id]);
+        fp->passive_vars.ness.pkthunder_trail_y[trail_id] =
+            (s16)syNetplayQuantizeF32((f32)fp->passive_vars.ness.pkthunder_trail_y[trail_id]);
+
+#endif
     }
 }
 
@@ -342,6 +367,13 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
 
     if (wp->weapon_vars.pkthunder.status & nWPNessPKThunderStatusDestroy)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+        {
+            return FALSE;
+        }
+
+#endif
         efManagerImpactShockMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f, wp->attack_coll.damage);
         wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
@@ -349,6 +381,13 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
     }
     if (wp->owner_gobj == NULL)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+        {
+            return FALSE;
+        }
+
+#endif
         wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
         return TRUE;
@@ -356,6 +395,13 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
     fp = ftGetStruct(wp->owner_gobj);
     if (fp == NULL)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+        {
+            return FALSE;
+        }
+
+#endif
         wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
         return TRUE;
@@ -363,6 +409,13 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
 
     if (wp->weapon_vars.pkthunder.status & nWPNessPKThunderStatusCollide)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+        {
+            return FALSE;
+        }
+
+#endif
         efManagerImpactShockMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f, wp->attack_coll.damage);
         wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
@@ -374,6 +427,13 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
     }
     if (wpMainDecLifeCheckExpire(wp) != FALSE)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+        {
+            return FALSE;
+        }
+
+#endif
         efManagerDustExpandSmallMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f, 1.0F);
         wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
@@ -418,19 +478,39 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
     }
     else
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+        {
+            return FALSE;
+        }
+
+#endif
         efManagerDustExpandSmallMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f, 1.0F);
         wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
         return TRUE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayCanonicalizeNessPKThunderWeaponSimState(weapon_gobj);
+
+#endif
     return FALSE;
 }
 
 // 0x8016B198
 sb32 wpNessPKThunderHeadProcMap(GObj *weapon_gobj)
 {
+    WPStruct *wp = wpGetStruct(weapon_gobj);
+
     if (wpMapTestAllCheckCollEnd(weapon_gobj) != FALSE)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if ((wp != NULL) && (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE))
+        {
+            return FALSE;
+        }
+
+#endif
         efManagerDustExpandSmallMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f, 1.0F);
         wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
@@ -444,6 +524,13 @@ sb32 wpNessPKThunderHeadProcHit(GObj *weapon_gobj)
 {
     WPStruct *wp = wpGetStruct(weapon_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if ((wp != NULL) && (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE))
+    {
+        return FALSE;
+    }
+
+#endif
     efManagerImpactShockMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f, wp->attack_coll.damage);
     wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
@@ -465,6 +552,13 @@ sb32 wpNessPKThunderHeadProcReflector(GObj *weapon_gobj)
 
     wp->player_num = fp->player_num;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+    {
+        return FALSE;
+    }
+
+#endif
     wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
     return TRUE;
@@ -473,6 +567,15 @@ sb32 wpNessPKThunderHeadProcReflector(GObj *weapon_gobj)
 // 0x8016B2A0
 sb32 wpNessPKThunderHeadProcDead(GObj *weapon_gobj)
 {
+    WPStruct *wp = wpGetStruct(weapon_gobj);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if ((wp != NULL) && (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE))
+    {
+        return FALSE;
+    }
+
+#endif
     wpNessPKThunderHeadSetDestroyTrails(weapon_gobj, TRUE);
 
     return TRUE;
@@ -521,6 +624,13 @@ sb32 wpNessPKThunderTrailProcUpdate(GObj *weapon_gobj)
 
     if (wp->weapon_vars.pkthunder_trail.status & nWPNessPKThunderStatusDestroy)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+        {
+            return FALSE;
+        }
+
+#endif
         return TRUE;
     }
     if (wp->owner_gobj == NULL)
@@ -581,6 +691,11 @@ sb32 wpNessPKThunderTrailProcUpdate(GObj *weapon_gobj)
     wpMainDecLifeCheckExpire(wp);
 
     DObjGetStruct(weapon_gobj)->mobj->texture_id_curr = syUtilsRandIntRange(WPPKTHUNDER_TEXTURES_NUM - 1);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayCanonicalizeNessPKThunderWeaponSimState(weapon_gobj);
+
+#endif
 
     return FALSE;
 }
@@ -826,6 +941,13 @@ sb32 wpNessPKReflectTrailProcUpdate(GObj *weapon_gobj)
 
     if (wp->weapon_vars.pkthunder_trail.status & nWPNessPKThunderStatusDestroy)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE)
+        {
+            return FALSE;
+        }
+
+#endif
         return TRUE;
     }
     if (wp->weapon_vars.pkthunder_trail.head_gobj == NULL)

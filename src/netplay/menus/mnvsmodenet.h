@@ -2,8 +2,9 @@
 #define MNVSMODENET_BRIDGE_H_
 
 /*
- * Canonical VS-mode API prototypes live in decomp mn/mnvsmode/mnvsmode.h — this TU only swaps
- * the implementation at link time via CMake (SSB64_NETMENU → port/net/menus/mnvsmodenet.c).
+ * Netmenu VS Mode hub — replaces stock mn/mnvsmode/mnvsmode.c at link time when
+ * SSB64_NETMENU=ON (see cmake/Ssb64NetmenuSources.cmake). Prototypes live in
+ * decomp mn/mnvsmode/mnvsmode.h.
  */
 #include <mn/mnvsmode/mnvsmode.h>
 

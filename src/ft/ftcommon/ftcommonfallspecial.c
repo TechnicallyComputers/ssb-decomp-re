@@ -24,15 +24,15 @@ void ftCommonFallSpecialProcPhysics(GObj *fighter_gobj)
     {
         ftPhysicsApplyFastFall(fp, attr);
     }
-    else if (fp->status_vars.common.fallspecial.is_fall_accelerate != FALSE) // Accelerate until fighter reaches terminal velocity?
+    else if (ftStatusVarsFallSpecial(fp)->is_fall_accelerate != FALSE) // Accelerate until fighter reaches terminal velocity?
     {
         ftPhysicsApplyGravityDefault(fp, attr);
     }
     else ftPhysicsApplyGravityClampTVel(fp, attr->gravity, attr->tvel_fast);
 
-    if (ftPhysicsCheckClampAirVelXDec(fp, fp->status_vars.common.fallspecial.drift) == FALSE)
+    if (ftPhysicsCheckClampAirVelXDec(fp, ftStatusVarsFallSpecial(fp)->drift) == FALSE)
     {
-        ftPhysicsClampAirVelXStickRange(fp, FTPHYSICS_AIRDRIFT_CLAMP_RANGE_MIN, attr->air_accel, fp->status_vars.common.fallspecial.drift);
+        ftPhysicsClampAirVelXStickRange(fp, FTPHYSICS_AIRDRIFT_CLAMP_RANGE_MIN, attr->air_accel, ftStatusVarsFallSpecial(fp)->drift);
         ftPhysicsApplyAirVelXFriction(fp, attr);
     }
 }
@@ -42,7 +42,7 @@ sb32 ftCommonFallSpecialProcPass(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if ((fp->status_vars.common.fallspecial.is_allow_pass == FALSE) || !(fp->coll_data.floor_flags & MAP_VERTEX_COLL_PASS) || (fp->input.pl.stick_range.y >= FTCOMMON_FALLSPECIAL_PASS_STICK_RANGE_MIN))
+    if ((ftStatusVarsFallSpecial(fp)->is_allow_pass == FALSE) || !(fp->coll_data.floor_flags & MAP_VERTEX_COLL_PASS) || (fp->input.pl.stick_range.y >= FTCOMMON_FALLSPECIAL_PASS_STICK_RANGE_MIN))
     {
         return TRUE;
     }
@@ -60,9 +60,9 @@ void ftCommonFallSpecialProcMap(GObj *fighter_gobj)
         {
             ftCommonCliffCatchSetStatus(fighter_gobj);
         }
-        else if ((fp->status_vars.common.fallspecial.is_goto_landing != FALSE) || (fp->physics.vel_air.y < FTCOMMON_FALLSPECIAL_SKIPLANDING_VEL_Y_MAX))
+        else if ((ftStatusVarsFallSpecial(fp)->is_goto_landing != FALSE) || (fp->physics.vel_air.y < FTCOMMON_FALLSPECIAL_SKIPLANDING_VEL_Y_MAX))
         {
-            ftCommonLandingFallSpecialSetStatus(fighter_gobj, fp->status_vars.common.fallspecial.is_allow_interrupt, fp->status_vars.common.fallspecial.landing_lag);
+            ftCommonLandingFallSpecialSetStatus(fighter_gobj, ftStatusVarsFallSpecial(fp)->is_allow_interrupt, ftStatusVarsFallSpecial(fp)->landing_lag);
         }
         else ftCommonWaitSetStatus(fighter_gobj);
     }
@@ -76,9 +76,9 @@ void ftCommonFallSpecialSetStatus(GObj *fighter_gobj, f32 drift, sb32 unknown, s
 
     ftMainSetStatus(fighter_gobj, nFTCommonStatusFallSpecial, 0.0F, 1.0F, FTSTATUS_PRESERVE_FASTFALL);
 
-    fp->status_vars.common.fallspecial.drift = (attr->air_speed_max_x * drift);
+    ftStatusVarsFallSpecial(fp)->drift = (attr->air_speed_max_x * drift);
 
-    ftPhysicsClampAirVelX(fp, fp->status_vars.common.fallspecial.drift);
+    ftPhysicsClampAirVelX(fp, ftStatusVarsFallSpecial(fp)->drift);
 
     if (fp->ga == nMPKineticsGround)
     {
@@ -86,11 +86,11 @@ void ftCommonFallSpecialSetStatus(GObj *fighter_gobj, f32 drift, sb32 unknown, s
     }
     fp->jumps_used = attr->jumps_max;
 
-    fp->status_vars.common.fallspecial.is_allow_pass = TRUE;
-    fp->status_vars.common.fallspecial.is_goto_landing = is_goto_landing;
-    fp->status_vars.common.fallspecial.landing_lag = landing_lag;
-    fp->status_vars.common.fallspecial.is_allow_interrupt = is_allow_interrupt;
-    fp->status_vars.common.fallspecial.is_fall_accelerate = is_fall_accelerate;
+    ftStatusVarsFallSpecial(fp)->is_allow_pass = TRUE;
+    ftStatusVarsFallSpecial(fp)->is_goto_landing = is_goto_landing;
+    ftStatusVarsFallSpecial(fp)->landing_lag = landing_lag;
+    ftStatusVarsFallSpecial(fp)->is_allow_interrupt = is_allow_interrupt;
+    ftStatusVarsFallSpecial(fp)->is_fall_accelerate = is_fall_accelerate;
 
     ftParamCheckSetFighterColAnimID(fighter_gobj, nGMColAnimFighterFallSpecial, 0);
     ftPublicTryPlayFallSpecialReact(fighter_gobj);

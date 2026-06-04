@@ -128,16 +128,7 @@ ITStatusDesc dItLinkBombStatusDescs[/* */] =
 //                               //
 // // // // // // // // // // // //
 
-enum itLinkBombStatus
-{
-	nITLinkBombStatusWait,
-	nITLinkBombStatusFall,
-	nITLinkBombStatusHold,
-	nITLinkBombStatusThrown,
-	nITLinkBombStatusDropped,
-	nITLinkBombStatusExplode,
-	nITLinkBombStatusEnumCount
-};
+// nITLinkBombStatus* — see itlinkbomb.h
 
 // // // // // // // // // // // //
 //                               //

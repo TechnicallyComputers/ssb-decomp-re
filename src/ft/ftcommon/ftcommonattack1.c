@@ -32,7 +32,7 @@ void ftCommonAttack11ProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if ((fp->motion_vars.flags.flag1 != 0) && (fp->status_vars.common.attack1.is_goto_followup != FALSE))
+    if ((fp->motion_vars.flags.flag1 != 0) && (ftStatusVarsAttack1(fp)->is_goto_followup != FALSE))
     {
         if ((fp->fkind == nFTKindPikachu) || (fp->fkind == nFTKindNPikachu))
         {
@@ -52,7 +52,7 @@ void ftCommonAttack12ProcUpdate(GObj *fighter_gobj)
     {
         ftCommonAttack100StartSetStatus(fighter_gobj);
     }
-    else if ((fp->motion_vars.flags.flag1 != 0) && (fp->status_vars.common.attack1.is_goto_followup != FALSE))
+    else if ((fp->motion_vars.flags.flag1 != 0) && (ftStatusVarsAttack1(fp)->is_goto_followup != FALSE))
     {
         ftCommonAttack13SetStatus(fighter_gobj);
     }
@@ -76,9 +76,9 @@ void ftCommonAttack11ProcInterrupt(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->status_vars.common.attack1.interrupt_catch_timer < 2)
+    if (ftStatusVarsAttack1(fp)->interrupt_catch_timer < 2)
     {
-        fp->status_vars.common.attack1.interrupt_catch_timer++;
+        ftStatusVarsAttack1(fp)->interrupt_catch_timer++;
 
         if (ftCommonCatchCheckInterruptAttack11(fighter_gobj) != FALSE)
         {
@@ -138,8 +138,8 @@ void ftCommonAttack11SetStatus(GObj *fighter_gobj)
 
         fp->motion_vars.flags.flag1 = 0;
 
-        fp->status_vars.common.attack1.is_goto_followup = FALSE;
-        fp->status_vars.common.attack1.interrupt_catch_timer = 0;
+        ftStatusVarsAttack1(fp)->is_goto_followup = FALSE;
+        ftStatusVarsAttack1(fp)->interrupt_catch_timer = 0;
 
         fp->attack1_input_count = 0;
         fp->attack1_status_id = fp->status_id;
@@ -160,7 +160,7 @@ void ftCommonAttack12SetStatus(GObj *fighter_gobj)
 
         fp->motion_vars.flags.flag1 = 0;
 
-        fp->status_vars.common.attack1.is_goto_followup = FALSE;
+        ftStatusVarsAttack1(fp)->is_goto_followup = FALSE;
 
         fp->attack1_status_id = fp->status_id;
 
@@ -235,7 +235,7 @@ void ftCommonAttack13SetStatus(GObj *fighter_gobj)
         ftMainPlayAnimEventsAll(fighter_gobj);
 
         fp->motion_vars.flags.flag1 = 0;
-        fp->status_vars.common.attack1.is_goto_followup = FALSE;
+        ftStatusVarsAttack1(fp)->is_goto_followup = FALSE;
         fp->attack1_status_id = fp->status_id;
     }
 }
@@ -342,7 +342,7 @@ sb32 ftCommonAttack11CheckGoto(GObj *fighter_gobj)
 
                 return TRUE;
             }
-            fp->status_vars.common.attack1.is_goto_followup = TRUE;
+            ftStatusVarsAttack1(fp)->is_goto_followup = TRUE;
         }
     }
     return FALSE;
@@ -366,7 +366,7 @@ sb32 ftCommonAttack12CheckGoto(GObj *fighter_gobj)
 
                 return TRUE;
             }
-            fp->status_vars.common.attack1.is_goto_followup = TRUE;
+            ftStatusVarsAttack1(fp)->is_goto_followup = TRUE;
         }
     }
     return FALSE;
@@ -395,7 +395,7 @@ sb32 ftCommonAttack13CheckGoto(GObj *fighter_gobj)
 
                     return TRUE;
                 }
-                fp->status_vars.common.attack1.is_goto_followup = TRUE;
+                ftStatusVarsAttack1(fp)->is_goto_followup = TRUE;
             }
         }
     }

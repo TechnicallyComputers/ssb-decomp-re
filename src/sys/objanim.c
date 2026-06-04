@@ -3,9 +3,12 @@
 #ifdef PORT
 #include <port_log.h>
 extern void portFixupMObjSub(void *mobjsub);
-#if defined(SSB64_NETMENU)
-#include <sys/netplay_sim_quantize.h>
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+/*
+ * SSB64_NETMENU compile gate: DObj anim pose/scalar quantize on F32 grid.
+ */
 #endif
 
 extern void syInterpCubic(Vec3f*, void*, f32);
@@ -429,7 +432,9 @@ void gcParseDObjAnimJoint(DObj *dobj)
             dobj->anim_frame += dobj->anim_speed;
             dobj->parent_gobj->anim_frame = dobj->anim_frame;
 #if defined(PORT) && defined(SSB64_NETMENU)
+            /* Netplay rollback only: anim scalar quantize (no-op offline). */
             syNetplayQuantizeDObjAnimScalars(dobj);
+
 #endif
 
             if (dobj->anim_wait > 0.0F)
@@ -1004,10 +1009,51 @@ void gcPlayDObjAnimJoint(DObj *dobj)
             dobj->anim_wait = AOBJ_ANIM_NULL;
         }
 #if defined(PORT) && defined(SSB64_NETMENU)
-        syNetplayQuantizeDObjTranslate(dobj);
+        /* Netplay rollback only: anim pose quantize (no-op offline). */
+        syNetplayQuantizeDObjAnimPose(dobj);
+
 #endif
     }
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+void gcApplyDObjAnimJointPoseAtFrame(DObj *dobj, f32 anim_frame, sb32 freeze_wait_null)
+{
+    f32 saved_wait;
+
+    if (dobj == NULL)
+    {
+        return;
+    }
+    saved_wait = dobj->anim_wait;
+    dobj->anim_frame = anim_frame;
+    if ((dobj->parent_gobj != NULL) && (dobj->is_anim_root != FALSE))
+    {
+        dobj->parent_gobj->anim_frame = anim_frame;
+    }
+    if (dobj->anim_wait == AOBJ_ANIM_NULL)
+    {
+        dobj->anim_wait = 1.0F;
+    }
+    gcParseDObjAnimJoint(dobj);
+    gcPlayDObjAnimJoint(dobj);
+    dobj->anim_frame = anim_frame;
+    if (freeze_wait_null != FALSE)
+    {
+        dobj->anim_wait = AOBJ_ANIM_NULL;
+    }
+    else
+    {
+        dobj->anim_wait = saved_wait;
+    }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: anim pose quantize after manual re-seat (no-op offline). */
+    syNetplayQuantizeDObjAnimPose(dobj);
+
+#endif
+}
+
+#endif
 
 void gcParseMObjMatAnimJoint(MObj *mobj)
 {

@@ -476,6 +476,11 @@ struct SCCommonData
 	u8 maps_training_gkind;							// Training Mode stage selected
 	u8 challenger_level_drop;						// Subtract from default CP level
 	ub8 is_title_anim_viewed;						// Has the title screen animation been viewed?
+#ifdef SSB64_NETMENU
+	u16 vs_net_stage_ban_mask;						// User bans: bits 0-8 = SSS slots 0-8 (excl. Random)
+	u8 vs_net_automatch_post_battle_scene;			// 0 = default results routing; else nSCKind* target (e.g. VS Net Automatch)
+	ub8 is_vs_automatch_battle;					    // Last VS entered from HTTPS automatch handshake
+#endif
 };
 
 #endif

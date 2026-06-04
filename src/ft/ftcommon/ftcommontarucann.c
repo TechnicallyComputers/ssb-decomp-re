@@ -3,6 +3,15 @@
 #include <gr/ground.h>
 #include <sc/scene.h>
 #include <reloc_data.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netinput.h>
+#include <sys/netplay_sim_quantize.h>
+/*
+ * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
+ * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
+ * See docs/netplay_rollback_refactor_contracts.md.
+ */
+#endif
 #ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
 #endif
@@ -12,28 +21,28 @@ void ftCommonTaruCannProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->status_vars.common.tarucann.shoot_wait != 0)
+    if (ftStatusVarsTaruCann(fp)->shoot_wait != 0)
     {
-        fp->status_vars.common.tarucann.shoot_wait--;
+        ftStatusVarsTaruCann(fp)->shoot_wait--;
 
-        if (fp->status_vars.common.tarucann.shoot_wait == (FTCOMMON_TARUCANN_SHOOT_WAIT / 2))
+        if (ftStatusVarsTaruCann(fp)->shoot_wait == (FTCOMMON_TARUCANN_SHOOT_WAIT / 2))
         {
             func_800269C0_275C0(nSYAudioFGMJungleTaruCannShoot);
         }
-        if (fp->status_vars.common.tarucann.shoot_wait == 0)
+        if (ftStatusVarsTaruCann(fp)->shoot_wait == 0)
         {
             ftCommonTaruCannShootFighter(fighter_gobj);
 
             return;
         }
     }
-    fp->status_vars.common.tarucann.release_wait++;
+    ftStatusVarsTaruCann(fp)->release_wait++;
 
-    if ((fp->status_vars.common.tarucann.release_wait >= FTCOMMON_TARUCANN_RELEASE_WAIT) && (fp->status_vars.common.tarucann.shoot_wait == 0))
+    if ((ftStatusVarsTaruCann(fp)->release_wait >= FTCOMMON_TARUCANN_RELEASE_WAIT) && (ftStatusVarsTaruCann(fp)->shoot_wait == 0))
     {
-        fp->status_vars.common.tarucann.shoot_wait = FTCOMMON_TARUCANN_SHOOT_WAIT;
+        ftStatusVarsTaruCann(fp)->shoot_wait = FTCOMMON_TARUCANN_SHOOT_WAIT;
 
-        grJungleTaruCannAddAnimShoot(fp->status_vars.common.tarucann.tarucann_gobj);
+        grJungleTaruCannAddAnimShoot(ftStatusVarsTaruCann(fp)->tarucann_gobj);
     }
 }
 
@@ -42,11 +51,11 @@ void ftCommonTaruCannProcInterrupt(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if ((fp->status_vars.common.tarucann.shoot_wait == 0) && (fp->input.pl.button_tap & (fp->input.button_mask_a | fp->input.button_mask_b)))
+    if ((ftStatusVarsTaruCann(fp)->shoot_wait == 0) && (fp->input.pl.button_tap & (fp->input.button_mask_a | fp->input.button_mask_b)))
     {
-        fp->status_vars.common.tarucann.shoot_wait = FTCOMMON_TARUCANN_SHOOT_WAIT;
+        ftStatusVarsTaruCann(fp)->shoot_wait = FTCOMMON_TARUCANN_SHOOT_WAIT;
 
-        grJungleTaruCannAddAnimShoot(fp->status_vars.common.tarucann.tarucann_gobj);
+        grJungleTaruCannAddAnimShoot(ftStatusVarsTaruCann(fp)->tarucann_gobj);
     }
 }
 
@@ -54,9 +63,39 @@ void ftCommonTaruCannProcInterrupt(GObj *fighter_gobj)
 void ftCommonTaruCannProcPhysics(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
-    GObj *tarucann_gobj = fp->status_vars.common.tarucann.tarucann_gobj;
+    GObj *tarucann_gobj = ftStatusVarsTaruCann(fp)->tarucann_gobj;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: re-establish barrel pointer after snapshot coupled-GObj scrub. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        if (tarucann_gobj == NULL)
+        {
+            tarucann_gobj = grJungleGetTaruCannGobj();
+            if (tarucann_gobj != NULL)
+            {
+                ftStatusVarsTaruCann(fp)->tarucann_gobj = tarucann_gobj;
+            }
+        }
+        if ((tarucann_gobj == NULL) || (grJungleEnsureTaruCannCoupling(tarucann_gobj) == FALSE))
+        {
+            return;
+        }
+    }
+#endif
+    if (tarucann_gobj == NULL)
+    {
+        return;
+    }
 
     DObjGetStruct(fighter_gobj)->translate.vec.f = DObjGetStruct(tarucann_gobj)->translate.vec.f;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: F32 grid for rider/barrel translate (no-op unless syNetplaySimQuantizeActive()). */
+    syNetplayQuantizeDObjTranslate(DObjGetStruct(tarucann_gobj));
+    syNetplayQuantizeDObjTranslate(DObjGetStruct(fighter_gobj));
+#endif
 }
 
 // 0x80143F30
@@ -84,9 +123,9 @@ void ftCommonTaruCannSetStatus(GObj *fighter_gobj, GObj *tarucann_gobj)
     ftMainPlayAnimEventsAll(fighter_gobj);
     ftPhysicsStopVelAll(fighter_gobj);
 
-    fp->status_vars.common.tarucann.shoot_wait = 0;
-    fp->status_vars.common.tarucann.release_wait = 0;
-    fp->status_vars.common.tarucann.tarucann_gobj = tarucann_gobj;
+    ftStatusVarsTaruCann(fp)->shoot_wait = 0;
+    ftStatusVarsTaruCann(fp)->release_wait = 0;
+    ftStatusVarsTaruCann(fp)->tarucann_gobj = tarucann_gobj;
 
     ftParamSetHitStatusAll(fighter_gobj, nGMHitStatusIntangible);
 
@@ -121,3 +160,75 @@ void ftCommonTaruCannShootFighter(GObj *fighter_gobj)
     fp->playertag_wait = 0;
     fp->tarucann_wait = FTCOMMON_TARUCANN_PICKUP_WAIT;
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 ftCommonTaruCannTryRearmShootFromInputHistory(FTStruct *fp, u32 snap_tick)
+{
+    SYNetInputFrame cur;
+    SYNetInputFrame prev;
+    u16 fire_mask;
+
+    if ((fp == NULL) || (snap_tick == 0U) || (snap_tick == 0xFFFFFFFFU))
+    {
+        return FALSE;
+    }
+    fire_mask = (u16)(fp->input.button_mask_a | fp->input.button_mask_b);
+    if (fire_mask == 0U)
+    {
+        return FALSE;
+    }
+    if ((syNetInputGetHistoryFrame(fp->player, snap_tick, &cur) == FALSE) ||
+        (syNetInputGetHistoryFrame(fp->player, snap_tick - 1U, &prev) == FALSE))
+    {
+        return FALSE;
+    }
+    if (((cur.buttons & fire_mask) != 0U) && ((prev.buttons & fire_mask) == 0U))
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void ftCommonTaruCannReconcileShootStateAfterRollback(GObj *fighter_gobj, u32 snap_tick)
+{
+    FTStruct *fp = ftGetStruct(fighter_gobj);
+    GObj *tarucann_gobj;
+
+    if ((fp == NULL) || (fp->status_id != nFTCommonStatusTaruCann))
+    {
+        return;
+    }
+    tarucann_gobj = ftStatusVarsTaruCann(fp)->tarucann_gobj;
+    if (tarucann_gobj == NULL)
+    {
+        tarucann_gobj = grJungleGetTaruCannGobj();
+    }
+    if (tarucann_gobj == NULL)
+    {
+        return;
+    }
+    ftStatusVarsTaruCann(fp)->tarucann_gobj = tarucann_gobj;
+
+    if (ftStatusVarsTaruCann(fp)->shoot_wait > 0)
+    {
+        grJungleTaruCannAddAnimShoot(tarucann_gobj);
+        return;
+    }
+    if (grJungleTaruCannIsChildShootAnimActive(tarucann_gobj) != FALSE)
+    {
+        if (ftStatusVarsTaruCann(fp)->shoot_wait == 0)
+        {
+            ftStatusVarsTaruCann(fp)->shoot_wait = 1;
+        }
+        grJungleTaruCannAddAnimShoot(tarucann_gobj);
+        return;
+    }
+    if (ftCommonTaruCannTryRearmShootFromInputHistory(fp, snap_tick) != FALSE)
+    {
+        ftStatusVarsTaruCann(fp)->shoot_wait = FTCOMMON_TARUCANN_SHOOT_WAIT;
+        grJungleTaruCannAddAnimShoot(tarucann_gobj);
+        return;
+    }
+    grJungleTaruCannAddAnimFill(tarucann_gobj);
+}
+#endif

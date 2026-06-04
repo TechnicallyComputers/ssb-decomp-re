@@ -20,11 +20,11 @@ void ftCommonAttackS4ProcUpdate(GObj *fighter_gobj)
     case nFTKindNPikachu:
         if ((fp->motion_vars.flags.flag1 != 0) || (fp->motion_vars.flags.flag2 != 0))
         {
-            fp->status_vars.common.attack4.gfx_id += syUtilsRandIntRange((FTCOMMON_ATTACKS4_THUNDERSHOCK_GFX_ID_MAX - 1)) + 1;
+            ftStatusVarsAttack4(fp)->gfx_id += syUtilsRandIntRange((FTCOMMON_ATTACKS4_THUNDERSHOCK_GFX_ID_MAX - 1)) + 1;
 
-            if (fp->status_vars.common.attack4.gfx_id >= FTCOMMON_ATTACKS4_THUNDERSHOCK_GFX_ID_MAX)
+            if (ftStatusVarsAttack4(fp)->gfx_id >= FTCOMMON_ATTACKS4_THUNDERSHOCK_GFX_ID_MAX)
             {
-                fp->status_vars.common.attack4.gfx_id -= FTCOMMON_ATTACKS4_THUNDERSHOCK_GFX_ID_MAX;
+                ftStatusVarsAttack4(fp)->gfx_id -= FTCOMMON_ATTACKS4_THUNDERSHOCK_GFX_ID_MAX;
             }
             if (fp->motion_vars.flags.flag1 != 0)
             {
@@ -46,7 +46,7 @@ void ftCommonAttackS4ProcUpdate(GObj *fighter_gobj)
             gmCollisionGetFighterPartsWorldPosition(fp->joints[11], &offset);
             func_ovl2_800EE018(fp->joints[nFTPartsJointTopN], &offset);
 
-            if (efManagerPikachuThunderShockMakeEffect(fighter_gobj, &offset, fp->status_vars.common.attack4.gfx_id) != NULL)
+            if (efManagerPikachuThunderShockMakeEffect(fighter_gobj, &offset, ftStatusVarsAttack4(fp)->gfx_id) != NULL)
             {
                 fp->is_effect_attach = TRUE;
             }
@@ -114,7 +114,7 @@ void ftCommonAttackS4SetStatus(GObj *fighter_gobj)
     {
     case nFTKindPikachu:
     case nFTKindNPikachu:
-        fp->status_vars.common.attack4.gfx_id = 0;
+        ftStatusVarsAttack4(fp)->gfx_id = 0;
 
         fp->proc_lagstart = ftParamProcPauseEffect;
         fp->proc_lagend = ftParamProcResumeEffect;
@@ -178,7 +178,8 @@ sb32 ftCommonAttackS4CheckInterruptTurn(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     FTAttributes *attr = fp->attr;
 
-    if (((fp->input.pl.stick_range.x * fp->status_vars.common.attack4.lr) >= FTCOMMON_ATTACKS4_STICK_RANGE_MIN) && (fp->input.pl.button_tap & fp->input.button_mask_a))
+    /* attack4.lr aliases turn.lr_dash at union +0x10 while in Turn; use the turn accessor. */
+    if (((fp->input.pl.stick_range.x * ftStatusVarsTurn(fp)->lr_dash) >= FTCOMMON_ATTACKS4_STICK_RANGE_MIN) && (fp->input.pl.button_tap & fp->input.button_mask_a))
     {
         GObj *item_gobj = fp->item_gobj;
 

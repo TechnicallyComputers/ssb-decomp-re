@@ -307,6 +307,10 @@ void *sLBCommonPrevBitmapBuf;
 // 0x800D62B8
 void *sLBCommonPrevSpriteLUT;
 
+#ifdef SSB64_NETMENU
+sb32 gLBCommonPrepSObjUsePrimModulateDecal;
+#endif
+
 // 0x800D62BC
 s32 sLBCommonScissorXMax;
 
@@ -1702,6 +1706,10 @@ sb32 func_ovl0_800C99CC(Mtx *mtx, DObj *dobj, Gfx **dls)
 // 0x800C9A38
 void func_ovl0_800C9A38(Mtx44f mtx, DObj *dobj)
 {
+    if (dobj == NULL)
+    {
+        return;
+    }
     FTParts *parts = ftGetParts(dobj);
     FTStruct *fp = ftGetStruct(dobj->parent_gobj);
     Mtx44f *p;
@@ -2691,7 +2699,20 @@ void lbCommonDrawSObjBitmap
                 break;
                 
             case G_IM_SIZ_32b:
+#ifdef PORT
+                /*
+                 * Netmenu PNG labels: GfxDpLoadBlock uses texture_to_load.width to recover DRAM bytes-per-row only
+                 * when width>1. With width=1 the importer mis-derives stride for linear host RGBA8 (sheared upload).
+                 */
+                gDPSetTextureImage(
+                    dl++,
+                    G_IM_FMT_RGBA,
+                    G_IM_SIZ_32b_LOAD_BLOCK,
+                    (uint32_t)((bitmap->width_img > 0) ? bitmap->width_img : bitmap->width),
+                    PORT_RESOLVE(bitmap->buf));
+#else
                 gDPSetTextureImage(dl++, G_IM_FMT_RGBA, G_IM_SIZ_32b_LOAD_BLOCK, 1, PORT_RESOLVE(bitmap->buf));
+#endif
                 gDPSetTile
                 (
                     dl++,
@@ -2861,7 +2882,15 @@ void lbCommonPrepSObjAttr(Gfx **dls, SObj *sobj)
             /* fallthrough */
 
         default:
-            gDPSetCombineMode(dl++, G_CC_DECALRGBA, G_CC_DECALRGBA);
+#ifdef SSB64_NETMENU
+            if (gLBCommonPrepSObjUsePrimModulateDecal)
+            {
+                gDPSetPrimColor(dl++, 0, 0, sprite->red, sprite->green, sprite->blue, sprite->alpha);
+                gDPSetCombineMode(dl++, G_CC_MODULATERGBDECALA_PRIM, G_CC_MODULATERGBDECALA_PRIM);
+            }
+            else
+#endif
+                gDPSetCombineMode(dl++, G_CC_DECALRGBA, G_CC_DECALRGBA);
             break;
         }
         if (sprite->bmfmt != G_IM_FMT_CI)
@@ -3047,6 +3076,11 @@ void lbCommonClearExternSpriteParams(void)
     sLBCommonPrevSpriteLUT = NULL;
 }
 
+void lbCommonInvalidatePrevBitmapBuf(void)
+{
+    sLBCommonPrevBitmapBuf = NULL;
+}
+
 // 0x800CCED8
 void lbCommonSetExternSpriteParams(Sprite *sprite)
 {
@@ -3071,6 +3105,32 @@ void lbCommonDrawSObjAttr(GObj *gobj)
         sobj = sobj->next;
     }
 }
+
+#ifdef SSB64_NETMENU
+/*
+ * DECALRGBA default path ignores sprite red/green/blue. VS Online maps banning
+ * tints thumbnails + preview wallpaper CI/RGB textures by prim — clear extern
+ * state each SObj so every prim color takes effect.
+ */
+void lbCommonDrawSObjChainDecalAsPrimMultiply(GObj *gobj)
+{
+	SObj *sobj = SObjGetStruct(gobj);
+
+	while (sobj != NULL)
+	{
+		if (!(sobj->sprite.attr & SP_HIDDEN))
+		{
+			lbCommonClearExternSpriteParams();
+			gLBCommonPrepSObjUsePrimModulateDecal = TRUE;
+			lbCommonPrepSObjAttr(gSYTaskmanDLHeads, sobj);
+			gLBCommonPrepSObjUsePrimModulateDecal = FALSE;
+			lbCommonPrepSObjDraw(gSYTaskmanDLHeads, sobj);
+			lbCommonSetExternSpriteParams(&sobj->sprite);
+		}
+		sobj = sobj->next;
+	}
+}
+#endif /* SSB64_NETMENU */
 
 // 0x800CCF74
 void lbCommonDrawSObjNoAttr(GObj *gobj)

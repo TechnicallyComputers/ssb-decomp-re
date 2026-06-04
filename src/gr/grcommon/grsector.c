@@ -3,8 +3,16 @@
 #include <wp/weapon.h>
 #include <sc/scene.h>
 #include <reloc_data.h>
+#include <string.h>
+#include <sys/objanim.h>
 #ifdef PORT
+#include "port_scene_heap.h"
 extern void *func_800269C0_275C0(u16 id);
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+extern sb32 syNetRollbackIsActive(void);
+#include <sys/netplay_sim_quantize.h>
+#include <mp/mpcollision.h>
 #endif
 
 // // // // // // // // // // // //
@@ -420,6 +428,7 @@ void grSectorArwingUpdateWait(void)
             gGRCommonStruct.sector.arwing_pilot_curr = -2;
         }
         gGRCommonStruct.sector.arwing_flight_pattern = random;
+        gGRCommonStruct.sector.arwing_last_flight_pattern = (s8)random;
         gGRCommonStruct.sector.arwing_status = 2;
         gGRCommonStruct.sector.unk_sector_0x4E = 0x3C;
 
@@ -437,6 +446,10 @@ void grSectorArwingUpdateWait(void)
         gGRCommonStruct.sector.arwing_laser_ammo = 0;
 
         func_800269C0_275C0(nSYAudioFGMSectorAmbient1);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        gGRCommonStruct.sector.arwing_target_x = syNetplayQuantizeF32(gGRCommonStruct.sector.arwing_target_x);
+
+#endif
     }
 }
 
@@ -1060,9 +1073,28 @@ void grSectorArwingUpdateCollisions(void)
     {
         if ((gGRCommonStruct.sector.is_arwing_line_active) && (gGRCommonStruct.sector.is_arwing_z_near))
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /*
+             * Netplay rollback only: align flight DObjs before computing the yakumono line position.
+             * mpCollisionSetYakumonoPosID derives gMPCollisionSpeeds[line] from (new_pos - old_translate);
+             * call it exactly once per frame with the final position so grounded fighters receive vel_speed carry (ftmain).
+             */
+            if (syNetplaySimQuantizeActive() != FALSE)
+            {
+                grSectorArwingCanonicalizeSimState();
+            }
+
+#endif
             pos.x = gGRCommonStruct.sector.map_dobjs[0]->translate.vec.f.x + gGRCommonStruct.sector.arwing_target_x;
             pos.y = gGRCommonStruct.sector.map_dobjs[0]->translate.vec.f.y + gGRCommonStruct.sector.map_dobjs[1]->translate.vec.f.y;
             pos.z = 0.0F;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            if (syNetplaySimQuantizeActive() != FALSE)
+            {
+                syNetplayQuantizeVec3f(&pos);
+            }
+
+#endif
 
             if ((gGRCommonStruct.sector.is_arwing_z_collision == FALSE) || (gGRCommonStruct.sector.is_arwing_line_collision == FALSE))
             {
@@ -1134,9 +1166,91 @@ void func_ovl2_80107D50(void)
     }
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+static void grSectorArwingCanonicalizeDobjTreeWalk(DObj *dobj);
+
+void grSectorArwingCanonicalizeSimState(void)
+{
+    GObj *map_gobj;
+    DObj *root;
+
+    if (syNetplaySimQuantizeActive() == FALSE)
+    {
+        return;
+    }
+    map_gobj = gGRCommonStruct.sector.map_gobj;
+    if (map_gobj == NULL)
+    {
+        return;
+    }
+    root = DObjGetStruct(map_gobj);
+    if (root != NULL)
+    {
+        grSectorArwingCanonicalizeDobjTreeWalk(root);
+    }
+    gGRCommonStruct.sector.arwing_target_x = syNetplayQuantizeF32(gGRCommonStruct.sector.arwing_target_x);
+}
+
+static void grSectorArwingCanonicalizeDobjTreeWalk(DObj *dobj)
+{
+    while (dobj != NULL)
+    {
+        syNetplayQuantizeDObjAnimPose(dobj);
+        if (dobj->child != NULL)
+        {
+            grSectorArwingCanonicalizeDobjTreeWalk(dobj->child);
+        }
+        if (dobj->sib_next != NULL)
+        {
+            dobj = dobj->sib_next;
+        }
+        else
+        {
+            while (TRUE)
+            {
+                if (dobj->parent == DOBJ_PARENT_NULL)
+                {
+                    return;
+                }
+                if (dobj->parent->sib_next != NULL)
+                {
+                    dobj = dobj->parent->sib_next;
+                    break;
+                }
+                dobj = dobj->parent;
+            }
+        }
+    }
+}
+
+
+#endif
+
 // 0x80107E08
 void grSectorProcUpdate(GObj *ground_gobj)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * Netplay arwing flight-anim driver. The Arwing's motion lives in the flight AnimJoint on
+     * map_dobjs[0] (and the banking/laser joints on 7/9/11), stepped each frame by the standalone
+     * priority-5 gcPlayAnimAll process registered on map_gobj in grSectorInitAll. Under rollback that
+     * process does not advance the arwing anim cursor (observed: anim_wait pinned at its attach length,
+     * anim_frame stuck at 0 for the whole patrol, so the ship never leaves its off-screen start and
+     * grSectorArwingUpdatePatrol's anim_wait==NULL patrol-end never fires). grSectorProcUpdate is a
+     * priority-4 process that *does* run inside gcRunAll on both forward and resim ticks (arwing_status
+     * advances normally), so drive the anim from here — the same way the DK Jungle barrel advances its
+     * motion from its own proc rather than relying on the standalone anim process. Stepped before the
+     * status logic to preserve the original priority-5-before-priority-4 ordering (patrol-end reads the
+     * freshly-stepped cursor). Gated to active rollback so offline play keeps using the engine anim
+     * process untouched and we never double-step.
+     */
+    if ((syNetRollbackIsActive() != FALSE) && (gGRCommonStruct.sector.map_gobj != NULL))
+    {
+        gcPlayAnimAll(gGRCommonStruct.sector.map_gobj);
+        grSectorArwingCanonicalizeSimState();
+    }
+
+#endif
     switch (gGRCommonStruct.sector.arwing_status)
     {
     case nGRSectorArwingStatusSleep:
@@ -1188,6 +1302,7 @@ void grSectorInitAll(void)
 
     gGRCommonStruct.sector.arwing_status = 0;
     gGRCommonStruct.sector.arwing_flight_pattern = -1;
+    gGRCommonStruct.sector.arwing_last_flight_pattern = -1;
     gGRCommonStruct.sector.arwing_appear_timer = 600;
     gGRCommonStruct.sector.arwing_type_cycle = 3;
     gGRCommonStruct.sector.arwing_pilot_curr = -1;
@@ -1220,3 +1335,414 @@ GObj* grSectorMakeGround(void)
 
     return map_gobj;
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 grSectorArwingDobjHasDrawableDllink(DObj *dobj)
+{
+    if (dobj == NULL)
+    {
+        return FALSE;
+    }
+    return (portDObjDLLinkChainLooksValid(dobj->dv) != 0) ? TRUE : FALSE;
+}
+
+static void grSectorArwingCountTreeDObjs(DObj *dobj, s32 *drawable_out, u32 *nodes_out)
+{
+    while (dobj != NULL)
+    {
+        if (nodes_out != NULL)
+        {
+            (*nodes_out)++;
+        }
+        if (grSectorArwingDobjHasDrawableDllink(dobj) != FALSE)
+        {
+            (*drawable_out)++;
+        }
+        if (dobj->child != NULL)
+        {
+            grSectorArwingCountTreeDObjs(dobj->child, drawable_out, nodes_out);
+        }
+        if (dobj->sib_next != NULL)
+        {
+            dobj = dobj->sib_next;
+        }
+        else
+        {
+            while (TRUE)
+            {
+                if (dobj->parent == DOBJ_PARENT_NULL)
+                {
+                    return;
+                }
+                if (dobj->parent->sib_next != NULL)
+                {
+                    dobj = dobj->parent->sib_next;
+                    break;
+                }
+                dobj = dobj->parent;
+            }
+        }
+    }
+}
+
+static sb32 grSectorArwingVisualTreeNeedsRebuild(GObj *map_gobj, DObj *root, DObj *d0)
+{
+    s32 drawable_count;
+    u32 node_count;
+
+    if ((root == NULL) || (d0 == NULL))
+    {
+        return TRUE;
+    }
+    if (root != d0)
+    {
+        return TRUE;
+    }
+    if (d0->parent_gobj != map_gobj)
+    {
+        return TRUE;
+    }
+    drawable_count = 0;
+    node_count = 0;
+    grSectorArwingCountTreeDObjs(root, &drawable_count, &node_count);
+    if (drawable_count == 0)
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+static void grSectorEnsureArwingMapGObjDisplay(GObj *map_gobj)
+{
+    if (map_gobj == NULL)
+    {
+        return;
+    }
+    if (map_gobj->proc_display == NULL)
+    {
+        gcAddGObjDisplay(map_gobj, gcDrawDObjTreeDLLinksForGObj, 6, GOBJ_PRIORITY_DEFAULT, ~0);
+    }
+}
+
+/*
+ * Rebuild the Arwing map GObj DObj tree when rollback left map_dobjs[] decoupled from map_gobj, or
+ * DObjDLLink chains are stale/invalid (draw uses gcDrawDObjTreeDLLinksForGObj on map_gobj's tree).
+ * Returns TRUE if the tree was rebuilt this call; FALSE if already drawable.
+ */
+sb32 grSectorReestablishArwingVisualTree(void)
+{
+    GObj *map_gobj;
+    void *map_file;
+    DObj *root;
+    DObj *d0;
+    s32 i;
+
+    map_gobj = gGRCommonStruct.sector.map_gobj;
+    map_file = gGRCommonStruct.sector.map_file;
+    if ((map_gobj == NULL) || (map_file == NULL))
+    {
+        return FALSE;
+    }
+    root = DObjGetStruct(map_gobj);
+    d0 = gGRCommonStruct.sector.map_dobjs[0];
+    if (grSectorArwingVisualTreeNeedsRebuild(map_gobj, root, d0) == FALSE)
+    {
+        grSectorEnsureArwingMapGObjDisplay(map_gobj);
+        return FALSE;
+    }
+    gcRemoveDObjAll(map_gobj);
+    for (i = 0; i < (s32)ARRAY_COUNT(gGRCommonStruct.sector.map_dobjs); i++)
+    {
+        gGRCommonStruct.sector.map_dobjs[i] = NULL;
+    }
+    grModelSetupGroundDObjs(
+        map_gobj,
+        lbRelocGetFileData(DObjDesc*, map_file, llFoxSpecial3EntryArwingDObjDesc),
+        gGRCommonStruct.sector.map_dobjs,
+        dGRSectorArwingTransformKinds);
+    gcAddDObjAnimJoint(
+        gGRCommonStruct.sector.map_dobjs[10],
+        lbRelocGetFileData(AObjEvent32*, map_file, llFoxSpecial3_2E74_AnimJoint),
+        0.0F);
+    grSectorEnsureArwingMapGObjDisplay(map_gobj);
+    gcPlayAnimAll(map_gobj);
+    return TRUE;
+}
+
+void grSectorArwingFillPresentationDiag(GRSectorArwingPresentationDiag *out)
+{
+    GRCommonGroundVarsSector *sec;
+    GObj *map_gobj;
+    DObj *root;
+    DObj *d0;
+    s32 drawable_count;
+    u32 node_count;
+    u32 di;
+
+    if (out == NULL)
+    {
+        return;
+    }
+    memset(out, 0, sizeof(*out));
+    sec = &gGRCommonStruct.sector;
+    map_gobj = sec->map_gobj;
+    root = (map_gobj != NULL) ? DObjGetStruct(map_gobj) : NULL;
+    d0 = sec->map_dobjs[0];
+    out->proc_display = (map_gobj != NULL) ? (void *)map_gobj->proc_display : NULL;
+    out->dl_link_id = (map_gobj != NULL) ? map_gobj->dl_link_id : 0xFFU;
+    out->root_matches_d0 = ((root != NULL) && (d0 != NULL) && (root == d0)) ? TRUE : FALSE;
+    out->dl_valid_root = grSectorArwingDobjHasDrawableDllink(d0);
+    drawable_count = 0;
+    node_count = 0;
+    if (root != NULL)
+    {
+        grSectorArwingCountTreeDObjs(root, &drawable_count, &node_count);
+    }
+    out->drawable_dobj_count = drawable_count;
+    out->tree_child_count = node_count;
+    for (di = 1; di < (u32)ARRAY_COUNT(sec->map_dobjs); di++)
+    {
+        if (grSectorArwingDobjHasDrawableDllink(sec->map_dobjs[di]) != FALSE)
+        {
+            out->dl_valid_mesh = TRUE;
+            break;
+        }
+    }
+}
+
+s8 grSectorInferFlightPatternIdx(void)
+{
+    GRCommonGroundVarsSector *sec;
+    DObj *d0;
+    AObjEvent32 *live_joint;
+    s32 i;
+
+    sec = &gGRCommonStruct.sector;
+    if (sec->arwing_flight_pattern >= 0)
+    {
+        return sec->arwing_flight_pattern;
+    }
+    if (sec->arwing_last_flight_pattern >= 0)
+    {
+        return sec->arwing_last_flight_pattern;
+    }
+    d0 = sec->map_dobjs[0];
+    if (d0 == NULL)
+    {
+        return -1;
+    }
+    live_joint = d0->anim_joint.event32;
+    if (live_joint == NULL)
+    {
+        return -1;
+    }
+    for (i = 0; i < (s32)ARRAY_COUNT(dGRSectorArwingSectorDescs); i++)
+    {
+        GRSectorDesc *desc =
+            (GRSectorDesc *)((intptr_t)dGRSectorArwingSectorDescs[i] + (uintptr_t)sec->map_head);
+        AObjEvent32 *desc_joint;
+
+#ifdef PORT
+        desc_joint = (AObjEvent32 *)PORT_RESOLVE(desc->anim_joint_0x0);
+#else
+        desc_joint = desc->anim_joint_0x0;
+#endif
+        if (desc_joint == live_joint)
+        {
+            return (s8)i;
+        }
+    }
+    return -1;
+}
+
+void grSectorArwingReattachFlightAnims(s8 flight_pattern_idx)
+{
+    GRSectorDesc *desc;
+    GRCommonGroundVarsSector *sec;
+
+    if ((flight_pattern_idx < 0) || (flight_pattern_idx >= (s8)ARRAY_COUNT(dGRSectorArwingSectorDescs)))
+    {
+        return;
+    }
+    sec = &gGRCommonStruct.sector;
+    if ((sec->map_dobjs[0] == NULL) || (sec->map_head == NULL))
+    {
+        return;
+    }
+    desc = (GRSectorDesc *)((intptr_t)dGRSectorArwingSectorDescs[flight_pattern_idx] + (uintptr_t)sec->map_head);
+#ifdef PORT
+    grSectorArwingAddAnim(sec->map_dobjs[0], (AObjEvent32 *)PORT_RESOLVE(desc->anim_joint_0x0), 0.0F);
+    grSectorArwingAddAnim(sec->map_dobjs[7], (AObjEvent32 *)PORT_RESOLVE(desc->anim_joint_0x1C), 0.0F);
+    grSectorArwingAddAnim(sec->map_dobjs[9], (AObjEvent32 *)PORT_RESOLVE(desc->anim_joint_0x24), 0.0F);
+    grSectorArwingAddAnim(sec->map_dobjs[11], (AObjEvent32 *)PORT_RESOLVE(desc->anim_joint_0x2C), 0.0F);
+#else
+    grSectorArwingAddAnim(sec->map_dobjs[0], desc->anim_joint_0x0, 0.0F);
+    grSectorArwingAddAnim(sec->map_dobjs[7], desc->anim_joint_0x1C, 0.0F);
+    grSectorArwingAddAnim(sec->map_dobjs[9], desc->anim_joint_0x24, 0.0F);
+    grSectorArwingAddAnim(sec->map_dobjs[11], desc->anim_joint_0x2C, 0.0F);
+#endif
+}
+
+static void grSectorArwingApplyAnimTransformsWalk(DObj *dobj)
+{
+    MObj *mobj;
+
+    while (dobj != NULL)
+    {
+        if (dobj->anim_wait != AOBJ_ANIM_NULL)
+        {
+            gcPlayDObjAnimJoint(dobj);
+        }
+        mobj = dobj->mobj;
+        while (mobj != NULL)
+        {
+            if (mobj->anim_wait != AOBJ_ANIM_NULL)
+            {
+                gcPlayMObjMatAnim(mobj);
+            }
+            mobj = mobj->next;
+        }
+        if (dobj->child != NULL)
+        {
+            dobj = dobj->child;
+        }
+        else if (dobj->sib_next != NULL)
+        {
+            dobj = dobj->sib_next;
+        }
+        else
+        {
+            while (TRUE)
+            {
+                if (dobj->parent == DOBJ_PARENT_NULL)
+                {
+                    return;
+                }
+                if (dobj->parent->sib_next != NULL)
+                {
+                    dobj = dobj->parent->sib_next;
+                    break;
+                }
+                dobj = dobj->parent;
+            }
+        }
+    }
+}
+
+void grSectorArwingApplyAnimTransforms(GObj *map_gobj)
+{
+    DObj *dobj;
+
+    if (map_gobj == NULL)
+    {
+        return;
+    }
+    dobj = DObjGetStruct(map_gobj);
+    if (dobj == NULL)
+    {
+        return;
+    }
+    grSectorArwingApplyAnimTransformsWalk(dobj);
+}
+
+void grSectorRepairArwingPresentation(sb32 tree_was_reestablished, s8 flight_pattern_idx,
+                                    const Vec3f *dobj_translate, const Vec3f *dobj_rotate,
+                                    u16 dobj_valid_mask)
+{
+    GRCommonGroundVarsSector *sec;
+    GObj *map_gobj;
+    DObj *d0;
+    u32 di;
+
+    sec = &gGRCommonStruct.sector;
+    map_gobj = sec->map_gobj;
+    if (map_gobj == NULL)
+    {
+        return;
+    }
+    if (sec->arwing_status == nGRSectorArwingStatusPatrol)
+    {
+        d0 = sec->map_dobjs[0];
+        if (tree_was_reestablished != FALSE)
+        {
+            if (flight_pattern_idx >= 0)
+            {
+                grSectorArwingReattachFlightAnims(flight_pattern_idx);
+            }
+        }
+        else if ((d0 != NULL) && (flight_pattern_idx >= 0) && (d0->anim_joint.event32 == NULL) &&
+                 (d0->anim_wait != AOBJ_ANIM_NULL))
+        {
+            grSectorArwingReattachFlightAnims(flight_pattern_idx);
+        }
+    }
+    if ((dobj_translate != NULL) && (dobj_rotate != NULL))
+    {
+        for (di = 0; di < (u32)ARRAY_COUNT(sec->map_dobjs); di++)
+        {
+            if ((dobj_valid_mask & (u16)(1U << di)) == 0U)
+            {
+                continue;
+            }
+            if (sec->map_dobjs[di] == NULL)
+            {
+                continue;
+            }
+            sec->map_dobjs[di]->translate.vec.f = dobj_translate[di];
+            sec->map_dobjs[di]->rotate.vec.f = dobj_rotate[di];
+#if defined(PORT) && defined(SSB64_NETMENU)
+            syNetplayQuantizeVec3f(&sec->map_dobjs[di]->translate.vec.f);
+            syNetplayQuantizeVec3f(&sec->map_dobjs[di]->rotate.vec.f);
+
+#endif
+        }
+    }
+    grSectorArwingApplyAnimTransforms(map_gobj);
+}
+
+void grSectorSyncArwingMapGObjFlags(u32 snap_map_gobj_flags)
+{
+    GObj *map_gobj;
+    DObj *root_dobj;
+
+    map_gobj = gGRCommonStruct.sector.map_gobj;
+    if (map_gobj == NULL)
+    {
+        return;
+    }
+    root_dobj = gGRCommonStruct.sector.map_dobjs[0];
+    switch (gGRCommonStruct.sector.arwing_status)
+    {
+    case nGRSectorArwingStatusPatrol:
+        if ((root_dobj != NULL) && (root_dobj->anim_wait != AOBJ_ANIM_NULL))
+        {
+            map_gobj->flags = GOBJ_FLAG_NONE;
+        }
+        else
+        {
+            map_gobj->flags = GOBJ_FLAG_HIDDEN;
+        }
+        break;
+
+    case nGRSectorArwingStatusSleep:
+        map_gobj->flags = GOBJ_FLAG_HIDDEN;
+        break;
+
+    case nGRSectorArwingStatusWait:
+        if (gGRCommonStruct.sector.arwing_appear_timer != 0)
+        {
+            map_gobj->flags = GOBJ_FLAG_HIDDEN;
+        }
+        else
+        {
+            map_gobj->flags = snap_map_gobj_flags;
+        }
+        break;
+
+    default:
+        map_gobj->flags = snap_map_gobj_flags;
+        break;
+    }
+}
+
+#endif

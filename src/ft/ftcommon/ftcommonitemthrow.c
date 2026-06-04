@@ -14,28 +14,28 @@ void ftCommonItemThrowUpdateModelYaw(GObj *fighter_gobj)
 
     if (fp->motion_vars.flags.flag3 != 0)
     {
-        fp->status_vars.common.itemthrow.turn_rotate_step =
-        fp->status_vars.common.itemthrow.turn_tics = fp->motion_vars.flags.flag3;
+        ftStatusVarsItemThrow(fp)->turn_rotate_step =
+        ftStatusVarsItemThrow(fp)->turn_tics = fp->motion_vars.flags.flag3;
 
-        fp->status_vars.common.itemthrow.turn_invert_lr_wait = fp->motion_vars.flags.flag3 / 2;
+        ftStatusVarsItemThrow(fp)->turn_invert_lr_wait = fp->motion_vars.flags.flag3 / 2;
 
         fp->motion_vars.flags.flag3 = 0;
     }
 
-    if (fp->status_vars.common.itemthrow.turn_tics != 0)
+    if (ftStatusVarsItemThrow(fp)->turn_tics != 0)
     {
-        fp->status_vars.common.itemthrow.turn_tics--;
+        ftStatusVarsItemThrow(fp)->turn_tics--;
 
-        if (fp->status_vars.common.itemthrow.turn_invert_lr_wait != 0)
+        if (ftStatusVarsItemThrow(fp)->turn_invert_lr_wait != 0)
         {
-            fp->status_vars.common.itemthrow.turn_invert_lr_wait--;
+            ftStatusVarsItemThrow(fp)->turn_invert_lr_wait--;
 
-            if (fp->status_vars.common.itemthrow.turn_invert_lr_wait == 0)
+            if (ftStatusVarsItemThrow(fp)->turn_invert_lr_wait == 0)
             {
                 fp->lr = -fp->lr;
             }
         }
-        fp->joints[nFTPartsJointTopN]->rotate.vec.f.y -= F_CLC_DTOR32(180.0F / fp->status_vars.common.itemthrow.turn_rotate_step);
+        fp->joints[nFTPartsJointTopN]->rotate.vec.f.y -= F_CLC_DTOR32(180.0F / ftStatusVarsItemThrow(fp)->turn_rotate_step);
 
         ftParamsUpdateFighterPartsTransformAll(fp->joints[nFTPartsJointTopN]);
     }
@@ -56,14 +56,14 @@ void ftCommonItemThrowProcUpdate(GObj *fighter_gobj)
 
     if (fp->motion_vars.flags.flag2 != 0)
     {
-        fp->status_vars.common.itemthrow.throw_vel = F_PCT_TO_DEC(fp->motion_vars.item_throw.vel);
-        fp->status_vars.common.itemthrow.throw_angle = fp->motion_vars.item_throw.angle;
+        ftStatusVarsItemThrow(fp)->throw_vel = F_PCT_TO_DEC(fp->motion_vars.item_throw.vel);
+        ftStatusVarsItemThrow(fp)->throw_angle = fp->motion_vars.item_throw.angle;
 
         fp->motion_vars.flags.flag2 = 0;
     }
     if (fp->motion_vars.flags.flag1 != 0)
     {
-        fp->status_vars.common.itemthrow.throw_damage = F_PCT_TO_DEC(fp->motion_vars.item_throw.damage);
+        ftStatusVarsItemThrow(fp)->throw_damage = F_PCT_TO_DEC(fp->motion_vars.item_throw.damage);
 
         fp->motion_vars.flags.flag1 = 0;
     }
@@ -82,20 +82,20 @@ void ftCommonItemThrowProcUpdate(GObj *fighter_gobj)
         vel_base = F_PCT_TO_DEC
         (
             dFTCommonDataItemThrowDescs[status_id - nFTCommonStatusLightThrowStart].vel_scale *
-            fp->status_vars.common.itemthrow.throw_vel *
+            ftStatusVarsItemThrow(fp)->throw_vel *
             fp->attr->itemthrow_vel_scale
         );
 
-        if (fp->status_vars.common.itemthrow.throw_angle == 361)
+        if (ftStatusVarsItemThrow(fp)->throw_angle == 361)
         {
             angle = dFTCommonDataItemThrowDescs[status_id - nFTCommonStatusLightThrowStart].angle;
         }
-        else angle = fp->status_vars.common.itemthrow.throw_angle;
+        else angle = ftStatusVarsItemThrow(fp)->throw_angle;
 
         damage_mul = F_PCT_TO_DEC
         (
             F_PCT_TO_DEC(dFTCommonDataItemThrowDescs[status_id - nFTCommonStatusLightThrowStart].damage_scale) *
-            fp->status_vars.common.itemthrow.throw_damage *
+            ftStatusVarsItemThrow(fp)->throw_damage *
             fp->attr->itemthrow_damage_scale
         );
 
@@ -141,10 +141,10 @@ void ftCommonItemThrowInitCommandVars(FTStruct *fp)
 // 0x80146670
 void ftCommonItemThrowInitStatusVars(FTStruct *fp)
 {
-    fp->status_vars.common.itemthrow.turn_tics = 0;
-    fp->status_vars.common.itemthrow.throw_angle = 361;
-    fp->status_vars.common.itemthrow.throw_vel = 1.0F;
-    fp->status_vars.common.itemthrow.throw_damage = 1.0F;
+    ftStatusVarsItemThrow(fp)->turn_tics = 0;
+    ftStatusVarsItemThrow(fp)->throw_angle = 361;
+    ftStatusVarsItemThrow(fp)->throw_vel = 1.0F;
+    ftStatusVarsItemThrow(fp)->throw_damage = 1.0F;
 }
 
 // 0x80146690
@@ -256,7 +256,7 @@ sb32 ftCommonLightThrowCheckInterruptGuardOn(GObj *fighter_gobj)
 
     if ((fp->item_gobj != NULL) && (fp->input.pl.button_tap & fp->input.button_mask_a))
     {
-        if (fp->status_vars.common.guard.slide_tics != 0)
+        if (ftStatusVarsGuard(fp)->slide_tics != 0)
         {
             ftCommonItemThrowSetStatus(fighter_gobj, nFTCommonStatusLightThrowDash);
         }
@@ -264,9 +264,9 @@ sb32 ftCommonLightThrowCheckInterruptGuardOn(GObj *fighter_gobj)
 
         return TRUE;
     }
-    if (fp->status_vars.common.guard.slide_tics != 0)
+    if (ftStatusVarsGuard(fp)->slide_tics != 0)
     {
-        fp->status_vars.common.guard.slide_tics--;
+        ftStatusVarsGuard(fp)->slide_tics--;
     }
     return FALSE;
 }
@@ -277,7 +277,7 @@ sb32 ftCommonLightThrowCheckInterruptEscape(GObj *fighter_gobj) // Interrupt ite
     FTStruct *fp = ftGetStruct(fighter_gobj);
     s32 status_id;
 
-    if ((ftCommonLightThrowCheckItemTypeThrow(fp) != FALSE) && (fp->status_vars.common.escape.itemthrow_buffer_tics != 0))
+    if ((ftCommonLightThrowCheckItemTypeThrow(fp) != FALSE) && (ftStatusVarsEscape(fp)->itemthrow_buffer_tics != 0))
     {
         if (fp->status_id == nFTCommonStatusEscapeF)
         {
@@ -289,9 +289,9 @@ sb32 ftCommonLightThrowCheckInterruptEscape(GObj *fighter_gobj) // Interrupt ite
 
         return TRUE;
     }
-    if (fp->status_vars.common.escape.itemthrow_buffer_tics != 0)
+    if (ftStatusVarsEscape(fp)->itemthrow_buffer_tics != 0)
     {
-        fp->status_vars.common.escape.itemthrow_buffer_tics--;
+        ftStatusVarsEscape(fp)->itemthrow_buffer_tics--;
     }
     return FALSE;
 }

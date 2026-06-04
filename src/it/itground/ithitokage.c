@@ -6,6 +6,14 @@
 #ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netrollbacksnapshot.h>
+#include <sys/netrollback.h>
+static void itHitokageFlameNoteParticlesEmitted(WPStruct *wp);
+#else
+extern void *func_800269C0_275C0(u16 id);
+
+#endif
 
 extern s32 dGRYamabukiMonsterAttackKind;
 
@@ -241,6 +249,9 @@ sb32 itHitokageWeaponFlameProcUpdate(GObj *weapon_gobj)
 {
     WPStruct *wp = wpGetStruct(weapon_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    itHitokageFlameWeaponSyncPresentation(weapon_gobj);
+#endif
     if (wpMainDecLifeCheckExpire(wp) != FALSE)
     {
         return TRUE;
@@ -285,6 +296,9 @@ sb32 itHitokageWeaponFlameProcReflector(GObj *weapon_gobj)
     lbParticleMakePosVel(gITManagerParticleBankID | LBPARTICLE_MASK_GENLINK(0), 2, translate->x, translate->y, 0.0F, wp->physics.vel_air.x, wp->physics.vel_air.y, 0.0F);
     lbParticleMakePosVel(gITManagerParticleBankID | LBPARTICLE_MASK_GENLINK(0), 0, translate->x, translate->y, 0.0F, wp->physics.vel_air.x, wp->physics.vel_air.y, 0.0F);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    itHitokageFlameNoteParticlesEmitted(wp);
+#endif
     return FALSE;
 }
 
@@ -309,6 +323,9 @@ GObj* itHitokageWeaponFlameMakeWeapon(GObj *item_gobj, Vec3f *pos, Vec3f *vel)
     lbParticleMakePosVel(gITManagerParticleBankID | LBPARTICLE_MASK_GENLINK(0), 2, pos->x, pos->y, 0.0F, wp->physics.vel_air.x, wp->physics.vel_air.y, 0.0F);
     lbParticleMakePosVel(gITManagerParticleBankID | LBPARTICLE_MASK_GENLINK(0), 0, pos->x, pos->y, 0.0F, wp->physics.vel_air.x, wp->physics.vel_air.y, 0.0F);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    itHitokageFlameNoteParticlesEmitted(wp);
+#endif
     return weapon_gobj;
 }
 
@@ -326,3 +343,134 @@ void itHitokageCommonMakeFlame(GObj *item_gobj, Vec3f *pos)
 
     func_800269C0_275C0(nSYAudioFGMLizardonFlame);
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+/*
+ * PORT rollback support: re-emit a tower-monster flame's visible particles at its current pose.
+ *
+ * The flame weapon (nWPKindHitokageFlame; nWPKindLizardonFlame uses the byte-identical spawn) is
+ * collision-only — its WPDesc render flags are 0x00 and the entire visible fire is lbParticles created
+ * ONCE at weapon spawn (itHitokageWeaponFlameMakeWeapon). Every rollback load wipes all particles
+ * (syNetRbSnapResetParticlesForRollback -> lbParticleEjectStructAll/GeneratorAll) and nothing re-emits
+ * them, so after the first rollback the flame keeps hitting fighters (the weapon GObj survives) while
+ * rendering nothing. The snapshot repair calls this per live flame weapon to restore the visual.
+ * Determinism-safe: lbParticle uses the cosmetic RNG (lbparticle.c) and particles are not in any rollback
+ * hash, so this is pure presentation.
+ */
+#define ITHITOKAGE_FLAME_EMIT_TRACK_MAX 64
+
+typedef struct ITHitokageFlameEmitTrack
+{
+    u32 instance_id;
+    u32 particle_emit_gen;
+} ITHitokageFlameEmitTrack;
+
+static ITHitokageFlameEmitTrack sITHitokageFlameEmitTrack[ITHITOKAGE_FLAME_EMIT_TRACK_MAX];
+
+static u32 *itHitokageFlameLookupEmitGen(u32 instance_id)
+{
+    u32 i;
+    u32 free_slot;
+
+    if (instance_id == 0U)
+    {
+        return NULL;
+    }
+    free_slot = ITHITOKAGE_FLAME_EMIT_TRACK_MAX;
+    for (i = 0; i < ITHITOKAGE_FLAME_EMIT_TRACK_MAX; i++)
+    {
+        if (sITHitokageFlameEmitTrack[i].instance_id == instance_id)
+        {
+            return &sITHitokageFlameEmitTrack[i].particle_emit_gen;
+        }
+        if ((free_slot == ITHITOKAGE_FLAME_EMIT_TRACK_MAX) &&
+            (sITHitokageFlameEmitTrack[i].instance_id == 0U))
+        {
+            free_slot = i;
+        }
+    }
+    if (free_slot >= ITHITOKAGE_FLAME_EMIT_TRACK_MAX)
+    {
+        return NULL;
+    }
+    sITHitokageFlameEmitTrack[free_slot].instance_id = instance_id;
+    sITHitokageFlameEmitTrack[free_slot].particle_emit_gen = 0U;
+    return &sITHitokageFlameEmitTrack[free_slot].particle_emit_gen;
+}
+
+static void itHitokageFlameNoteParticlesEmitted(WPStruct *wp)
+{
+    u32 *emit_gen;
+
+    if (wp == NULL)
+    {
+        return;
+    }
+    emit_gen = itHitokageFlameLookupEmitGen(wp->instance_id);
+    if (emit_gen != NULL)
+    {
+        *emit_gen = syNetRbSnapGetParticleResetGeneration();
+    }
+}
+
+void itHitokageReemitFlameParticles(GObj *weapon_gobj)
+{
+    WPStruct *wp;
+    DObj *dobj;
+    Vec3f *translate;
+
+    if (weapon_gobj == NULL)
+    {
+        return;
+    }
+    wp = wpGetStruct(weapon_gobj);
+    dobj = DObjGetStruct(weapon_gobj);
+    if ((wp == NULL) || (dobj == NULL))
+    {
+        return;
+    }
+    translate = &dobj->translate.vec.f;
+    lbParticleMakePosVel(gITManagerParticleBankID | LBPARTICLE_MASK_GENLINK(0), 2, translate->x, translate->y, 0.0F, wp->physics.vel_air.x, wp->physics.vel_air.y, 0.0F);
+    lbParticleMakePosVel(gITManagerParticleBankID | LBPARTICLE_MASK_GENLINK(0), 0, translate->x, translate->y, 0.0F, wp->physics.vel_air.x, wp->physics.vel_air.y, 0.0F);
+    itHitokageFlameNoteParticlesEmitted(wp);
+}
+
+void itHitokageFlameWeaponSyncPresentation(GObj *weapon_gobj)
+{
+    WPStruct *wp;
+    u32 current_gen;
+    u32 *last_emit_gen;
+    s32 flame_age;
+
+    if (weapon_gobj == NULL)
+    {
+        return;
+    }
+    wp = wpGetStruct(weapon_gobj);
+    if (wp == NULL)
+    {
+        return;
+    }
+    current_gen = syNetRbSnapGetParticleResetGeneration();
+    last_emit_gen = itHitokageFlameLookupEmitGen(wp->instance_id);
+    if ((last_emit_gen != NULL) && (current_gen != *last_emit_gen))
+    {
+        itHitokageReemitFlameParticles(weapon_gobj);
+        return;
+    }
+    /*
+     * Load-time EnsureMonsterFlame re-emits once, then resim can run many ticks before the next
+     * rendered frame — particles expire (~20 ticks) while the weapon hitbox keeps simming. Refresh
+     * on the spawn cadence during resim only (forward play still gets one burst per weapon spawn).
+     */
+    if (syNetRollbackIsResimulating() != FALSE)
+    {
+        flame_age = ITHITOKAGE_FLAME_LIFETIME - wp->lifetime;
+        if ((flame_age > 0) && ((flame_age % ITHITOKAGE_FLAME_SPAWN_WAIT) == 0))
+        {
+            itHitokageReemitFlameParticles(weapon_gobj);
+        }
+    }
+}
+
+#endif

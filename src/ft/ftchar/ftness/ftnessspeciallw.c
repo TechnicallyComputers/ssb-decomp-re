@@ -1,6 +1,14 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
 #include <reloc_data.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+/*
+ * Netplay rollback forward-sim: canonicalize PK Magnet / absorb sim on F32 grid.
+ * syNetplayCanonicalizeNessSpecialLwSimState no-ops offline.
+ */
+
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -172,6 +180,12 @@ void ftNessSpecialLwHoldProcUpdate(GObj *fighter_gobj)
 
     ftNessSpecialLw_UpdateReleaseLag(fighter_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: canonicalize absorb/magnet sim state. */
+    syNetplayCanonicalizeNessSpecialLwSimState(fighter_gobj);
+
+#endif
+
     if ((fp->status_vars.ness.speciallw.release_lag <= 0) && (fp->status_vars.ness.speciallw.is_release != FALSE))
     {
         ftNessSpecialLwEndSetStatus(fighter_gobj);
@@ -184,6 +198,12 @@ void ftNessSpecialAirLwHoldProcUpdate(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     ftNessSpecialLw_UpdateReleaseLag(fighter_gobj);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: canonicalize absorb/magnet sim state. */
+    syNetplayCanonicalizeNessSpecialLwSimState(fighter_gobj);
+
+#endif
 
     if ((fp->status_vars.ness.speciallw.release_lag <= 0) && (fp->status_vars.ness.speciallw.is_release != FALSE))
     {
@@ -270,6 +290,12 @@ void ftNessSpecialLwHitProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: canonicalize absorb/magnet sim state. */
+    syNetplayCanonicalizeNessSpecialLwSimState(fighter_gobj);
+
+#endif
+
     if (fp->motion_vars.flags.flag1 != 0)
     {
         ftNessSpecialLwHoldSetStatus(fighter_gobj);
@@ -280,6 +306,12 @@ void ftNessSpecialLwHitProcUpdate(GObj *fighter_gobj)
 void ftNessSpecialAirLwHitProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: canonicalize absorb/magnet sim state. */
+    syNetplayCanonicalizeNessSpecialLwSimState(fighter_gobj);
+
+#endif
 
     if (fp->motion_vars.flags.flag1 != 0)
     {

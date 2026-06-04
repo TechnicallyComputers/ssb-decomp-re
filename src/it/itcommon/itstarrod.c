@@ -4,8 +4,11 @@
 #include <reloc_data.h>
 #ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
-#include <sys/netrollbacksnapshot.h>
 #include <wp/wpdef.h>
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
 #endif
 
 // // // // // // // // // // // //
@@ -416,11 +419,14 @@ void itStarRodMakeStar(GObj *fighter_gobj, Vec3f *pos, ub8 is_smash)
 {
     ITStruct *ip = itGetStruct(ftGetStruct(fighter_gobj)->item_gobj);
 
-#ifdef PORT
-    if (syNetRbSnapHeldItemWeaponNeedsSpawn(fighter_gobj, nWPKindStarRodStar, pos, NULL) == FALSE)
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: suppress duplicate star spawn after snapshot restore. */
+    if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+        (syNetRbSnapHeldItemWeaponNeedsSpawn(fighter_gobj, nWPKindStarRodStar, pos, NULL) == FALSE))
     {
         return;
     }
+
 #endif
     itStarRodWeaponStarMakeWeapon(fighter_gobj, pos, is_smash);
 

@@ -6,9 +6,13 @@
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
 extern void port_dump_backtrace(void);
-#if defined(SSB64_NETMENU)
-#include <sys/netfighterphase.h>
+#include <stdio.h>
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netfighterphase.h>
+#include <sys/netplay_sim_quantize.h>
+#include <sys/net_debug_agent_log.h>
+#include <sys/netinput.h>
 #endif
 #include <sys/controller.h>
 
@@ -550,7 +554,7 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
             p_damage = (FTMotionDamageScript*)PORT_RESOLVE(ftMotionEventCast(ms, FTMotionEventSetDamageThrown2)->p_subroutine);
 
             {
-                u32 script_token = p_damage->p_script[fp->status_vars.common.damage.script_id][fkind];
+                u32 script_token = p_damage->p_script[ftStatusVarsDamage(fp)->script_id][fkind];
                 if (script_token != 0)
                 {
                     ms->p_goto[ms->script_id] = lbRelocGetFileData(void*, ms->p_script, sizeof(FTMotionEventSetDamageThrown2));
@@ -564,13 +568,13 @@ void ftMainParseMotionEvent(GObj *fighter_gobj, FTStruct *fp, FTMotionScript *ms
 #else
             p_damage = ftMotionEventCast(ms, FTMotionEventSetDamageThrown2)->p_subroutine;
 
-            if (p_damage->p_script[fp->status_vars.common.damage.script_id][fkind] != NULL)
+            if (p_damage->p_script[ftStatusVarsDamage(fp)->script_id][fkind] != NULL)
             {
                 ms->p_goto[ms->script_id] = lbRelocGetFileData(void*, ms->p_script, sizeof(FTMotionEventSetDamageThrown2));
 
                 ms->script_id++;
 
-                ms->p_script = p_damage->p_script[fp->status_vars.common.damage.script_id][fkind];
+                ms->p_script = p_damage->p_script[ftStatusVarsDamage(fp)->script_id][fkind];
             }
             else ftMotionEventAdvance(ms, FTMotionEventSetDamageThrown2);
 #endif
@@ -1306,6 +1310,8 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
 #if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay diagnostics only: fighter-phase trace hooks (no-op when tracing disabled). */
     syNetFighterPhaseOnInterruptVeryStart(fighter_gobj);
 #endif
     FTStruct *other_fp;
@@ -1339,6 +1345,20 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
         {
         case nFTPlayerKindMan:
             controller = this_fp->input.controller;
+#ifdef PORT
+            if (controller == NULL)
+            {
+                if ((this_fp->player >= 0) && (this_fp->player < MAXCONTROLLERS))
+                {
+                    controller = &gSYControllerDevices[this_fp->player];
+                    this_fp->input.controller = controller;
+                }
+                else
+                {
+                    break;
+                }
+            }
+#endif
             button_hold = controller->button_hold;
 
             if (button_hold & R_TRIG)
@@ -1568,10 +1588,26 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             ftParamResetStatUpdateColAnim(fighter_gobj);
         }
     }
+#ifdef PORT
+    if ((this_fp->item_gobj != NULL) && (this_fp->status_id != nFTCommonStatusLightGet))
+    {
+        ITStruct *item_ip = itGetStruct(this_fp->item_gobj);
+
+        if (item_ip == NULL)
+        {
+            this_fp->item_gobj = NULL;
+        }
+        else if (item_ip->kind == nITKindHammer)
+        {
+            ftHammerUpdateStats(fighter_gobj);
+        }
+    }
+#else
     if ((this_fp->item_gobj != NULL) && (this_fp->status_id != nFTCommonStatusLightGet) && (itGetStruct(this_fp->item_gobj)->kind == nITKindHammer))
     {
         ftHammerUpdateStats(fighter_gobj);
     }
+#endif
     if (this_fp->shuffle_tics != 0)
     {
         this_fp->shuffle_tics--;
@@ -1714,12 +1750,69 @@ void ftMainClearGroundObstacle(GObj *gobj)
         if (sFTMainGroundObstacles[i].gobj == gobj)
         {
             sFTMainGroundObstacles[i].gobj = NULL;
+            sFTMainGroundObstacles[i].proc_update = NULL;
             sFTMainGroundObstaclesNum--;
 
             break;
         }
     }
 }
+
+#ifdef PORT
+/*
+ * Hyrule twister repair only has two ground-obstacle slots. Rollback orphan eject can leave stale
+ * entries pointing at freed GObjs, so ftMainCheckAddGroundObstacle fails even after Clear.
+ */
+void ftMainPurgeStaleGroundObstacles(void)
+{
+    s32 i;
+
+    for (i = 0; i < ARRAY_COUNT(sFTMainGroundObstacles); i++)
+    {
+        GObj *slot_gobj = sFTMainGroundObstacles[i].gobj;
+
+        if (slot_gobj == NULL)
+        {
+            continue;
+        }
+        if ((slot_gobj->obj_kind != nGCCommonKindGround) || (DObjGetStruct(slot_gobj) == NULL))
+        {
+            sFTMainGroundObstacles[i].gobj = NULL;
+            sFTMainGroundObstacles[i].proc_update = NULL;
+            if (sFTMainGroundObstaclesNum > 0)
+            {
+                sFTMainGroundObstaclesNum--;
+            }
+        }
+    }
+}
+
+sb32 ftMainEnsureGroundObstacle(GObj *gobj, sb32 (*proc_update)(GObj*, GObj*, s32*))
+{
+    s32 i;
+
+    if ((gobj == NULL) || (proc_update == NULL))
+    {
+        return FALSE;
+    }
+    ftMainPurgeStaleGroundObstacles();
+    for (i = 0; i < ARRAY_COUNT(sFTMainGroundObstacles); i++)
+    {
+        if (sFTMainGroundObstacles[i].gobj == gobj)
+        {
+            sFTMainGroundObstacles[i].proc_update = proc_update;
+            return TRUE;
+        }
+    }
+    ftMainClearGroundObstacle(gobj);
+    return ftMainCheckAddGroundObstacle(gobj, proc_update);
+}
+
+s32 ftMainGroundObstacleSlotsUsed(void)
+{
+    return sFTMainGroundObstaclesNum;
+}
+#endif
 
 // 0x800E1DE8
 sb32 ftMainCheckAddGroundHazard(GObj *gobj, sb32(*proc_update)(GObj*, GObj*, GRAttackColl**, s32*))
@@ -1764,7 +1857,13 @@ void ftMainSetHitHazard(GObj *gobj, GObj *fighter_gobj, FTStruct *fp, s32 kind)
     switch (kind)
     {
     case nGMHitEnvironmentTwister:
-        ftCommonTwisterSetStatus(fighter_gobj, gobj);
+#ifdef PORT
+        if ((fp != NULL) && (fp->attr != NULL) && (fp->data != NULL) && (gobj != NULL) &&
+            (DObjGetStruct(gobj) != NULL) && (DObjGetStruct(fighter_gobj) != NULL))
+#endif
+        {
+            ftCommonTwisterSetStatus(fighter_gobj, gobj);
+        }
         break;
 
     case nGMHitEnvironmentTaruCann:
@@ -1968,6 +2067,11 @@ void ftMainProcPhysicsMap(GObj *fighter_gobj)
         case nGMAttackStateNew:
             attack_coll->pos_curr = attack_coll->offset;
 
+            if ((attack_coll->joint == NULL) || (attack_coll->joint->parent_gobj == NULL))
+            {
+                attack_coll->attack_state = nGMAttackStateOff;
+                break;
+            }
             if (attack_coll->is_scale_pos)
             {
                 size_mul = 1.0F / fp->attr->size;
@@ -1977,6 +2081,11 @@ void ftMainProcPhysicsMap(GObj *fighter_gobj)
                 attack_coll->pos_curr.z *= size_mul;
             }
             gmCollisionGetFighterPartsWorldPosition(attack_coll->joint, &attack_coll->pos_curr);
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+            /* Netplay rollback only: attack coll quantize (no-op unless syNetplaySimQuantizeActive()). */
+            syNetplayQuantizeFTAttackColl(attack_coll);
+#endif
 
             attack_coll->attack_state = nGMAttackStateTransfer;
 
@@ -1993,6 +2102,11 @@ void ftMainProcPhysicsMap(GObj *fighter_gobj)
             attack_coll->pos_prev = attack_coll->pos_curr;
             attack_coll->pos_curr = attack_coll->offset;
 
+            if ((attack_coll->joint == NULL) || (attack_coll->joint->parent_gobj == NULL))
+            {
+                attack_coll->attack_state = nGMAttackStateOff;
+                break;
+            }
             if (attack_coll->is_scale_pos)
             {
                 size_mul = 1.0F / fp->attr->size;
@@ -2002,6 +2116,11 @@ void ftMainProcPhysicsMap(GObj *fighter_gobj)
                 attack_coll->pos_curr.z *= size_mul;
             }
             gmCollisionGetFighterPartsWorldPosition(attack_coll->joint, &attack_coll->pos_curr);
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+            /* Netplay rollback only: attack coll quantize (no-op unless syNetplaySimQuantizeActive()). */
+            syNetplayQuantizeFTAttackColl(attack_coll);
+#endif
 
             attack_coll->attack_matrix.unk_fthitmtx_0x0 = FALSE;
             attack_coll->attack_matrix.unk_fthitmtx_0x44 = 0.0F;
@@ -4146,7 +4265,19 @@ void ftMainProcParams(GObj *fighter_gobj)
             break;
 
         case TRUE:
+#ifdef PORT
+            if ((fp->item_gobj != NULL) && (fp->is_item_show))
+            {
+                ITStruct *item_ip = itGetStruct(fp->item_gobj);
+
+                if (item_ip == NULL)
+                {
+                    fp->item_gobj = NULL;
+                }
+                else if (item_ip->kind == nITKindSword)
+#else
             if ((fp->item_gobj != NULL) && (fp->is_item_show) && (itGetStruct(fp->item_gobj)->kind == nITKindSword))
+#endif
             {
                 s32 unused;
                 Mtx44f mtx;
@@ -4173,6 +4304,9 @@ void ftMainProcParams(GObj *fighter_gobj)
                     fp->afterimage.drawstatus++;
                 }
             }
+#ifdef PORT
+            }
+#endif
             break;
         }
     }
@@ -5011,6 +5145,13 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     else for (i = 0; i < ARRAY_COUNT(fp->motion_scripts[0]); i++)
     {
         fp->motion_scripts[0][i].p_script = fp->motion_scripts[1][i].p_script = NULL;
+    }
+    if ((fp->pkind != nFTPlayerKindDemo) && (fp->joints[nFTPartsJointTopN] != NULL) &&
+        ((fp->lr == +1) || (fp->lr == -1)) && (status_struct != NULL) &&
+        (status_struct[status_struct_id].proc_physics == ftCommonWaitProcPhysics))
+    {
+        /* Re-apply after figatree attach on Wait entry only — Appear anims own TopN yaw until finish. */
+        fp->joints[nFTPartsJointTopN]->rotate.vec.f.y = fp->lr * F_CLC_DTOR32(90.0F);
     }
     if (fp->pkind != nFTPlayerKindDemo)
     {

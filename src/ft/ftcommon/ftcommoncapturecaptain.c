@@ -36,11 +36,11 @@ void ftCommonCaptureCaptainProcPhysics(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
 
-    if (fp->status_vars.common.capturecaptain.capture_flag & FTCOMMON_CAPTURECAPTAIN_MASK_THROW)
+    if (ftStatusVarsCaptureCaptain(fp)->capture_flag & FTCOMMON_CAPTURECAPTAIN_MASK_THROW)
     {
         ftCommonCaptureCaptainRelease(fighter_gobj);
     }
-    else if (!(fp->status_vars.common.capturecaptain.capture_flag & FTCOMMON_CAPTURECAPTAIN_MASK_NOUPDATE))
+    else if (!(ftStatusVarsCaptureCaptain(fp)->capture_flag & FTCOMMON_CAPTURECAPTAIN_MASK_NOUPDATE))
     {
         ftCommonCaptureCaptainUpdatePositions(fp->capture_gobj, fighter_gobj, &pos);
 
@@ -77,11 +77,11 @@ void ftCommonCaptureCaptainProcCapture(GObj *fighter_gobj, GObj *capture_gobj)
 
     this_fp->lr = -capture_fp->lr;
 
-    this_fp->status_vars.common.capturecaptain.capture_flag = 0;
+    ftStatusVarsCaptureCaptain(this_fp)->capture_flag = 0;
 
     if (this_fp->ga != nMPKineticsAir)
     {
-        this_fp->status_vars.common.capturecaptain.capture_flag |= FTCOMMON_CAPTURECAPTAIN_MASK_NOUPDATE;
+        ftStatusVarsCaptureCaptain(this_fp)->capture_flag |= FTCOMMON_CAPTURECAPTAIN_MASK_NOUPDATE;
         this_fp->is_catch_or_capture = TRUE;
     }
     else this_fp->is_catch_or_capture = FALSE;

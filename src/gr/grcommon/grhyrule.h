@@ -11,8 +11,21 @@ extern intptr_t lGRHyruleParticleScriptBankHi;            // 0x00B1FC80
 extern intptr_t lGRHyruleParticleTextureBankLo;           // 0x00B1FC80
 extern intptr_t lGRHyruleParticleTextureBankHi;           // 0x00B22980
 
+enum grHyruleTwisterStatus
+{
+	nGRHyruleTwisterStatusSleep,
+	nGRHyruleTwisterStatusWait,
+	nGRHyruleTwisterStatusSummon,
+	nGRHyruleTwisterStatusMove,
+	nGRHyruleTwisterStatusTurn,
+	nGRHyruleTwisterStatusStop,
+	nGRHyruleTwisterStatusSubside
+};
+
 extern LBParticle* grHyruleTwisterMakeEffect(Vec3f *pos, s32 effect_id);
 extern GObj* grHyruleMakeTwister(Vec3f *pos);
+extern GObj *grHyruleGetTwisterGobj(void);
+extern sb32 grHyruleTwisterRestorePoseFromPos(GObj *twister_gobj, Vec3f *pos);
 extern void grHyruleTwisterUpdateSleep(void);
 extern void grHyruleTwisterUpdateWait(void);
 extern void grHyruleTwisterUpdateSummon(void);

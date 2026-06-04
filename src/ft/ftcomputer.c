@@ -5111,7 +5111,7 @@ void ftComputerFollowObjectiveWalk(FTStruct *fp)
                             (fp->status_id == nFTCommonStatusDamageFlyRoll)
                         )
                         {
-                            if (fp->status_vars.common.damage.hitstun_tics == 0)
+                            if (ftStatusVarsDamage(fp)->hitstun_tics == 0)
                             {
                                 ftComputerSetCommandImmediate(fp, nFTComputerInputMoveAutoStickTiltHiReleaseZ);
                                 return;
@@ -5944,9 +5944,9 @@ s32 ftComputerGetObjectiveStatus(GObj *this_gobj)
 
     if (this_fp->status_id == nFTCommonStatusCliffWait)
     {
-        action_wait = (this_fp->status_vars.common.cliffwait.fall_wait > 480) ?
-                      (1080- this_fp->status_vars.common.cliffwait.fall_wait) :
-                      (480 - this_fp->status_vars.common.cliffwait.fall_wait) ;
+        action_wait = (ftStatusVarsCliffWait(this_fp)->fall_wait > 480) ?
+                      (1080- ftStatusVarsCliffWait(this_fp)->fall_wait) :
+                      (480 - ftStatusVarsCliffWait(this_fp)->fall_wait) ;
 
         if (syUtilsRandFloat() < 0.01F)
         {
@@ -5973,7 +5973,7 @@ s32 ftComputerGetObjectiveStatus(GObj *this_gobj)
     }
     if ((this_fp->status_id == nFTCommonStatusDownWaitD) || (this_fp->status_id == nFTCommonStatusDownWaitU))
     {
-        action_wait = 180 - this_fp->status_vars.common.downwait.stand_wait;
+        action_wait = 180 - ftStatusVarsDownWait(this_fp)->stand_wait;
 
         if (((FTCOMPUTER_LEVEL_MAX - this_fp->level) * 25) < action_wait)
         {

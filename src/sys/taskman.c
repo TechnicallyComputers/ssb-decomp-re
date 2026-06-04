@@ -16,7 +16,15 @@
 
 #ifdef PORT
 #include <stdlib.h>
+#include <string.h>
 extern void port_log(const char *fmt, ...);
+#include <gr/ground.h>
+#if defined(SSB64_NETMENU)
+#include "gameloop.h"
+#include <sc/sccommon/scvsbattle.h>
+#include <sc/sctypes.h>
+extern SCCommonData gSCManagerSceneData;
+#endif
 #endif
 
 #include <PR/mbi.h>
@@ -26,6 +34,10 @@ extern void port_log(const char *fmt, ...);
 #ifdef PORT
 #include "port_log.h"
 #include "port_scene_heap.h"
+#if defined(SSB64_NETMENU)
+#include <sys/netpeer.h>
+#include <sys/netinput.h>
+#endif
 _Static_assert(sizeof(uintptr_t) == 8, "PORT build requires 64-bit uintptr_t");
 #endif
 
@@ -1007,6 +1019,14 @@ void func_80005D10()
 	}
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* GGPO + tick-grid alignment: never spin task_update-only on the barrier (always FREEZE=0). */
+static sb32 syTaskmanShouldFreezeForNetBarrier(void)
+{
+	return FALSE;
+}
+#endif
+
 // 0x80005DA0
 void syTaskmanRunTask(SYTaskFunction *tfunc)
 {
@@ -1049,6 +1069,13 @@ void syTaskmanRunTask(SYTaskFunction *tfunc)
 			{
 				continue;
 			}
+#if defined(PORT) && defined(SSB64_NETMENU)
+			if (syTaskmanShouldFreezeForNetBarrier() != FALSE)
+			{
+				syNetPeerUpdateBattleGate();
+				continue;
+			}
+#endif
 			sSYTaskmanTimeStart = osGetCount();
 
 			tfunc->task_update(tfunc);
@@ -1083,6 +1110,27 @@ void syTaskmanRunTask(SYTaskFunction *tfunc)
 		syMainVerifyStackProbes();
 
 #ifdef PORT
+#if defined(SSB64_NETMENU)
+		{
+			const char *dbg_tm;
+
+			dbg_tm = getenv("SSB64_NETPLAY_TASKMAN_DEBUG");
+			if ((dbg_tm != NULL) && (dbg_tm[0] != '\0') && (strtol(dbg_tm, NULL, 10) != 0))
+			{
+				static s32 sTaskmanTickWaitLogCount = 0;
+
+				if (sTaskmanTickWaitLogCount < 5)
+				{
+					port_log("SSB64: syTaskmanRunTask — waiting for game tick (mq=%p cap=%d valid=%d) loop=%d\n",
+					         (void *)&sSYTaskmanGameTicMesgQueue,
+					         (int)sSYTaskmanGameTicMesgQueue.msgCount,
+					         (int)sSYTaskmanGameTicMesgQueue.validCount,
+					         (int)sTaskmanTickWaitLogCount);
+					sTaskmanTickWaitLogCount++;
+				}
+			}
+		}
+#else
 		{
 			static s32 sTaskmanLoopCount = 0;
 			if (sTaskmanLoopCount < 5) {
@@ -1095,6 +1143,7 @@ void syTaskmanRunTask(SYTaskFunction *tfunc)
 			sTaskmanLoopCount++;
 		}
 #endif
+#endif
 		for (i = 0; i < sSYTaskmanUpdateInterval; i++)
 		{
 			osRecvMesg(&sSYTaskmanGameTicMesgQueue, NULL, OS_MESG_BLOCK);
@@ -1103,6 +1152,13 @@ void syTaskmanRunTask(SYTaskFunction *tfunc)
 		{
 			continue;
 		}
+#if defined(PORT) && defined(SSB64_NETMENU)
+		if (syTaskmanShouldFreezeForNetBarrier() != FALSE)
+		{
+			syNetPeerUpdateBattleGate();
+			continue;
+		}
+#endif
 		sSYTaskmanTimeStart = osGetCount();
 
 		tfunc->task_update(tfunc);
@@ -1151,7 +1207,16 @@ void syTaskmanRunTask(SYTaskFunction *tfunc)
 void func_800062B4(SYTaskFunction *tfunc)
 {
 	sSYTaskmanFuncController();
-	tfunc->scene_update();
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (syNetInputTakeSuppressSceneUpdate() != FALSE)
+	{
+		scVSBattleFuncUpdateSkewPacingNetSlice();
+	}
+	else
+#endif
+	{
+		tfunc->scene_update();
+	}
 }
 
 // 0x800062EC
@@ -1171,11 +1236,24 @@ void func_800062EC(SYTaskFunction *tfunc)
 void syTaskmanCommonTaskUpdate(SYTaskFunction *tfunc)
 {
 	sSYTaskmanFuncController();
-	tfunc->scene_update();
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (syNetInputTakeSuppressSceneUpdate() != FALSE)
+	{
+		scVSBattleFuncUpdateSkewPacingNetSlice();
+	}
+	else
+#endif
+	{
+		tfunc->scene_update();
+	}
 
 	if (syTaskmanCheckBreakLoop() != FALSE)
 	{
 		gcEjectAll();
+#ifdef PORT
+		/* Union overlay: cached per-stage *_gobj slots share memory (see scManagerRunLoop). */
+		memset(&gGRCommonStruct, 0, sizeof(gGRCommonStruct));
+#endif
 	}
 }
 
@@ -1194,6 +1272,9 @@ void syTaskmanCommonTaskDraw(SYTaskFunction *tfunc)
 	if (syTaskmanCheckBreakLoop() != FALSE)
 	{
 		gcEjectAll();
+#ifdef PORT
+		memset(&gGRCommonStruct, 0, sizeof(gGRCommonStruct));
+#endif
 	}
 }
 
@@ -1288,6 +1369,16 @@ void syTaskmanLoadScene(SYTaskmanSceneSetup *tscene, void (*func_start)(void))
 	dSYTaskmanUpdateCount = dSYTaskmanFrameCount = 0;
 
 #ifdef PORT
+	/* Automatch staging→VS and other taskman scene loads skip scManagerRunLoop's union zero. */
+	memset(&gGRCommonStruct, 0, sizeof(gGRCommonStruct));
+#if defined(SSB64_NETMENU)
+	/* Align PortPushFrame index with the VS battle taskman epoch (not barrier release,
+	 * which can differ per peer and used to zero push/taskman mid-go). */
+	if ((u32)gSCManagerSceneData.scene_curr == (u32)nSCKindVSBattle)
+	{
+		port_reset_push_frame_count_for_net_barrier();
+	}
+#endif
 	port_log("SSB64: syTaskmanLoadScene — about to call func_start=%p\n", (void *)func_start);
 #endif
 	if (func_start != NULL)
@@ -1357,6 +1448,9 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 	}
 #endif
 	syTaskmanInitGeneralHeap(tsetup->scene_setup.arena_start, tsetup->scene_setup.arena_size);
+#ifdef PORT
+	port_log("SSB64: syTaskmanStartTask — heap init done\n");
+#endif
 
 	gcsetup.gobjthreads = syTaskmanMalloc(sizeof(GObjThread) * tsetup->gobjthreads_num, 0x8);
 	gcsetup.gobjthreads_num = tsetup->gobjthreads_num;

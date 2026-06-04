@@ -21,26 +21,26 @@ void ftCommonCatchProcUpdate(GObj *fighter_gobj)
         _d ? _d->anim_speed : -999.0F,
         _d ? _d->anim_wait : -999.0F,
         _d ? _d->anim_frame : -999.0F,
-        fp->status_vars.common.catchmain.catch_pull_frame_begin,
-        fp->status_vars.common.catchmain.catch_pull_anim_frames,
+        ftStatusVarsCatchMain(fp)->catch_pull_frame_begin,
+        ftStatusVarsCatchMain(fp)->catch_pull_anim_frames,
         (unsigned)fp->motion_vars.flags.flag1,
         (unsigned)fp->motion_vars.flags.flag2);
 #endif
 
-    if (fp->status_vars.common.catchmain.catch_pull_frame_begin > 0.0F)
+    if (ftStatusVarsCatchMain(fp)->catch_pull_frame_begin > 0.0F)
     {
-        fp->status_vars.common.catchmain.catch_pull_frame_begin -= fp->status_vars.common.catchmain.catch_pull_anim_frames;
+        ftStatusVarsCatchMain(fp)->catch_pull_frame_begin -= ftStatusVarsCatchMain(fp)->catch_pull_anim_frames;
 
-        if (fp->status_vars.common.catchmain.catch_pull_frame_begin <= 0.0F)
+        if (ftStatusVarsCatchMain(fp)->catch_pull_frame_begin <= 0.0F)
         {
-            fp->status_vars.common.catchmain.catch_pull_frame_begin = 0.0F;
+            ftStatusVarsCatchMain(fp)->catch_pull_frame_begin = 0.0F;
         }
     }
     if (fp->motion_vars.flags.flag2 != 0)
     {
-        fp->status_vars.common.catchmain.catch_pull_frame_begin = fp->motion_vars.flags.flag2;
+        ftStatusVarsCatchMain(fp)->catch_pull_frame_begin = fp->motion_vars.flags.flag2;
 
-        fp->status_vars.common.catchmain.catch_pull_anim_frames = fp->status_vars.common.catchmain.catch_pull_frame_begin / fp->motion_vars.flags.flag1;
+        ftStatusVarsCatchMain(fp)->catch_pull_anim_frames = ftStatusVarsCatchMain(fp)->catch_pull_frame_begin / fp->motion_vars.flags.flag1;
 
         fp->motion_vars.flags.flag2 = 0;
     }
@@ -104,8 +104,8 @@ void ftCommonCatchSetStatus(GObj *fighter_gobj)
     fp->motion_vars.flags.flag1 = 1;
     fp->motion_vars.flags.flag2 = 0;
 
-    fp->status_vars.common.catchmain.catch_pull_anim_frames = 0.0F;
-    fp->status_vars.common.catchmain.catch_pull_frame_begin = 0.0F;
+    ftStatusVarsCatchMain(fp)->catch_pull_anim_frames = 0.0F;
+    ftStatusVarsCatchMain(fp)->catch_pull_frame_begin = 0.0F;
 
     ftParamSetCatchParams(fp, FTCATCHKIND_MASK_COMMON, ftCommonCatchPullProcCatch, ftCommonCapturePulledProcCapture);
 
@@ -122,7 +122,7 @@ sb32 ftCommonCatchCheckInterruptGuard(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     FTAttributes *attr = fp->attr;
-    sb32 is_shield_catch = fp->status_vars.common.guard.is_setoff;
+    sb32 is_shield_catch = ftStatusVarsGuard(fp)->is_setoff;
 
     if ((fp->input.pl.button_tap & fp->input.button_mask_a) && (attr->is_have_catch))
     {

@@ -7,7 +7,9 @@
 #include <reloc_data.h>
 
 #ifdef PORT
+#include <stdlib.h>
 #include <config.h>
+#include <string.h>
 #include <sys/debug.h>
 extern void *func_800269C0_275C0(u16 id);
 extern void portFixupStructU16(void *base, unsigned int byte_offset, unsigned int num_words);
@@ -137,12 +139,28 @@ ITAppearActor gITManagerAppearActor;
 //                               //
 // // // // // // // // // // // //
 
+static void itManagerResetSpawnPolicyGlobals(void)
+{
+	gITManagerAppearActor.mapobjs_num = 0;
+	gITManagerAppearActor.mapobjs = NULL;
+	gITManagerAppearActor.spawn_wait = 0;
+	gITManagerAppearActor.weights.valids_num = 0;
+	gITManagerAppearActor.weights.kinds = NULL;
+	gITManagerAppearActor.weights.weights_sum = 0;
+	gITManagerAppearActor.weights.blocks = NULL;
+	gITManagerRandomWeights.valids_num = 0;
+	gITManagerRandomWeights.kinds = NULL;
+	gITManagerRandomWeights.weights_sum = 0;
+	gITManagerRandomWeights.blocks = NULL;
+}
+
 // 0x8016DEA0
 void itManagerInitItems(void) // Many linker things here
 {
     ITStruct *ip;
     s32 i;
 
+    itManagerResetSpawnPolicyGlobals();
     gITManagerStructsAllocFree = ip = syTaskmanMalloc(sizeof(ITStruct) * ITEM_ALLOC_MAX, 0x8);
 
     for (i = 0; i < (ITEM_ALLOC_MAX - 1); i++)
@@ -524,6 +542,39 @@ void itManagerSetItemSpawnWait(void)
     );
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 sITManagerMakeAppearActorDiagCache = -999;
+
+static sb32 itManagerMakeAppearActorDiagEnabled(void)
+{
+	const char *env;
+
+	if (sITManagerMakeAppearActorDiagCache != -999)
+	{
+		return (sITManagerMakeAppearActorDiagCache != 0) ? TRUE : FALSE;
+	}
+	env = getenv("SSB64_NETPLAY_WORLD_INIT_DIAG");
+	sITManagerMakeAppearActorDiagCache =
+	    ((env != NULL) && (env[0] != '\0') && (strcmp(env, "0") != 0)) ? 1 : 0;
+	return (sITManagerMakeAppearActorDiagCache != 0) ? TRUE : FALSE;
+}
+
+static void itManagerLogMakeAppearActorFail(const char *reason)
+{
+	if (itManagerMakeAppearActorDiagEnabled() == FALSE)
+	{
+		return;
+	}
+	port_log(
+	    "SSB64 ITManager: MakeAppearActor fail reason=%s rate=%u toggles=0x%08X item_weights_token=0x%08X mapobj_count=%d\n",
+	    reason,
+	    (gSCManagerBattleState != NULL) ? (unsigned int)gSCManagerBattleState->item_appearance_rate : 0U,
+	    (gSCManagerBattleState != NULL) ? (unsigned int)gSCManagerBattleState->item_toggles : 0U,
+	    (gMPCollisionGroundData != NULL) ? (unsigned int)gMPCollisionGroundData->item_weights : 0U,
+	    (gMPCollisionGroundData != NULL) ? mpCollisionGetMapObjCountKind(nMPMapObjKindItem) : 0);
+}
+#endif
+
 // 0x8016EB78
 void itManagerAppearActorProcUpdate(GObj *item_gobj)
 {
@@ -592,6 +643,9 @@ GObj* itManagerMakeAppearActor(void)
                 }
                 if (item_any_weights == 0)
                 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+                    itManagerLogMakeAppearActorFail("common_weights_zero");
+#endif
                     return NULL;
                 }
                 gITManagerAppearActor.weights.weights_sum = item_any_weights;
@@ -600,6 +654,9 @@ GObj* itManagerMakeAppearActor(void)
 
                 if (mapobjs_num == 0)
                 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+                    itManagerLogMakeAppearActorFail("mapobj_count_zero");
+#endif
                     return NULL;
                 }
                 if (mapobjs_num > ARRAY_COUNT(item_mapobj_ids))
@@ -655,8 +712,26 @@ GObj* itManagerMakeAppearActor(void)
 
                 return gobj;
             }
+#if defined(PORT) && defined(SSB64_NETMENU)
+            else
+            {
+                itManagerLogMakeAppearActorFail("item_weights_null");
+            }
+#endif
         }
+#if defined(PORT) && defined(SSB64_NETMENU)
+        else
+        {
+            itManagerLogMakeAppearActorFail("item_toggles_zero");
+        }
+#endif
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    else
+    {
+        itManagerLogMakeAppearActorFail("appearance_rate_none");
+    }
+#endif
     return NULL;
 }
 
@@ -734,7 +809,7 @@ void itManagerSetupContainerDrops(void)
             gITManagerRandomWeights.weights_sum += item_tenth_floor;
         }
     }
-    else gITManagerRandomWeights.weights_sum = 0;
+    else itManagerResetSpawnPolicyGlobals();
 }
 
 // 0x8016F218

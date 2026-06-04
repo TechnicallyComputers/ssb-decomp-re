@@ -6,12 +6,32 @@ extern void port_coroutine_yield(void);
 #include <gr/ground.h>
 #include <sc/scene.h>
 #include <sys/controller.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netinput.h>
+#include <sys/netpeer.h>
+#include <sys/netreplay.h>
+#include <sys/netrollback.h>
+#include <sys/netsync.h>
+#endif
 #include <sys/video.h>
 #include <reloc_data.h>
 #include <gm/gmcamera.h>
 #include <it/itmanager.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <it/item.h>
+#endif
 #include <sys/audio.h>
 #include <wp/wpmanager.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include "gameloop.h"
+#include "port_log.h"
+#include <sys/net_debug_agent_log.h>
+#include <mp/map.h>
+#include <mp/mpcollision.h>
+#endif
 extern void *func_800269C0_275C0(u16 id);
 extern void func_800266A0_272A0(void);
 
@@ -50,7 +70,11 @@ SYTaskmanSetup dSCVSBattleTaskmanSetup =
         2,                              // ???
         0xC000,                         // RDP Output Buffer Size
         scVSBattleFuncLights,       	// Pre-render function
-        syControllerFuncRead,       // Controller I/O function
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetInputFuncRead,             // Controller I/O function
+#else
+        syControllerFuncRead,           // Controller I/O function
+#endif
     },
 
     0,                                  // Number of GObjThreads
@@ -84,8 +108,157 @@ SYTaskmanSetup dSCVSBattleTaskmanSetup =
 // 0x8018D0C0
 void scVSBattleFuncUpdate(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+	/* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+	/* Unified tick-commit: FuncRead caches verdict; battle sim matches same admission as wire/exec gates. */
+	if (syNetPeerIsVSSessionActive() != FALSE)
+	{
+		if ((syNetRollbackIsResimulating() == FALSE) &&
+		    (syNetTickCommitAllowsBattleSimFromLastFuncReadEvaluate() == FALSE))
+		{
+			/* Same as exec-hold FuncRead path: keep ingress alive so battle_exec_sync can finish. */
+			syNetPeerUpdate();
+			return;
+		}
+	}
+	else if (syNetPeerCheckBattleExecutionReady() == FALSE)
+	{
+		return;
+	}
+	/*
+	 * Belt-and-suspenders: strict R should set taskman scene suppress (skew net slice). If full `scene_update`
+	 * still runs with skipped publish, do not execute a battle sim step for this tick (tick is not advanced).
+	 */
+	if (syNetInputStrictContractSkippedPublishThisPass() != FALSE)
+	{
+		// #region agent log
+		{
+			char agent_data[256];
+
+			snprintf(agent_data, sizeof(agent_data), "{\"tick\":%u,\"path\":\"blocked_skipped_publish\",\"push\":%d}",
+			         (unsigned int)syNetInputGetTick(), port_get_push_frame_count());
+			net_debug_agent_log_line("C", "scvsbattle.c:funcupdate_blocked", "full_sim_blocked_skipped_publish",
+			                         agent_data);
+		}
+		// #endregion
+		syNetPeerUpdate();
+		return;
+	}
+	if ((syNetPeerIsVSSessionActive() != FALSE) && (syNetRollbackIsResimulating() == FALSE))
+	{
+		syNetRollbackPumpCorrectionBeforeBattleSim();
+	}
+	if ((syNetPeerIsVSSessionActive() != FALSE) && (syNetRollbackIsResimulating() != FALSE))
+	{
+		/* Resim advances only via syNetRollbackUpdate → AdvanceResimBudget → BattleSimOnly. */
+		syNetPeerUpdate();
+		return;
+	}
+	if ((syNetPeerIsVSSessionActive() != FALSE) &&
+	    (syNetRollbackShouldBlockLiveBattleAdvance(syNetInputGetTick()) != FALSE))
+	{
+		syNetPeerUpdate();
+		return;
+	}
+	/*
+	 * Atomic sim boundary: gcRunAll (map tic, fighter anim, GObj processes) must not run unless
+	 * syNetInputAdvanceAuthoritativeSimTick will also succeed for this pass.
+	 */
+	if ((syNetPeerIsVSSessionActive() != FALSE) &&
+	    (syNetInputRollbackSimAdvanceAllowed(syNetInputGetTick() + 1U) == FALSE))
+	{
+		syNetPeerUpdate();
+		return;
+	}
+	if ((syNetPeerIsVSSessionActive() != FALSE) && (syNetRollbackIsResimulating() == FALSE))
+	{
+		if (syNetInputRepublishRemoteHumanControllersForTick(syNetInputGetTick()) == FALSE)
+		{
+			syNetPeerUpdate();
+			return;
+		}
+	}
+	if (syNetPeerIsVSSessionActive() != FALSE)
+	{
+		syNetPeerPumpIngressTransport("battle_pre_interface");
+	}
+#endif
 	ifCommonBattleUpdateInterfaceAll();
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
+	    (gSCManagerBattleState->game_status == nSCBattleGameStatusGo))
+	{
+		syNetSyncOnNetplayBattleGo();
+		syNetSyncReconcileBattleTimePassedFromSimTick();
+	}
+	if (syNetRollbackIsResimulating() == FALSE)
+	{
+		syNetReplayUpdate();
+	}
+	syNetPeerUpdate();
+	if (syNetInputStrictContractSkippedPublishThisPass() == FALSE)
+	{
+		syNetRollbackAfterBattleUpdate();
+		syNetInputAdvanceAuthoritativeSimTick();
+		syNetPeerFrameCommitAfterCompletedSimStep();
+	}
+#endif
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+void scVSBattleFuncUpdateBattleSimOnly(void)
+{
+	ifCommonBattleUpdateInterfaceAll();
+	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
+	    (gSCManagerBattleState->game_status == nSCBattleGameStatusGo))
+	{
+		syNetSyncOnNetplayBattleGo();
+		syNetSyncReconcileBattleTimePassedFromSimTick();
+	}
+	syNetRollbackAfterBattleUpdate();
+	syNetInputAdvanceAuthoritativeSimTick();
+}
+
+/*
+ * When skew pacing holds sim (no `syNetInputAdvanceAuthoritativeSimTick`), taskman skips scene_update — run gate + wire + rollback
+ * detection only. Omits ifCommonBattleUpdateInterfaceAll (gcRunAll), replay, and post-sim snapshot: no sim step
+ * completed for this task iteration.
+ */
+void scVSBattleFuncUpdateSkewPacingNetSlice(void)
+{
+	SYNetTickCommitVerdict tcv;
+
+	syNetPeerUpdateBattleGate();
+
+	syNetTickCommitEvaluate(syNetInputGetTick(), nSYNetTickCommitPhase_NetSlice, &tcv);
+	if (tcv.allow_battle_sim_step == FALSE)
+	{
+		syNetInputMaybeLogNetSliceDiag(syNetInputGetTick(), FALSE, FALSE);
+		return;
+	}
+	{
+		sb32 funcread_allows_sim;
+
+		funcread_allows_sim = syNetTickCommitAllowsBattleSimFromLastFuncReadEvaluate();
+		syNetInputMaybeLogNetSliceDiag(syNetInputGetTick(), funcread_allows_sim, TRUE);
+		syNetPeerUpdate();
+		// #region agent log
+		{
+			char agent_data[256];
+
+			snprintf(agent_data, sizeof(agent_data),
+			         "{\"tick\":%u,\"path\":\"net_slice\",\"push\":%d,\"hr\":%u,\"net_slice_allow_sim\":%d,"
+			         "\"funcread_allow_sim\":%d}",
+			         (unsigned int)syNetInputGetTick(), port_get_push_frame_count(),
+			         (unsigned int)syNetPeerGetHighestRemoteTick(), 1,
+			         (funcread_allows_sim != FALSE) ? 1 : 0);
+			net_debug_agent_log_line("B", "scvsbattle.c:skew_net_slice", "sim_path_net_slice", agent_data);
+		}
+		// #endregion
+		return;
+	}
+}
+#endif
 
 // neutral spawn interceptor
 void port_comp_ruleset_get_spawn(s32 player, Vec3f* pos)
@@ -218,6 +391,44 @@ s32 scVSBattleGetStartPlayerLR(s32 this_player)
 	return lr;
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 sSCVSBattleWorldInitDiagCache = -999;
+
+static sb32 scVSBattleWorldInitDiagEnabled(void)
+{
+	const char *env;
+
+	if (sSCVSBattleWorldInitDiagCache != -999)
+	{
+		return (sSCVSBattleWorldInitDiagCache != 0) ? TRUE : FALSE;
+	}
+	env = getenv("SSB64_NETPLAY_WORLD_INIT_DIAG");
+	sSCVSBattleWorldInitDiagCache =
+	    ((env != NULL) && (env[0] != '\0') && (strcmp(env, "0") != 0)) ? 1 : 0;
+	return (sSCVSBattleWorldInitDiagCache != 0) ? TRUE : FALSE;
+}
+
+static void scVSBattleLogWorldInitDiag(void)
+{
+	if (scVSBattleWorldInitDiagEnabled() == FALSE)
+	{
+		return;
+	}
+	port_log(
+	    "SSB64 Netplay: world_init_diag rate=%u toggles=0x%08X item_weights_token=0x%08X mapobj_count=%d appear_spawn_wait=%u appear_mapobjs=%u appear_valid=%u random_valid=%u random_sum=%u world_hash=0x%08X\n",
+	    (unsigned int)gSCManagerBattleState->item_appearance_rate,
+	    (unsigned int)gSCManagerBattleState->item_toggles,
+	    (gMPCollisionGroundData != NULL) ? (unsigned int)gMPCollisionGroundData->item_weights : 0U,
+	    (gMPCollisionGroundData != NULL) ? mpCollisionGetMapObjCountKind(nMPMapObjKindItem) : 0,
+	    (unsigned int)gITManagerAppearActor.spawn_wait,
+	    (unsigned int)gITManagerAppearActor.mapobjs_num,
+	    (unsigned int)gITManagerAppearActor.weights.valids_num,
+	    (unsigned int)gITManagerRandomWeights.valids_num,
+	    (unsigned int)gITManagerRandomWeights.weights_sum,
+	    (unsigned int)syNetSyncHashRollbackWorld());
+}
+#endif
+
 // 0x8018D228
 void scVSBattleStartBattle(void)
 {
@@ -227,6 +438,16 @@ void scVSBattleStartBattle(void)
 	void *file;
 	FTDesc desc;
 	SYColorRGBA color;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+	syNetPeerCommitStagedBootstrapMetadataForBattleStart();
+	syNetInputStartVSSession();
+	syNetReplayStartVSSession(gSCManagerBattleState);
+	/* Idempotent when automatch staging already called syNetPeerStartVSSession. */
+	syNetPeerStartVSSession();
+	syNetPeerReapplySimSlotInputSources();
+	syNetSyncResetNetplayBattleClock();
+#endif
 
 	gSCManagerSceneData.is_reset = FALSE;
 	gSCManagerSceneData.is_suddendeath = FALSE;
@@ -258,6 +479,9 @@ void scVSBattleStartBattle(void)
 	gmCameraMakeBattleCamera();
 	itManagerInitItems();
 	grCommonSetupInitAll();
+#if defined(PORT) && defined(SSB64_NETMENU)
+	scVSBattleLogWorldInitDiag();
+#endif
 	ftManagerAllocFighter(FTDATA_FLAG_MAINMOTION, GMCOMMON_PLAYERS_MAX);
 	wpManagerAllocWeapons();
 	efManagerInitEffects();
@@ -294,7 +518,15 @@ void scVSBattleStartBattle(void)
 		desc.stock_count = gSCManagerBattleState->stocks;
 		desc.damage = 0;
 		desc.pkind = gSCManagerBattleState->players[player].pkind;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		{
+			SYController *sim = syNetInputGetSimController(player);
+
+			desc.controller = (sim != NULL) ? sim : &gSYControllerDevices[player];
+		}
+#else
 		desc.controller = &gSYControllerDevices[player];
+#endif
 
 		desc.figatree_heap = ftManagerAllocFigatreeHeapKind(gSCManagerBattleState->players[player].fkind);
 
@@ -568,7 +800,15 @@ void scVSBattleStartSuddenDeath(void)
 		desc.damage = 300;
 		desc.is_skip_entry = TRUE;
 		desc.pkind = gSCManagerBattleState->players[player].pkind;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		{
+			SYController *sim = syNetInputGetSimController(player);
+
+			desc.controller = (sim != NULL) ? sim : &gSYControllerDevices[player];
+		}
+#else
 		desc.controller = &gSYControllerDevices[player];
+#endif
 
 		desc.figatree_heap = ftManagerAllocFigatreeHeapKind(gSCManagerBattleState->players[player].fkind);
 
@@ -663,6 +903,10 @@ void scVSBattleStartScene(void)
 		func_800266A0_272A0();
 		gmRumbleInitPlayers();
 	}
+#if defined(PORT) && defined(SSB64_NETMENU)
+	syNetReplayFinishVSSession();
+	syNetPeerEndVSSessionLocally();
+#endif
 	gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
 	gSCManagerSceneData.scene_curr = nSCKindVSResults;
 

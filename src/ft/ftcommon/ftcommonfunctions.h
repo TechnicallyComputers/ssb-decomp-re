@@ -14,6 +14,9 @@ void ftCommonDeadCheckRebirth(GObj* fighter_gobj);
 void ftCommonDeadResetCommonVars(GObj* fighter_gobj);
 void ftCommonDeadResetSpecialStats(GObj* fighter_gobj);
 void ftCommonDeadCommonProcUpdate(GObj* fighter_gobj);
+s32 ftCommonDeadGetWait(const FTStruct *fp);
+void ftCommonDeadSetWait(FTStruct *fp, s32 wait);
+void ftCommonDeadClearGateWait(FTStruct *fp);
 void ftCommonDeadInitStatusVars(GObj* fighter_gobj);
 void ftCommonDeadDownSetStatus(GObj* fighter_gobj);
 void ftCommonDeadRightSetStatus(GObj* fighter_gobj);
@@ -53,6 +56,7 @@ void ftCommonRebirthWaitSetStatus(GObj* fighter_gobj);
 
 // Wait
 void ftCommonWaitProcInterrupt(GObj* fighter_gobj);
+void ftCommonWaitProcPhysics(GObj* fighter_gobj);
 void ftCommonWaitSetStatus(GObj* fighter_gobj);
 sb32 ftCommonWaitCheckInputSuccess(GObj* fighter_gobj);
 sb32 ftCommonWaitCheckInterruptCommon(GObj* fighter_gobj);
@@ -234,6 +238,9 @@ void ftCommonTwisterProcUpdate(GObj* fighter_gobj);
 void ftCommonTwisterProcPhysics(GObj* fighter_gobj);
 void ftCommonTwisterSetStatus(GObj* fighter_gobj, GObj* tornado_gobj);
 void ftCommonTwisterShootFighter(GObj* fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+void ftCommonTwisterReconcileRiderAfterRollback(GObj* fighter_gobj);
+#endif
 
 // TaruCann
 void ftCommonTaruCannProcUpdate(GObj* fighter_gobj);
@@ -241,6 +248,9 @@ void ftCommonTaruCannProcInterrupt(GObj* fighter_gobj);
 void ftCommonTaruCannProcPhysics(GObj* fighter_gobj);
 void ftCommonTaruCannSetStatus(GObj* fighter_gobj, GObj* tarucann_gobj);
 void ftCommonTaruCannShootFighter(GObj* fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+void ftCommonTaruCannReconcileShootStateAfterRollback(GObj* fighter_gobj, u32 snap_tick);
+#endif
 
 // Dokan
 void ftCommonDokanStartUpdateModelYaw(FTStruct* fp);

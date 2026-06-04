@@ -803,4 +803,6 @@ typedef union FTCommonStatusVars
 
 } FTCommonStatusVars;
 
+#include <ft/ftstatusvars.h>
+
 #endif

@@ -49,7 +49,7 @@ sb32 ftCommonAttackLw4CheckInterruptSquat(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if ((ftCommonAttackLw4CheckInputSuccess(fp) != FALSE) && (fp->status_vars.common.attack4.is_goto_attacklw4 != FALSE))
+    if ((ftCommonAttackLw4CheckInputSuccess(fp) != FALSE) && (ftStatusVarsAttack4(fp)->is_goto_attacklw4 != FALSE))
     {
         return ftCommonAttackLw4CheckInterruptMain(fp);
     }

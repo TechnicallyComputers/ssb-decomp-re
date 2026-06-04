@@ -71,8 +71,8 @@ void ftCommonAttack100StartSetStatus(GObj *fighter_gobj)
         ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
         ftMainPlayAnimEventsAll(fighter_gobj);
 
-        fp->status_vars.common.attack100.is_anim_end = FALSE;
-        fp->status_vars.common.attack100.is_goto_loop = FALSE;
+        ftStatusVarsAttack100(fp)->is_anim_end = FALSE;
+        ftStatusVarsAttack100(fp)->is_goto_loop = FALSE;
 
         fp->motion_vars.flags.flag1 = 0;
         fp->motion_vars.flags.flag2 = 0;
@@ -114,7 +114,7 @@ void ftCommonAttack100LoopProcUpdate(GObj *fighter_gobj)
 
     if ((fighter_gobj->anim_frame >= 0.0F) && (fighter_gobj->anim_frame < DObjGetStruct(fighter_gobj)->anim_speed))
     {
-        fp->status_vars.common.attack100.is_anim_end = TRUE;
+        ftStatusVarsAttack100(fp)->is_anim_end = TRUE;
 
         ftParamSetMotionID(fp, nFTMotionAttackIDAttack100);
         ftParamSetStatUpdate(fp, fp->stat_flags.halfword);
@@ -124,7 +124,7 @@ void ftCommonAttack100LoopProcUpdate(GObj *fighter_gobj)
     {
         fp->motion_vars.flags.flag1 = 0;
 
-        if ((fp->status_vars.common.attack100.is_anim_end != FALSE) && (fp->status_vars.common.attack100.is_goto_loop == FALSE))
+        if ((ftStatusVarsAttack100(fp)->is_anim_end != FALSE) && (ftStatusVarsAttack100(fp)->is_goto_loop == FALSE))
         {
             ftCommonAttack100EndSetStatus(fighter_gobj);
 
@@ -132,7 +132,7 @@ void ftCommonAttack100LoopProcUpdate(GObj *fighter_gobj)
         }
         else if (ftCommonGetCheckInterruptCommon(fighter_gobj) == FALSE)
         {
-            fp->status_vars.common.attack100.is_goto_loop = FALSE;
+            ftStatusVarsAttack100(fp)->is_goto_loop = FALSE;
         }
         else return;
     }
@@ -146,7 +146,7 @@ void ftCommonAttack100LoopProcInterrupt(GObj *fighter_gobj)
 
     if ((fp->input.pl.button_tap & fp->input.button_mask_a) || (fp->input.pl.button_release & fp->input.button_mask_a))
     {
-        fp->status_vars.common.attack100.is_goto_loop = TRUE;
+        ftStatusVarsAttack100(fp)->is_goto_loop = TRUE;
     }
 }
 

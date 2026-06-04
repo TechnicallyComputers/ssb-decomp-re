@@ -1587,6 +1587,7 @@ struct FTStruct
     u8 shuffle_index_max;               // How many iterations the frame index increments before looping back to 0;
     ub8 is_shuffle_electric;            // Fighter vibrates horizontally rather than vertically if hit by an electric attack
     u16 shuffle_tics;                   // Model shift timer
+    s16 dead_gate_wait;                 // Authoritative dead countdown mirror (union dead.wait aliases entry/catch fields)
 
     GObj *throw_gobj;                   // GObj of opponent that threw this fighter
     s32 throw_fkind;                    // Kind of opponent that threw this fighter
@@ -1760,5 +1761,8 @@ struct FTStruct
 
     s32 display_mode;
 };
+
+#define _FTSTRUCT_DEFINED_
+#include <ft/ftstatusvars.h>
 
 #endif

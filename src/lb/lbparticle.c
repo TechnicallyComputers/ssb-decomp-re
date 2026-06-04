@@ -2856,6 +2856,211 @@ LBGenerator* lbParticleMakeGenerator(s32 bank_id, s32 script_id)
     return gn;
 }
 
+static LBGenerator *lbParticleFindQueuedGeneratorID(u16 generator_id)
+{
+	LBGenerator *gn;
+
+	for (gn = sLBParticleGeneratorsQueued; gn != NULL; gn = gn->next)
+	{
+		if (gn->generator_id == generator_id)
+		{
+			return gn;
+		}
+	}
+	return NULL;
+}
+
+static u16 sLBParticleVortexSubsideGenId;
+static u16 sLBParticleVortexSubsideInitialRings;
+
+static u16 lbParticleCountVortexRingStructsID(u16 generator_id)
+{
+	u16 count;
+	s32 link_id;
+
+	count = 0;
+	for (link_id = 0; link_id < (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks); link_id++)
+	{
+		LBParticle *pc;
+
+		for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+		{
+			LBGenerator *gn;
+
+			if (pc->generator_id != generator_id)
+			{
+				continue;
+			}
+			if ((pc->flags & LBPARTICLE_FLAG_VORTEX) == 0)
+			{
+				continue;
+			}
+			gn = pc->gn;
+			if ((gn == NULL) || (gn->kind != nLBParticleKindVortex))
+			{
+				continue;
+			}
+			count++;
+		}
+	}
+	return count;
+}
+
+// Stop spawning new vortex rings so existing particles expire bottom-up (Hyrule twister Subside).
+void lbParticleBeginVortexSoftFadeID(u16 generator_id)
+{
+	LBGenerator *gn;
+
+	sLBParticleVortexSubsideGenId = generator_id;
+	sLBParticleVortexSubsideInitialRings = lbParticleCountVortexRingStructsID(generator_id);
+
+	for (gn = sLBParticleGeneratorsQueued; gn != NULL; gn = gn->next)
+	{
+		if ((gn->generator_id == generator_id) && (gn->kind == nLBParticleKindVortex) &&
+		    (gn->generator_vars.vortex.lifetime != 0))
+		{
+			gn->update_rate = 0.0F;
+			gn->generator_lifetime = 1;
+			if (sLBParticleVortexSubsideInitialRings == 0)
+			{
+				sLBParticleVortexSubsideInitialRings = gn->generator_vars.vortex.lifetime;
+			}
+		}
+	}
+}
+
+sb32 lbParticleEjectVortexBottomRingID(u16 generator_id)
+{
+	LBParticle *bottom_pc;
+	f32 bottom_height;
+	s32 link_id;
+
+	bottom_pc = NULL;
+	bottom_height = F32_MAX;
+
+	for (link_id = 0; link_id < (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks); link_id++)
+	{
+		LBParticle *pc;
+
+		for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+		{
+			LBGenerator *gn;
+
+			if (pc->generator_id != generator_id)
+			{
+				continue;
+			}
+			if ((pc->flags & LBPARTICLE_FLAG_VORTEX) == 0)
+			{
+				continue;
+			}
+			gn = pc->gn;
+			if ((gn == NULL) || (gn->kind != nLBParticleKindVortex))
+			{
+				continue;
+			}
+			if (pc->vel.y < bottom_height)
+			{
+				bottom_height = pc->vel.y;
+				bottom_pc = pc;
+			}
+		}
+	}
+	if (bottom_pc != NULL)
+	{
+		lbParticleEjectStruct(bottom_pc);
+
+		return TRUE;
+	}
+	return FALSE;
+}
+
+void lbParticleStepVortexSoftFadeID(u16 generator_id, s32 ticks_remaining, s32 ticks_total)
+{
+	LBGenerator *gn;
+	s32 elapsed;
+	s32 initial;
+	s32 target_removed;
+	u16 rings_live;
+
+	if ((ticks_remaining <= 0) || (ticks_total <= 0))
+	{
+		return;
+	}
+	gn = lbParticleFindQueuedGeneratorID(generator_id);
+	if ((gn == NULL) || (gn->kind != nLBParticleKindVortex))
+	{
+		return;
+	}
+	if (sLBParticleVortexSubsideGenId != generator_id)
+	{
+		sLBParticleVortexSubsideGenId = generator_id;
+		sLBParticleVortexSubsideInitialRings = lbParticleCountVortexRingStructsID(generator_id);
+		if (sLBParticleVortexSubsideInitialRings == 0)
+		{
+			sLBParticleVortexSubsideInitialRings = gn->generator_vars.vortex.lifetime;
+		}
+	}
+	initial = (s32)sLBParticleVortexSubsideInitialRings;
+	if (initial <= 0)
+	{
+		return;
+	}
+	elapsed = ticks_total - ticks_remaining;
+	target_removed = (initial * elapsed + ticks_total - 1) / ticks_total;
+	if (target_removed > initial)
+	{
+		target_removed = initial;
+	}
+	while ((s32)lbParticleCountVortexRingStructsID(generator_id) > (initial - target_removed))
+	{
+		if (lbParticleEjectVortexBottomRingID(generator_id) == FALSE)
+		{
+			break;
+		}
+	}
+	rings_live = lbParticleCountVortexRingStructsID(generator_id);
+	if ((rings_live == 0) && (gn->generator_vars.vortex.lifetime != 0))
+	{
+		gn->generator_vars.vortex.lifetime = 0;
+	}
+}
+
+u16 lbParticleGetVortexRingCountID(u16 generator_id)
+{
+	u16 struct_count;
+
+	struct_count = lbParticleCountVortexRingStructsID(generator_id);
+	if (struct_count != 0)
+	{
+		return struct_count;
+	}
+	{
+		LBGenerator *gn = lbParticleFindQueuedGeneratorID(generator_id);
+
+		if ((gn != NULL) && (gn->kind == nLBParticleKindVortex))
+		{
+			return gn->generator_vars.vortex.lifetime;
+		}
+	}
+	return 0;
+}
+
+void lbParticleEjectGeneratorID(u16 generator_id)
+{
+	LBGenerator *gn, *next_gn;
+
+	for (gn = sLBParticleGeneratorsQueued; gn != NULL; gn = next_gn)
+	{
+		next_gn = gn->next;
+
+		if (gn->generator_id == generator_id)
+		{
+			lbParticleEjectGenerator(gn);
+		}
+	}
+}
+
 // 0x800D3884
 void lbParticleEjectGenerator(LBGenerator *this_gn)
 {

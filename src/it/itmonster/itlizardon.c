@@ -3,6 +3,9 @@
 #include <ft/fighter.h>
 #include <reloc_data.h>
 #ifdef PORT
+#include <it/itground/ithitokage.h>
+extern void *func_800269C0_275C0(u16 id);
+#else
 extern void *func_800269C0_275C0(u16 id);
 #endif
 
@@ -378,6 +381,9 @@ sb32 itLizardonWeaponFlameProcUpdate(GObj *weapon_gobj)
 {
     WPStruct *wp = wpGetStruct(weapon_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    itHitokageFlameWeaponSyncPresentation(weapon_gobj);
+#endif
     if (wpMainDecLifeCheckExpire(wp) != FALSE)
     {
         return TRUE;

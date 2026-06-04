@@ -30,7 +30,7 @@ void ftCaptainSpecialHiCatchProcUpdate(GObj *fighter_gobj)
     {
         FTStruct *catch_fp = ftGetStruct(this_fp->catch_gobj);
 
-        catch_fp->status_vars.common.capturecaptain.capture_flag |= FTCOMMON_CAPTURECAPTAIN_MASK_THROW;
+        ftStatusVarsCaptureCaptain(catch_fp)->capture_flag |= FTCOMMON_CAPTURECAPTAIN_MASK_THROW;
 
         efManagerQuakeMakeEffect(1); // Apply screen shake/rumble?
         ftCaptainSpecialHiThrowSetStatus(fighter_gobj);
@@ -170,7 +170,7 @@ void ftCaptainSpecialHiProcCatch(GObj *fighter_gobj)
 
     if (catch_fp->ga == nMPKineticsAir)
     {
-        fp->status_vars.common.capturecaptain.capture_flag |= FTCOMMON_CAPTURECAPTAIN_MASK_NOUPDATE;
+        ftStatusVarsCaptureCaptain(fp)->capture_flag |= FTCOMMON_CAPTURECAPTAIN_MASK_NOUPDATE;
         fp->is_catch_or_capture = FALSE;
     }
     else fp->is_catch_or_capture = TRUE;

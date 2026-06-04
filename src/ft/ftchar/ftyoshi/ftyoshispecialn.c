@@ -46,7 +46,7 @@ void ftYoshiSpecialNCatchUpdateCaptureVars(FTStruct *fp)
         {
             FTStruct *catch_fp = ftGetStruct(fp->catch_gobj);
 
-            catch_fp->status_vars.common.captureyoshi.stage = 1;
+            ftStatusVarsCaptureYoshi(catch_fp)->stage = 1;
 
             fp->motion_vars.flags.flag2 = 0;
         }
@@ -57,7 +57,7 @@ void ftYoshiSpecialNCatchUpdateCaptureVars(FTStruct *fp)
         {
             FTStruct *catch_fp = ftGetStruct(fp->catch_gobj);
 
-            catch_fp->status_vars.common.captureyoshi.stage = 3;
+            ftStatusVarsCaptureYoshi(catch_fp)->stage = 3;
 
             fp->catch_gobj = NULL;
 

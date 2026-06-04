@@ -41,7 +41,7 @@ void ftCommonLandingProcInterrupt(GObj *fighter_gobj)
     {
         return;
     }
-    else if ((fp->status_vars.common.landing.is_allow_interrupt != FALSE) && !(ftCommonLandingCheckInterrupt(fighter_gobj)))
+    else if ((ftStatusVarsLanding(fp)->is_allow_interrupt != FALSE) && !(ftCommonLandingCheckInterrupt(fighter_gobj)))
     {
         if ((fighter_gobj->anim_frame >= FTCOMMON_LANDING_INTERRUPT_BEGIN) && (fighter_gobj->anim_frame < (FTCOMMON_LANDING_INTERRUPT_BEGIN + DObjGetStruct(fighter_gobj)->anim_speed)))
         {
@@ -64,7 +64,7 @@ void ftCommonLandingSetStatusParam(GObj *fighter_gobj, s32 status_id, sb32 is_al
     mpCommonSetFighterGround(fp);
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, anim_speed, FTSTATUS_PRESERVE_NONE);
 
-    fp->status_vars.common.landing.is_allow_interrupt = is_allow_interrupt;
+    ftStatusVarsLanding(fp)->is_allow_interrupt = is_allow_interrupt;
 }
 
 // 0x80142D9C

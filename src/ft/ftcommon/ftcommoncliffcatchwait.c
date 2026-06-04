@@ -101,13 +101,13 @@ void ftCommonCliffWaitSetStatus(GObj *fighter_gobj)
 
     ftMainSetStatus(fighter_gobj, nFTCommonStatusCliffWait, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
 
-    fp->status_vars.common.cliffwait.is_allow_interrupt = FALSE;
+    ftStatusVarsCliffWait(fp)->is_allow_interrupt = FALSE;
 
     if (fp->percent_damage < FTCOMMON_CLIFF_DAMAGE_HIGH)
     {
-        fp->status_vars.common.cliffwait.fall_wait = FTCOMMON_CLIFF_FALL_WAIT_DAMAGE_LOW;
+        ftStatusVarsCliffWait(fp)->fall_wait = FTCOMMON_CLIFF_FALL_WAIT_DAMAGE_LOW;
     }
-    else fp->status_vars.common.cliffwait.fall_wait = FTCOMMON_CLIFF_FALL_WAIT_DAMAGE_HIGH;
+    else ftStatusVarsCliffWait(fp)->fall_wait = FTCOMMON_CLIFF_FALL_WAIT_DAMAGE_HIGH;
 
     fp->is_cliff_hold = TRUE;
 
@@ -123,9 +123,9 @@ sb32 ftCommonCliffWaitCheckFall(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    fp->status_vars.common.cliffwait.fall_wait--;
+    ftStatusVarsCliffWait(fp)->fall_wait--;
 
-    if (fp->status_vars.common.cliffwait.fall_wait == 0)
+    if (ftStatusVarsCliffWait(fp)->fall_wait == 0)
     {
         fp->cliffcatch_wait = FTCOMMON_CLIFF_CATCH_WAIT;
 

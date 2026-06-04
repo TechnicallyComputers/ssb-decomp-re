@@ -31,6 +31,7 @@ extern void func_ovl2_800D79F0(GObj *fighter_gobj, FTDesc *desc);
 extern GObj* ftManagerMakeFighter(FTDesc *desc);
 #ifdef PORT
 extern void ftManagerInitFighter(GObj *fighter_gobj, FTDesc *desc);
+extern sb32 gFTManagerInitFighterSkipFloorProject;
 #endif
 
 #endif

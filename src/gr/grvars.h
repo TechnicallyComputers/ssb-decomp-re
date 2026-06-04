@@ -99,6 +99,7 @@ typedef struct GRCommonGroundVarsSector
 	u16 arwing_state_timer;
 	u8 arwing_status;
 	s8 arwing_flight_pattern;
+	s8 arwing_last_flight_pattern;
 	u8 arwing_type_cycle;
 	u8 arwing_laser_ammo;
 	s8 unk_sector_0x4C;
@@ -234,6 +235,9 @@ typedef struct GRCommonGroundVarsYamabuki
 	u16 monster_wait;
 	u16 gate_wait;
 	u8 monster_id_prev;
+#ifdef PORT
+	u8 gate_anim_phase;
+#endif
 
 } GRCommonGroundVarsYamabuki;
 

@@ -68,23 +68,30 @@ void ftCommonJumpSetStatus(GObj *fighter_gobj)
     FTAttributes *attr = fp->attr;
     s32 status_id;
     s32 vel_x, vel_y;
+    s32 kneebend_input_source;
+    sb32 kneebend_is_shorthop;
+    s32 kneebend_jump_force;
 
     mpCommonSetFighterAir(fp);
 
     status_id = ((fp->input.pl.stick_range.x * fp->lr) > FTCOMMON_KNEEBEND_JUMP_F_OR_B_RANGE) ? nFTCommonStatusJumpF : nFTCommonStatusJumpB;
 
+    kneebend_input_source = ftStatusVarsKneeBend(fp)->input_source;
+    kneebend_is_shorthop = ftStatusVarsKneeBend(fp)->is_shorthop;
+    kneebend_jump_force = ftStatusVarsKneeBend(fp)->jump_force;
+
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
 
-    switch (fp->status_vars.common.kneebend.input_source)
+    switch (kneebend_input_source)
     {
     case FTCOMMON_KNEEBEND_INPUT_TYPE_BUTTON:
-        ftCommonJumpGetJumpForceButton(fp->input.pl.stick_range.x, &vel_x, &vel_y, fp->status_vars.common.kneebend.is_shorthop);
+        ftCommonJumpGetJumpForceButton(fp->input.pl.stick_range.x, &vel_x, &vel_y, kneebend_is_shorthop);
         break;
 
     case FTCOMMON_KNEEBEND_INPUT_TYPE_STICK:
     default:
         vel_x = fp->input.pl.stick_range.x;
-        vel_y = fp->status_vars.common.kneebend.jump_force;
+        vel_y = kneebend_jump_force;
 
         if (vel_y < FTCOMMON_KNEEBEND_STICK_RANGE_MIN)
         {

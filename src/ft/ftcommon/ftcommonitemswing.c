@@ -22,7 +22,7 @@ void ftCommonHarisenSwingProcHit(GObj *fighter_gobj)
         {
             itHarisenCommonSetScale(fp->item_gobj, FTCOMMON_HARISENSWING_SCALE_HIT);
 
-            fp->status_vars.common.itemswing.harisen_scale_reset_wait = FTCOMMON_HARISENSWING_SCALE_RESET_WAIT;
+            ftStatusVarsItemSwing(fp)->harisen_scale_reset_wait = FTCOMMON_HARISENSWING_SCALE_RESET_WAIT;
         }
     }
 }
@@ -34,11 +34,11 @@ void ftCommonHarisenSwingProcUpdate(GObj *fighter_gobj)
 
     if (fp->item_gobj != NULL)
     {
-        if (fp->status_vars.common.itemswing.harisen_scale_reset_wait != 0)
+        if (ftStatusVarsItemSwing(fp)->harisen_scale_reset_wait != 0)
         {
-            fp->status_vars.common.itemswing.harisen_scale_reset_wait--;
+            ftStatusVarsItemSwing(fp)->harisen_scale_reset_wait--;
 
-            if (fp->status_vars.common.itemswing.harisen_scale_reset_wait == 0)
+            if (ftStatusVarsItemSwing(fp)->harisen_scale_reset_wait == 0)
             {
                 itHarisenCommonSetScale(fp->item_gobj, 1.0F);
             }
@@ -147,7 +147,7 @@ void ftCommonItemSwingSetStatus(GObj *fighter_gobj, s32 swing_type)
 
     fp->proc_hit = ftCommonHarisenSwingProcHit;
 
-    fp->status_vars.common.itemswing.harisen_scale_reset_wait = 0;
+    ftStatusVarsItemSwing(fp)->harisen_scale_reset_wait = 0;
 
     fp->motion_vars.flags.flag1 = 0;
 }

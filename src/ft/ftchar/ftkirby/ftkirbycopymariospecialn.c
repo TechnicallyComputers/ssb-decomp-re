@@ -1,7 +1,13 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+/*
+ * Netplay rollback forward-sim: gate policy on syNetplayRollbackSemanticsActive().
+ * See docs/netplay_rollback_refactor_contracts.md.
+ */
+
 #endif
 // // // // // // // // // // // //
 //                               //
@@ -28,27 +34,8 @@
 //                               //
 // // // // // // // // // // // //
 
-// 0x801569B0
-void ftKirbyCopyMarioSpecialNProcUpdate(GObj *fighter_gobj)
+static void ftKirbyCopyMarioSpecialNProcAccessoryVanilla(GObj *fighter_gobj)
 {
-#ifdef PORT
-    FTStruct *fp = ftGetStruct(fighter_gobj);
-
-    if ((syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE) ||
-        ((fp != NULL) && (fp->proc_accessory == NULL)))
-    {
-        syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
-    }
-#endif
-    ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
-}
-
-// 0x801569D4
-void ftKirbyCopyMarioSpecialNProcAccessory(GObj *fighter_gobj)
-{
-#ifdef PORT
-    syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
-#else
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     s32 fireball_kind;
@@ -71,11 +58,12 @@ void ftKirbyCopyMarioSpecialNProcAccessory(GObj *fighter_gobj)
             fireball_kind = 0;
             break;
 
-        #if defined (AVOID_UB)
-            return; // This prevents the UB by returning from the function if an unwanted character somehow slips through.
-        #else
-            break; // Undefined behavior here, var is uninitialized, but projectile spawn function still runs
-        #endif
+        default:
+            #if defined (AVOID_UB)
+                return; // This prevents the UB by returning from the function if an unwanted character somehow slips through.
+            #else
+                break; // Undefined behavior here, var is uninitialized, but projectile spawn function still runs
+            #endif
 
         case nFTKindLuigi:
         case nFTKindNLuigi:
@@ -84,7 +72,41 @@ void ftKirbyCopyMarioSpecialNProcAccessory(GObj *fighter_gobj)
         }
         wpMarioFireballMakeWeapon(fighter_gobj, &pos, fireball_kind);
     }
+}
+
+// 0x801569B0
+void ftKirbyCopyMarioSpecialNProcUpdate(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: rollback fireball spawn when vanilla ProcAccessory is skipped. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        FTStruct *fp = ftGetStruct(fighter_gobj);
+
+        if ((syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+            ((fp != NULL) && (fp->proc_accessory == NULL)))
+        {
+            syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
+        }
+    }
+
 #endif
+    ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
+}
+
+// 0x801569D4
+void ftKirbyCopyMarioSpecialNProcAccessory(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: snapshot-driven fireball spawn; offline uses vanilla below. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapTrySpawnFireballFromAccessory(fighter_gobj);
+        return;
+    }
+
+#endif
+    ftKirbyCopyMarioSpecialNProcAccessoryVanilla(fighter_gobj);
 }
 
 // 0x80156A74
@@ -131,8 +153,12 @@ void ftKirbyCopyMarioSpecialNInitStatusVars(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     fp->motion_vars.flags.flag0 = 0;
-#ifdef PORT
-    fp->motion_vars.flags.flag1 = 0;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        fp->motion_vars.flags.flag1 = 0;
+    }
+
 #endif
     fp->proc_accessory = ftKirbyCopyMarioSpecialNProcAccessory;
 }

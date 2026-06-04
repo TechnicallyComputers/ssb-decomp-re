@@ -1,7 +1,15 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
 #ifdef PORT
+#include <ft/ftcommon/ftcommonfunctions.h>
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+/*
+ * SSB64_NETMENU compile gate: stripped from offline builds.
+ * Runtime: syNetplayRollbackSemanticsActive() gates cull only.
+ */
 #endif
 
 // // // // // // // // // // // //
@@ -60,7 +68,13 @@ static void ftYoshiSpecialHiPortCleanupChargeEggs(GObj *fighter_gobj)
 		}
 		fp->status_vars.yoshi.specialhi.egg_gobj = NULL;
 	}
-	syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, NULL);
+#if defined(SSB64_NETMENU)
+	/* Netplay rollback only: cull duplicate charge eggs after teardown. */
+	if (syNetplayRollbackSemanticsActive() != FALSE)
+	{
+		syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, NULL);
+	}
+#endif
 }
 
 static void ftYoshiSpecialHiPortSetStatusWait(GObj *fighter_gobj)
@@ -74,6 +88,7 @@ static void ftYoshiSpecialHiPortSetStatusFall(GObj *fighter_gobj)
     ftYoshiSpecialHiPortCleanupChargeEggs(fighter_gobj);
     ftCommonFallSetStatus(fighter_gobj);
 }
+
 #endif
 
 // 0x8015E980
@@ -134,17 +149,22 @@ void ftYoshiSpecialHiUpdateEggVars(GObj *fighter_gobj)
     {
         fp->motion_vars.flags.flag2 = 0;
 
-#ifdef PORT
-        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Netplay rollback only: reacquire charge egg after snapshot restore. */
+        if (syNetplayRollbackSemanticsActive() != FALSE)
         {
-            fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
-        }
-        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
-        {
-            ftYoshiSpecialHiGetEggPosition(fp, &pos);
+            if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+            {
+                fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+            }
+            if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+            {
+                ftYoshiSpecialHiGetEggPosition(fp, &pos);
 
-            fp->status_vars.yoshi.specialhi.egg_gobj = wpYoshiEggThrowMakeWeapon(fighter_gobj, &pos);
+                fp->status_vars.yoshi.specialhi.egg_gobj = wpYoshiEggThrowMakeWeapon(fighter_gobj, &pos);
+            }
         }
+
 #endif
         if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
         {
@@ -164,20 +184,27 @@ void ftYoshiSpecialHiUpdateEggVars(GObj *fighter_gobj)
     {
         fp->motion_vars.flags.flag2 = 0;
 
-#ifdef PORT
-        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Netplay rollback only: reacquire orphaned charge egg before vanilla spawn. */
+        if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+            (fp->status_vars.yoshi.specialhi.egg_gobj == NULL))
         {
             fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
         }
-        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
+
 #endif
+        if (fp->status_vars.yoshi.specialhi.egg_gobj == NULL)
         {
             ftYoshiSpecialHiGetEggPosition(fp, &pos);
 
             fp->status_vars.yoshi.specialhi.egg_gobj = wpYoshiEggThrowMakeWeapon(fighter_gobj, &pos);
         }
-#ifdef PORT
-        syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
+        }
+
 #endif
     }
 }
@@ -198,11 +225,15 @@ void ftYoshiSpecialHiProcUpdate(GObj *fighter_gobj)
 {
     ftYoshiSpecialHiUpdateEggThrowForce(fighter_gobj);
     ftYoshiSpecialHiUpdateEggVars(fighter_gobj);
-#ifdef PORT
-    ftAnimEndCheckSetStatus(fighter_gobj, ftYoshiSpecialHiPortSetStatusWait);
-#else
-    ftAnimEndCheckSetStatus(fighter_gobj, ftCommonWaitSetStatus);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        ftAnimEndCheckSetStatus(fighter_gobj, ftYoshiSpecialHiPortSetStatusWait);
+    }
+    else
+
 #endif
+    ftAnimEndCheckSetStatus(fighter_gobj, ftCommonWaitSetStatus);
 }
 
 // 0x8015EB70
@@ -210,11 +241,15 @@ void ftYoshiSpecialAirHiProcUpdate(GObj *fighter_gobj)
 {
     ftYoshiSpecialHiUpdateEggThrowForce(fighter_gobj);
     ftYoshiSpecialHiUpdateEggVars(fighter_gobj);
-#ifdef PORT
-    ftAnimEndCheckSetStatus(fighter_gobj, ftYoshiSpecialHiPortSetStatusFall);
-#else
-    ftAnimEndCheckSetStatus(fighter_gobj, ftCommonFallSetStatus);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        ftAnimEndCheckSetStatus(fighter_gobj, ftYoshiSpecialHiPortSetStatusFall);
+    }
+    else
+
 #endif
+    ftAnimEndCheckSetStatus(fighter_gobj, ftCommonFallSetStatus);
 }
 
 // 0x8015EBA8
@@ -222,16 +257,20 @@ void ftYoshiSpecialHiProcPhysics(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-#ifdef PORT
-    ftYoshiSpecialHiPortValidateCoupledEgg(fp);
-    if ((fp->status_vars.yoshi.specialhi.egg_gobj == NULL) && (fp->motion_vars.flags.flag1 == 0))
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
     {
-        fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+        ftYoshiSpecialHiPortValidateCoupledEgg(fp);
+        if ((fp->status_vars.yoshi.specialhi.egg_gobj == NULL) && (fp->motion_vars.flags.flag1 == 0))
+        {
+            fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+        }
+        if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
+        {
+            syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
+        }
     }
-    if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
-    {
-        syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
-    }
+
 #endif
     ftYoshiSpecialHiUpdateEggVectors(fp);
     ftPhysicsApplyGroundVelFriction(fighter_gobj);
@@ -242,16 +281,20 @@ void ftYoshiSpecialAirHiProcPhysics(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-#ifdef PORT
-    ftYoshiSpecialHiPortValidateCoupledEgg(fp);
-    if ((fp->status_vars.yoshi.specialhi.egg_gobj == NULL) && (fp->motion_vars.flags.flag1 == 0))
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
     {
-        fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+        ftYoshiSpecialHiPortValidateCoupledEgg(fp);
+        if ((fp->status_vars.yoshi.specialhi.egg_gobj == NULL) && (fp->motion_vars.flags.flag1 == 0))
+        {
+            fp->status_vars.yoshi.specialhi.egg_gobj = syNetRbSnapReacquireYoshiChargeEgg(fighter_gobj);
+        }
+        if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
+        {
+            syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
+        }
     }
-    if (fp->status_vars.yoshi.specialhi.egg_gobj != NULL)
-    {
-        syNetRbSnapCullYoshiChargeEggsForFighter(fighter_gobj, fp->status_vars.yoshi.specialhi.egg_gobj);
-    }
+
 #endif
     ftYoshiSpecialHiUpdateEggVectors(fp);
     ftPhysicsApplyAirVelFriction(fighter_gobj);

@@ -42,6 +42,10 @@ FTParts *sFTManagerPartsAllocBuf;
 // 0x80130D90
 u32 gFTManagerPlayersNum;
 
+#ifdef PORT
+sb32 gFTManagerInitFighterSkipFloorProject;
+#endif
+
 // 0x80130D94
 u16 gFTManagerMotionCount;
 
@@ -558,6 +562,7 @@ void ftManagerInitFighter(GObj *fighter_gobj, FTDesc *desc)
 
     fp->is_shuffle_electric = FALSE;
     fp->shuffle_tics = 0;
+    fp->dead_gate_wait = 0;
 
     fp->motion_attack_id = nFTMotionAttackIDNone;
     fp->motion_count = 0;
@@ -587,6 +592,14 @@ void ftManagerInitFighter(GObj *fighter_gobj, FTDesc *desc)
         {
             fp->coll_data.floor_line_id = -1;
         }
+#ifdef PORT
+        if (gFTManagerInitFighterSkipFloorProject != FALSE)
+        {
+            fp->ga = nMPKineticsAir;
+            fp->jumps_used = 1;
+        }
+        else
+#endif
         if ((is_collide_floor != FALSE) && (fp->coll_data.floor_dist > -300.0F) && (fp->fkind != nFTKindBoss))
         {
             fp->ga = nMPKineticsGround;

@@ -39,7 +39,25 @@ void ftCommonThrownReleaseFighterLoseGrip(GObj *fighter_gobj)
     }
     else interact_gobj = this_fp->capture_gobj;
 
+#ifdef PORT
+    if (interact_gobj == NULL)
+    {
+        this_fp->is_catch_or_capture = FALSE;
+        this_fp->catch_gobj = NULL;
+        this_fp->capture_gobj = NULL;
+        return;
+    }
+#endif
     interact_fp = ftGetStruct(interact_gobj);
+#ifdef PORT
+    if (interact_fp == NULL)
+    {
+        this_fp->is_catch_or_capture = FALSE;
+        this_fp->catch_gobj = NULL;
+        this_fp->capture_gobj = NULL;
+        return;
+    }
+#endif
 
     if ((this_fp->status_id >= nFTCommonStatusThrownStart) && (this_fp->status_id <= nFTCommonStatusThrownEnd))
     {
@@ -66,7 +84,27 @@ void ftCommonThrownReleaseFighterLoseGrip(GObj *fighter_gobj)
 void ftCommonThrownDecideFighterLoseGrip(GObj *fighter_gobj, GObj *interact_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
-    FTStruct *interact_fp = ftGetStruct(interact_gobj);
+    FTStruct *interact_fp;
+
+#ifdef PORT
+    if (interact_gobj == NULL)
+    {
+        this_fp->is_catch_or_capture = FALSE;
+        this_fp->catch_gobj = NULL;
+        this_fp->capture_gobj = NULL;
+        return;
+    }
+#endif
+    interact_fp = ftGetStruct(interact_gobj);
+#ifdef PORT
+    if (interact_fp == NULL)
+    {
+        this_fp->is_catch_or_capture = FALSE;
+        this_fp->catch_gobj = NULL;
+        this_fp->capture_gobj = NULL;
+        return;
+    }
+#endif
 
     if (this_fp->is_catch_or_capture)
     {
@@ -109,7 +147,7 @@ void ftCommonThrownProcStatus(GObj *fighter_gobj)
 
     ftParamSetThrowParams(fp, fp->capture_gobj);
 
-    fp->status_vars.common.damage.script_id = sFTCommonThrownScriptID;
+    ftStatusVarsDamage(fp)->script_id = sFTCommonThrownScriptID;
 }
 
 // 0x8014AFD0
@@ -117,12 +155,30 @@ void ftCommonThrownReleaseThrownUpdateStats(GObj *fighter_gobj, s32 lr, s32 scri
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
     GObj *capture_gobj = this_fp->capture_gobj;
-    FTStruct *capture_fp = ftGetStruct(capture_gobj);
+    FTStruct *capture_fp;
     FTThrowHitDesc *ft_throw;
     f32 knockback_final;
     s32 damage;
     f32 knockback_resist;
     f32 knockback_calc;
+
+#ifdef PORT
+    if (capture_gobj == NULL)
+    {
+        this_fp->capture_gobj = NULL;
+        this_fp->is_catch_or_capture = FALSE;
+        return;
+    }
+#endif
+    capture_fp = ftGetStruct(capture_gobj);
+#ifdef PORT
+    if (capture_fp == NULL)
+    {
+        this_fp->capture_gobj = NULL;
+        this_fp->is_catch_or_capture = FALSE;
+        return;
+    }
+#endif
 
     knockback_resist = (this_fp->knockback_resist_status < this_fp->knockback_resist_passive) ? this_fp->knockback_resist_passive : this_fp->knockback_resist_status;
 
@@ -187,8 +243,27 @@ void ftCommonThrownReleaseThrownUpdateStats(GObj *fighter_gobj, s32 lr, s32 scri
 void ftCommonThrownUpdateDamageStats(FTStruct *this_fp)
 {
     GObj *capture_gobj = this_fp->capture_gobj;
-    FTStruct *capture_fp = ftGetStruct(capture_gobj);
-    FTThrowHitDesc *ft_throw = &capture_fp->throw_desc[1];
+    FTStruct *capture_fp;
+    FTThrowHitDesc *ft_throw;
+
+#ifdef PORT
+    if (capture_gobj == NULL)
+    {
+        this_fp->capture_gobj = NULL;
+        this_fp->is_catch_or_capture = FALSE;
+        return;
+    }
+#endif
+    capture_fp = ftGetStruct(capture_gobj);
+#ifdef PORT
+    if (capture_fp == NULL)
+    {
+        this_fp->capture_gobj = NULL;
+        this_fp->is_catch_or_capture = FALSE;
+        return;
+    }
+#endif
+    ft_throw = &capture_fp->throw_desc[1];
     s32 damage = ftParamGetStaledDamage(capture_fp->player, ft_throw->damage, capture_fp->motion_attack_id, capture_fp->motion_count);
 
     ftParamUpdateDamage(this_fp, damage);
@@ -201,13 +276,31 @@ void ftCommonThrownSetStatusDamageRelease(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
     GObj *capture_gobj = this_fp->capture_gobj;
-    FTStruct *capture_fp = ftGetStruct(capture_gobj);
+    FTStruct *capture_fp;
     FTThrowHitDesc *ft_throw;
     f32 knockback_final;
     s32 lr;
     s32 damage;
     f32 knockback_resist;
     f32 knockback_calc;
+
+#ifdef PORT
+    if (capture_gobj == NULL)
+    {
+        this_fp->capture_gobj = NULL;
+        this_fp->is_catch_or_capture = FALSE;
+        return;
+    }
+#endif
+    capture_fp = ftGetStruct(capture_gobj);
+#ifdef PORT
+    if (capture_fp == NULL)
+    {
+        this_fp->capture_gobj = NULL;
+        this_fp->is_catch_or_capture = FALSE;
+        return;
+    }
+#endif
 
     knockback_resist = (this_fp->knockback_resist_status < this_fp->knockback_resist_passive) ? this_fp->knockback_resist_passive : this_fp->knockback_resist_status;
 

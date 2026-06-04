@@ -45,6 +45,14 @@ extern f32 gcGetAObjRate(AObj *aobj);
 // Apply AnimJoint values on current frame of animation to specific DObj
 extern void gcPlayDObjAnimJoint(DObj *dobj);
 
+#ifdef PORT
+/*
+ * Parse + play the current anim_joint at dobj->anim_frame even when anim_wait == AOBJ_ANIM_NULL.
+ * Netplay rollback uses this to re-seat held door / ground-monster poses after snapshot restore.
+ */
+extern void gcApplyDObjAnimJointPoseAtFrame(DObj *dobj, f32 anim_frame, sb32 freeze_wait_null);
+#endif
+
 // Apply MatAnimJoint values on current frame of animation to specific MObj
 extern void gcPlayMObjMatAnim(MObj *mobj);
 #ifdef PORT

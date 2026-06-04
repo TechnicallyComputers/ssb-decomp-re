@@ -11,19 +11,19 @@ void ftDonkeyThrowFFProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->status_vars.common.throwff.is_turn != FALSE)
+    if (ftStatusVarsThrowFF(fp)->is_turn != FALSE)
     {
-        fp->status_vars.common.throwff.turn_tics--;
+        ftStatusVarsThrowFF(fp)->turn_tics--;
 
         if (fp->lr == +1)
         {
-            DObjGetStruct(fighter_gobj)->rotate.vec.f.y = F_CST_DTOR32(90.0F) - (((f32)fp->status_vars.common.throwff.turn_tics / FTCOMMON_THROWFF_TURN_FRAMES) * F_CST_DTOR32(180.0F));
+            DObjGetStruct(fighter_gobj)->rotate.vec.f.y = F_CST_DTOR32(90.0F) - (((f32)ftStatusVarsThrowFF(fp)->turn_tics / FTCOMMON_THROWFF_TURN_FRAMES) * F_CST_DTOR32(180.0F));
         }
-        else DObjGetStruct(fighter_gobj)->rotate.vec.f.y = F_CST_DTOR32(-90.0F) + (((f32)fp->status_vars.common.throwff.turn_tics / FTCOMMON_THROWFF_TURN_FRAMES) * F_CST_DTOR32(180.0F));
+        else DObjGetStruct(fighter_gobj)->rotate.vec.f.y = F_CST_DTOR32(-90.0F) + (((f32)ftStatusVarsThrowFF(fp)->turn_tics / FTCOMMON_THROWFF_TURN_FRAMES) * F_CST_DTOR32(180.0F));
         
-        if (fp->status_vars.common.throwff.turn_tics == 0)
+        if (ftStatusVarsThrowFF(fp)->turn_tics == 0)
         {
-            fp->status_vars.common.throwff.is_turn = FALSE;
+            ftStatusVarsThrowFF(fp)->is_turn = FALSE;
         }
     }
     if (fp->motion_vars.flags.flag2 != 0)
@@ -50,7 +50,7 @@ void ftDonkeyThrowAirFFSwitchStatusGround(GObj *fighter_gobj)
     mpCommonSetFighterGround(fp);
     ftMainSetStatus(fighter_gobj, nFTDonkeyStatusThrowFF, fighter_gobj->anim_frame, 1.0F, FTSTATUS_PRESERVE_NONE);
 
-    fp->status_vars.common.throwff.is_turn = FALSE;
+    ftStatusVarsThrowFF(fp)->is_turn = FALSE;
 
     ftParamSetCaptureImmuneMask(fp, FTCATCHKIND_MASK_ALL);
 }
@@ -100,13 +100,13 @@ void ftDonkeyThrowFFSetStatus(GObj *fighter_gobj, sb32 is_turn)
 
     fp->motion_vars.flags.flag2 = 0;
 
-    fp->status_vars.common.throwff.is_turn = is_turn;
+    ftStatusVarsThrowFF(fp)->is_turn = is_turn;
 
     if (is_turn != FALSE)
     {
         fp->lr = -fp->lr;
 
-        fp->status_vars.common.throwff.turn_tics = FTCOMMON_THROWFF_TURN_FRAMES;
+        ftStatusVarsThrowFF(fp)->turn_tics = FTCOMMON_THROWFF_TURN_FRAMES;
     }
 }
 

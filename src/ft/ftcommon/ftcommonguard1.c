@@ -29,7 +29,7 @@ void ftCommonGuardCheckScheduleRelease(FTStruct *fp)
 {
     if (!(fp->input.pl.button_hold & fp->input.button_mask_z))
     {
-        fp->status_vars.common.guard.is_release = TRUE;
+        ftStatusVarsGuard(fp)->is_release = TRUE;
     }
 }
 
@@ -78,17 +78,17 @@ void ftCommonGuardUpdateShieldVars(GObj *fighter_gobj)
 
     if (fp->is_shield)
     {
-        if (fp->status_vars.common.guard.shield_decay_wait != 0)
+        if (ftStatusVarsGuard(fp)->shield_decay_wait != 0)
         {
-            fp->status_vars.common.guard.shield_decay_wait--;
+            ftStatusVarsGuard(fp)->shield_decay_wait--;
 
-            if (fp->status_vars.common.guard.shield_decay_wait == 0)
+            if (ftStatusVarsGuard(fp)->shield_decay_wait == 0)
             {
                 fp->shield_health--;
 
                 if (fp->shield_health != 0)
                 {
-                    fp->status_vars.common.guard.shield_decay_wait = FTCOMMON_GUARD_DECAY_INT;
+                    ftStatusVarsGuard(fp)->shield_decay_wait = FTCOMMON_GUARD_DECAY_INT;
 
                     goto lag_decrement;
                 }
@@ -96,11 +96,11 @@ void ftCommonGuardUpdateShieldVars(GObj *fighter_gobj)
             }
         }
     lag_decrement:
-        if (fp->status_vars.common.guard.release_lag != 0)
+        if (ftStatusVarsGuard(fp)->release_lag != 0)
         {
-            fp->status_vars.common.guard.release_lag--;
+            ftStatusVarsGuard(fp)->release_lag--;
         }
-        if ((fp->status_vars.common.guard.release_lag == 0) && (fp->status_vars.common.guard.is_release != FALSE))
+        if ((ftStatusVarsGuard(fp)->release_lag == 0) && (ftStatusVarsGuard(fp)->is_release != FALSE))
         {
         lag_end:
             if (fp->fkind == nFTKindYoshi)
@@ -169,8 +169,8 @@ void ftCommonGuardUpdateShieldAngle(FTStruct *fp)
     {
         angle_d = FTCOMMON_GUARD_ANGLE_MAX;
     }
-    fp->status_vars.common.guard.angle_i = (angle_d / 45.0F);
-    fp->status_vars.common.guard.angle_f = (angle_d - (fp->status_vars.common.guard.angle_i * 45.0F));
+    ftStatusVarsGuard(fp)->angle_i = (angle_d / 45.0F);
+    ftStatusVarsGuard(fp)->angle_f = (angle_d - (ftStatusVarsGuard(fp)->angle_i * 45.0F));
 
     range = sqrtf(SQUARE(fp->input.pl.stick_range.x) + SQUARE(fp->input.pl.stick_range.y)) / F_CONTROLLER_RANGE_MAX;
 
@@ -178,7 +178,7 @@ void ftCommonGuardUpdateShieldAngle(FTStruct *fp)
     {
         range = 1.0F;
     }
-    fp->status_vars.common.guard.shield_rotate_range = range;
+    ftStatusVarsGuard(fp)->shield_rotate_range = range;
 }
 
 // WARNING: Actually DObjDesc*?
@@ -260,11 +260,11 @@ void ftCommonGuardUpdateJoints(GObj *fighter_gobj)
         gcAddDObjAnimJoint(
             yrotn_joint,
             (AObjEvent32*)PORT_RESOLVE_ARRAY(
-                PORT_RESOLVE(fp->attr->shield_anim_joints[fp->status_vars.common.guard.angle_i]),
+                PORT_RESOLVE(fp->attr->shield_anim_joints[ftStatusVarsGuard(fp)->angle_i]),
                 joint_num),
-            fp->status_vars.common.guard.angle_f);
+            ftStatusVarsGuard(fp)->angle_f);
 #else
-        gcAddDObjAnimJoint(yrotn_joint, ((AObjEvent32**)PORT_RESOLVE(fp->attr->shield_anim_joints[fp->status_vars.common.guard.angle_i]))[joint_num], fp->status_vars.common.guard.angle_f);
+        gcAddDObjAnimJoint(yrotn_joint, ((AObjEvent32**)PORT_RESOLVE(fp->attr->shield_anim_joints[ftStatusVarsGuard(fp)->angle_i]))[joint_num], ftStatusVarsGuard(fp)->angle_f);
 #endif
         gcParseDObjAnimJoint(yrotn_joint);
 
@@ -276,9 +276,9 @@ void ftCommonGuardUpdateJoints(GObj *fighter_gobj)
 
         if (fp->is_have_translate_scale)
         {
-            ftCommonGuardGetJointTransformScale(yrotn_joint, &((DObjDesc*)PORT_RESOLVE(fp->attr->dobj_lookup))[joint_num], fp->status_vars.common.guard.shield_rotate_range, scale);
+            ftCommonGuardGetJointTransformScale(yrotn_joint, &((DObjDesc*)PORT_RESOLVE(fp->attr->dobj_lookup))[joint_num], ftStatusVarsGuard(fp)->shield_rotate_range, scale);
         }
-        else ftCommonGuardGetJointTransform(yrotn_joint, &((DObjDesc*)PORT_RESOLVE(fp->attr->dobj_lookup))[joint_num], fp->status_vars.common.guard.shield_rotate_range);
+        else ftCommonGuardGetJointTransform(yrotn_joint, &((DObjDesc*)PORT_RESOLVE(fp->attr->dobj_lookup))[joint_num], ftStatusVarsGuard(fp)->shield_rotate_range);
 
         yrotn_joint->anim_wait = AOBJ_ANIM_NULL;
 
@@ -313,8 +313,8 @@ void ftCommonGuardInitJoints(GObj *fighter_gobj)
     lbCommonAddDObjAnimJointAll
     (
         fp->joints[nFTPartsJointXRotN],
-        (AObjEvent32**)PORT_RESOLVE(attr->shield_anim_joints[fp->status_vars.common.guard.angle_i]),
-        fp->status_vars.common.guard.angle_f
+        (AObjEvent32**)PORT_RESOLVE(attr->shield_anim_joints[ftStatusVarsGuard(fp)->angle_i]),
+        ftStatusVarsGuard(fp)->angle_f
     );
     ftMainPlayAnimEventsAll(fighter_gobj);
 
@@ -334,7 +334,7 @@ void ftCommonGuardInitJoints(GObj *fighter_gobj)
                     (
                         joint,
                         dobjdesc,
-                        fp->status_vars.common.guard.shield_rotate_range,
+                        ftStatusVarsGuard(fp)->shield_rotate_range,
                         scale
                     );
                     joint->anim_wait = AOBJ_ANIM_NULL;
@@ -350,7 +350,7 @@ void ftCommonGuardInitJoints(GObj *fighter_gobj)
             (
                 joint,
                 dobjdesc,
-                fp->status_vars.common.guard.shield_rotate_range,
+                ftStatusVarsGuard(fp)->shield_rotate_range,
                 &((Vec3f*)PORT_RESOLVE(fp->attr->translate_scales))[nFTPartsJointYRotN]
             );
             joint->anim_wait = AOBJ_ANIM_NULL;
@@ -370,7 +370,7 @@ void ftCommonGuardInitJoints(GObj *fighter_gobj)
                     (
                         joint,
                         dobjdesc,
-                        fp->status_vars.common.guard.shield_rotate_range
+                        ftStatusVarsGuard(fp)->shield_rotate_range
                     );
                     joint->anim_wait = AOBJ_ANIM_NULL;
                 }
@@ -385,7 +385,7 @@ void ftCommonGuardInitJoints(GObj *fighter_gobj)
             (
                 joint,
                 dobjdesc,
-                fp->status_vars.common.guard.shield_rotate_range
+                ftStatusVarsGuard(fp)->shield_rotate_range
             );
             joint->anim_wait = AOBJ_ANIM_NULL;
         }
@@ -410,7 +410,7 @@ void ftCommonGuardOnProcUpdate(GObj *fighter_gobj)
     {
         if (fighter_gobj->anim_frame <= 0.0F)
         {
-            if (fp->status_vars.common.guard.is_release != FALSE)
+            if (ftStatusVarsGuard(fp)->is_release != FALSE)
             {
                 if (fp->fkind == nFTKindYoshi)
                 {
@@ -422,7 +422,7 @@ void ftCommonGuardOnProcUpdate(GObj *fighter_gobj)
             {
                 if (fp->fkind == nFTKindYoshi)
                 {
-                    fp->status_vars.common.guard.effect_gobj = efManagerYoshiShieldMakeEffect(fighter_gobj);
+                    ftStatusVarsGuard(fp)->effect_gobj = efManagerYoshiShieldMakeEffect(fighter_gobj);
 
                     ftParamHideModelPartAll(fighter_gobj);
                     ftCommonGuardSetHitStatusYoshi(fighter_gobj);
@@ -463,17 +463,17 @@ void ftCommonGuardOnSetStatus(GObj *fighter_gobj, s32 slide_tics)
         }
         else
         {
-            fp->status_vars.common.guard.effect_gobj = efManagerShieldMakeEffect(fighter_gobj);
+            ftStatusVarsGuard(fp)->effect_gobj = efManagerShieldMakeEffect(fighter_gobj);
             fp->is_shield = TRUE;
         }
     }
     ftCommonGuardUpdateJoints(fighter_gobj);
 
-    fp->status_vars.common.guard.release_lag = FTCOMMON_GUARD_RELEASE_LAG;
-    fp->status_vars.common.guard.shield_decay_wait = FTCOMMON_GUARD_DECAY_INT;
-    fp->status_vars.common.guard.is_release = FALSE;
-    fp->status_vars.common.guard.slide_tics = slide_tics;
-    fp->status_vars.common.guard.is_setoff = FALSE;
+    ftStatusVarsGuard(fp)->release_lag = FTCOMMON_GUARD_RELEASE_LAG;
+    ftStatusVarsGuard(fp)->shield_decay_wait = FTCOMMON_GUARD_DECAY_INT;
+    ftStatusVarsGuard(fp)->is_release = FALSE;
+    ftStatusVarsGuard(fp)->slide_tics = slide_tics;
+    ftStatusVarsGuard(fp)->is_setoff = FALSE;
 
     func_800269C0_275C0(nSYAudioFGMGuardOn);
 }
@@ -516,7 +516,7 @@ void ftCommonGuardProcUpdate(GObj *fighter_gobj)
     {
         ftCommonShieldBreakFlyCommonSetStatus(fighter_gobj);
     }
-    else if ((fp->status_vars.common.guard.is_release != FALSE) || !(fp->is_shield))
+    else if ((ftStatusVarsGuard(fp)->is_release != FALSE) || !(fp->is_shield))
     {
         ftCommonGuardOffSetStatus(fighter_gobj);
     }

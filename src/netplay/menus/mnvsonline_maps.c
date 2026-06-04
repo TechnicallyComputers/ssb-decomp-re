@@ -33,20 +33,7 @@ static void mnVSNetLevelPrefsMapsAnchorSObjX(SObj *sobj)
 	}
 }
 #endif
-/*
- * sc/scene.h may pull <lb/library.h> (decomp) which includes decomp lbcommon.h first.
- * Undef the shared guard so the port/net shadow can load.
- */
-#ifdef _LBCOMMON_H_
-#undef _LBCOMMON_H_
-#endif
-#ifdef LBCOMMON_H_PORT_NET
-#undef LBCOMMON_H_PORT_NET
-#endif
-#include <lbcommon.h>
-#ifndef LBCOMMON_H_PORT_NET
-#error "BattleShip netmenu menus expect decomp/src/netplay/lb/lbcommon.h shadow."
-#endif
+#include <lb/lbcommon.h>
 
 /*
  * Netmenu level prefs: mnmaps fork for nSCKindVSNetLevelPrefs only (SSB64_NETMENU).

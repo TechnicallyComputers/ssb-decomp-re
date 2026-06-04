@@ -1,7 +1,13 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
-#ifdef PORT
+#if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+/*
+ * Netplay rollback forward-sim: gate policy on syNetplayRollbackSemanticsActive().
+ * See docs/netplay_rollback_refactor_contracts.md.
+ */
+
 #endif
 
 // // // // // // // // // // // //
@@ -18,42 +24,8 @@
 //                               //
 // // // // // // // // // // // //
 
-// 0x80151B50
-void ftPikachuSpecialNProcUpdate(GObj *fighter_gobj)
+static void ftPikachuSpecialNProcAccessoryVanilla(GObj *fighter_gobj)
 {
-#ifdef PORT
-    FTStruct *fp = ftGetStruct(fighter_gobj);
-
-    if ((syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE) ||
-        ((fp != NULL) && (fp->proc_accessory == NULL)))
-    {
-        syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
-    }
-#endif
-    ftAnimEndSetWait(fighter_gobj);
-}
-
-// 0x80151B58
-void ftPikachuSpecialAirNProcUpdate(GObj *fighter_gobj)
-{
-#ifdef PORT
-    FTStruct *fp = ftGetStruct(fighter_gobj);
-
-    if ((syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE) ||
-        ((fp != NULL) && (fp->proc_accessory == NULL)))
-    {
-        syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
-    }
-#endif
-    ftAnimEndSetFall(fighter_gobj);
-}
-
-// 0x80151B50
-void ftPikachuSpecialNProcAccessory(GObj *fighter_gobj)
-{
-#ifdef PORT
-    syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
-#else
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     Vec3f vel;
@@ -75,7 +47,61 @@ void ftPikachuSpecialNProcAccessory(GObj *fighter_gobj)
         wpPikachuThunderJoltAirMakeWeapon(fighter_gobj, &pos, &vel);
         ftParamCheckSetFighterColAnimID(fighter_gobj, nGMColAnimFighterPikachuSpecialN, 0);
     }
+}
+
+// 0x80151B50
+void ftPikachuSpecialNProcUpdate(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: rollback thunder jolt spawn when vanilla ProcAccessory is skipped. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        FTStruct *fp = ftGetStruct(fighter_gobj);
+
+        if ((syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+            ((fp != NULL) && (fp->proc_accessory == NULL)))
+        {
+            syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
+        }
+    }
+
 #endif
+    ftAnimEndSetWait(fighter_gobj);
+}
+
+// 0x80151B58
+void ftPikachuSpecialAirNProcUpdate(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: rollback thunder jolt spawn when vanilla ProcAccessory is skipped. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        FTStruct *fp = ftGetStruct(fighter_gobj);
+
+        if ((syNetRbSnapThunderJoltProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+            ((fp != NULL) && (fp->proc_accessory == NULL)))
+        {
+            syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
+        }
+    }
+
+#endif
+    ftAnimEndSetFall(fighter_gobj);
+}
+
+// 0x80151B50
+void ftPikachuSpecialNProcAccessory(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: snapshot-driven thunder jolt spawn; offline uses vanilla below. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapTrySpawnThunderJoltFromAccessory(fighter_gobj);
+        return;
+    }
+
+#endif
+    ftPikachuSpecialNProcAccessoryVanilla(fighter_gobj);
 }
 
 // 0x80151C14
@@ -98,13 +124,14 @@ void ftPikachuSpecialAirNSwitchStatusGround(GObj *fighter_gobj)
     mpCommonSetFighterGround(fp);
     ftMainSetStatus(fighter_gobj, nFTPikachuStatusSpecialN, fighter_gobj->anim_frame, 1.0F, FTPIKACHU_SPECIALN_STATUS_FLAGS);
 
-#ifdef PORT
-    /* Preserve throw latch after spawn; only clear stale latch when landing before jolt frame. */
-    if ((fighter_gobj->anim_frame < 21.0F) &&
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: preserve throw latch after spawn. */
+    if ((syNetplayRollbackSemanticsActive() != FALSE) && (fighter_gobj->anim_frame < 21.0F) &&
         (syNetRbSnapThunderJoltOwnedByFighter(fighter_gobj) == FALSE))
     {
         fp->motion_vars.flags.flag1 = 0;
     }
+
 #endif
     fp->proc_accessory = ftPikachuSpecialNProcAccessory;
 }
@@ -118,13 +145,14 @@ void ftPikachuSpecialNSwitchStatusAir(GObj *fighter_gobj)
     ftMainSetStatus(fighter_gobj, nFTPikachuStatusSpecialAirN, fighter_gobj->anim_frame, 1.0F, FTPIKACHU_SPECIALN_STATUS_FLAGS);
     ftPhysicsClampAirVelXMax(fp);
 
-#ifdef PORT
-    /* Preserve throw latch after spawn; only clear stale latch when landing before jolt frame. */
-    if ((fighter_gobj->anim_frame < 21.0F) &&
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: preserve throw latch after spawn. */
+    if ((syNetplayRollbackSemanticsActive() != FALSE) && (fighter_gobj->anim_frame < 21.0F) &&
         (syNetRbSnapThunderJoltOwnedByFighter(fighter_gobj) == FALSE))
     {
         fp->motion_vars.flags.flag1 = 0;
     }
+
 #endif
     fp->proc_accessory = ftPikachuSpecialNProcAccessory;
 }
@@ -135,8 +163,12 @@ void ftPikachuSpecialNInitStatusVars(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     fp->motion_vars.flags.flag0 = 0;
-#ifdef PORT
-    fp->motion_vars.flags.flag1 = 0;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        fp->motion_vars.flags.flag1 = 0;
+    }
+
 #endif
     fp->proc_accessory = ftPikachuSpecialNProcAccessory;
 }

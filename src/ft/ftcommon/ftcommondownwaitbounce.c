@@ -22,9 +22,9 @@ void ftCommonDownWaitProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    fp->status_vars.common.downwait.stand_wait--;
+    ftStatusVarsDownWait(fp)->stand_wait--;
 
-    if (fp->status_vars.common.downwait.stand_wait == 0)
+    if (ftStatusVarsDownWait(fp)->stand_wait == 0)
     {
         ftCommonDownStandSetStatus(fighter_gobj);
     }
@@ -53,7 +53,7 @@ void ftCommonDownWaitSetStatus(GObj *fighter_gobj)
 
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTCOMMON_DOWNBOUNCE_STATUS_FLAGS);
 
-    fp->status_vars.common.downwait.stand_wait = FTCOMMON_DOWNWAIT_STAND_WAIT;
+    ftStatusVarsDownWait(fp)->stand_wait = FTCOMMON_DOWNWAIT_STAND_WAIT;
 
     ftParamSetCaptureImmuneMask(fp, (FTCATCHKIND_MASK_CAPTAINSPECIALHI | FTCATCHKIND_MASK_COMMON | FTCATCHKIND_MASK_KIRBYSPECIALN | FTCATCHKIND_MASK_YOSHISPECIALN));
 
@@ -65,13 +65,13 @@ void ftCommonDownBounceProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
-    if (fp->status_vars.common.downbounce.attack_buffer != 0)
+    if (ftStatusVarsDownBounce(fp)->attack_buffer != 0)
     {
-        fp->status_vars.common.downbounce.attack_buffer--;
+        ftStatusVarsDownBounce(fp)->attack_buffer--;
     }
     if (fp->input.pl.button_tap & (fp->input.button_mask_a | fp->input.button_mask_b))
     {
-        fp->status_vars.common.downbounce.attack_buffer = FTCOMMON_DOWNBOUNCE_ATTACK_BUFFER;
+        ftStatusVarsDownBounce(fp)->attack_buffer = FTCOMMON_DOWNBOUNCE_ATTACK_BUFFER;
     }
     if ((fighter_gobj->anim_frame <= 0.0F) && (ftCommonDownAttackCheckInterruptDownBounce(fighter_gobj) == FALSE) && (ftCommonDownForwardOrBackCheckInterruptCommon(fighter_gobj) == FALSE))
     {
@@ -125,7 +125,7 @@ void ftCommonDownBounceSetStatus(GObj *fighter_gobj)
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTSTATUS_PRESERVE_PLAYERTAG);
     ftCommonDownBounceUpdateEffects(fighter_gobj);
 
-    fp->status_vars.common.downbounce.attack_buffer = 0;
+    ftStatusVarsDownBounce(fp)->attack_buffer = 0;
     fp->damage_mul = 0.5F;
 
     ftParamVelDamageTransferGround(fp);

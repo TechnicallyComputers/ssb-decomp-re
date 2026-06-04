@@ -16,18 +16,18 @@ void ftCommonKneeBendProcUpdate(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     FTAttributes *attr = fp->attr;
 
-    fp->status_vars.common.kneebend.anim_frame += DObjGetStruct(fighter_gobj)->anim_speed;
+    ftStatusVarsKneeBend(fp)->anim_frame += DObjGetStruct(fighter_gobj)->anim_speed;
 
     if 
     (
-        (fp->status_vars.common.kneebend.input_source == FTCOMMON_KNEEBEND_INPUT_TYPE_BUTTON)&&
-        (fp->status_vars.common.kneebend.anim_frame <= FTCOMMON_KNEEBEND_SHORTHOP_FRAMES)    &&
+        (ftStatusVarsKneeBend(fp)->input_source == FTCOMMON_KNEEBEND_INPUT_TYPE_BUTTON)&&
+        (ftStatusVarsKneeBend(fp)->anim_frame <= FTCOMMON_KNEEBEND_SHORTHOP_FRAMES)    &&
         (fp->input.pl.button_release & (R_CBUTTONS | L_CBUTTONS | D_CBUTTONS | U_CBUTTONS))
     )
     {
-        fp->status_vars.common.kneebend.is_shorthop = TRUE;
+        ftStatusVarsKneeBend(fp)->is_shorthop = TRUE;
     }
-    if (attr->kneebend_anim_length <= fp->status_vars.common.kneebend.anim_frame) 
+    if (attr->kneebend_anim_length <= ftStatusVarsKneeBend(fp)->anim_frame)
     {
         ftCommonJumpSetStatus(fighter_gobj);
     }
@@ -42,9 +42,9 @@ void ftCommonKneeBendProcInterrupt(GObj *fighter_gobj)
     {
         if (ftCommonAttackHi4CheckInterruptKneeBend(fighter_gobj) == FALSE)
         {
-            if (fp->status_vars.common.kneebend.jump_force < fp->input.pl.stick_range.y)
+            if (ftStatusVarsKneeBend(fp)->jump_force < fp->input.pl.stick_range.y)
             {
-                fp->status_vars.common.kneebend.jump_force = fp->input.pl.stick_range.y;
+                ftStatusVarsKneeBend(fp)->jump_force = fp->input.pl.stick_range.y;
             }
         }
     }
@@ -57,10 +57,10 @@ void ftCommonKneeBendSetStatusParam(GObj *fighter_gobj, s32 status_id, s32 input
 
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
 
-    fp->status_vars.common.kneebend.jump_force = fp->input.pl.stick_range.y;
-    fp->status_vars.common.kneebend.anim_frame = 0.0F;
-    fp->status_vars.common.kneebend.input_source = input_source;
-    fp->status_vars.common.kneebend.is_shorthop = FALSE;
+    ftStatusVarsKneeBend(fp)->jump_force = fp->input.pl.stick_range.y;
+    ftStatusVarsKneeBend(fp)->anim_frame = 0.0F;
+    ftStatusVarsKneeBend(fp)->input_source = input_source;
+    ftStatusVarsKneeBend(fp)->is_shorthop = FALSE;
 
     fp->is_special_interrupt = TRUE;
 }

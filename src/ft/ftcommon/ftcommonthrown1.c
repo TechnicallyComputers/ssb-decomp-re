@@ -23,7 +23,7 @@ void ftCommonThrownProcUpdate(GObj *fighter_gobj)
             (capture_fp->status_id != nFTCommonStatusThrowF)
         )
         {
-            ftCommonThrownSetStatusImmediate(fighter_gobj, this_fp->status_vars.common.thrown.status_id);
+            ftCommonThrownSetStatusImmediate(fighter_gobj, ftStatusVarsThrown(this_fp)->status_id);
         }
     }
 }
@@ -77,7 +77,7 @@ void ftCommonThrownSetStatusQueue(GObj *fighter_gobj, s32 status_id_new, s32 sta
     }
     ftParamSetCaptureImmuneMask(this_fp, FTCATCHKIND_MASK_ALL);
 
-    this_fp->status_vars.common.thrown.status_id = status_id_queue;
+    ftStatusVarsThrown(this_fp)->status_id = status_id_queue;
 }
 
 // 0x8014ACB4

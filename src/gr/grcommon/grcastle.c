@@ -11,13 +11,34 @@
 // 0x8010B340
 void grCastleBumperProcUpdate(GObj *ground_gobj)
 {
-    Vec3f *ground_pos = &DObjGetStruct(ground_gobj)->translate.vec.f;
+    DObj *ground_dobj = DObjGetStruct(ground_gobj);
+    Vec3f *ground_pos;
+
+#ifdef PORT
+    // Netplay rollback can transiently detach the platform or bumper DObj
+    // (gobj-id reuse, or the bumper item being ejected mid snapshot-apply),
+    // leaving castle.bumper_gobj pointing at a gobj with a NULL DObj. Bail this
+    // tick instead of dereferencing it — that NULL deref is the SIGSEGV at
+    // fault 0x38 (offsetof DObj.translate). Snapshot apply re-resolves
+    // castle.bumper_gobj from the live item list before the next sim tick.
+    if (ground_dobj == NULL)
+    {
+        return;
+    }
+#endif
+    ground_pos = &ground_dobj->translate.vec.f;
 
     if (gGRCommonStruct.castle.bumper_gobj != NULL)
     {
-        Vec3f *bumper_pos = &DObjGetStruct(gGRCommonStruct.castle.bumper_gobj)->translate.vec.f;
+        DObj *bumper_dobj = DObjGetStruct(gGRCommonStruct.castle.bumper_gobj);
 
-        bumper_pos->x = ground_pos->x + gGRCommonStruct.castle.bumper_pos.x;
+#ifdef PORT
+        if (bumper_dobj == NULL)
+        {
+            return;
+        }
+#endif
+        bumper_dobj->translate.vec.f.x = ground_pos->x + gGRCommonStruct.castle.bumper_pos.x;
     }
 }
 

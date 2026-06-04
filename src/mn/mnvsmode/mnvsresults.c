@@ -14,6 +14,9 @@ extern void* func_800269C0_275C0(u16);
 #ifdef PORT
 extern float port_widescreen_clip_x_scale(void);
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sc/scmanager.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -3344,8 +3347,25 @@ void mnVSResultsFuncRun(GObj *gobj)
 		}
 		else
 		{
-			gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
-			gSCManagerSceneData.scene_curr = nSCKindPlayersVS;
+#if defined(PORT) && defined(SSB64_NETMENU)
+			u8 automatch_scene;
+
+			automatch_scene = (u8)((gSCManagerSceneData.is_vs_automatch_battle != FALSE)
+			                           ? gSCManagerSceneData.vs_net_automatch_post_battle_scene
+			                           : (u8)(0));
+			if (automatch_scene != (u8)(0))
+			{
+				gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
+				gSCManagerSceneData.scene_curr = automatch_scene;
+				gSCManagerSceneData.is_vs_automatch_battle = (ub8)(0);
+				gSCManagerSceneData.vs_net_automatch_post_battle_scene = (u8)(0);
+			}
+			else
+#endif
+			{
+				gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
+				gSCManagerSceneData.scene_curr = nSCKindPlayersVS;
+			}
 		}
 		func_800266A0_272A0();
 		syAudioStopBGMAll();

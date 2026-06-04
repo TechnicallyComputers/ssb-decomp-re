@@ -2,10 +2,16 @@
 #include <wp/weapon.h>
 #ifdef PORT
 #include <ft/ftcommon/ftcommonfunctions.h>
-#include <sys/netrollbacksnapshot.h>
 #include <wp/wpvars.h>
-
 extern wpSamusChargeShotAttributes dWPSamusChargeShotWeaponAttributes[];
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+/*
+ * SSB64_NETMENU compile gate: stripped from offline builds.
+ * Runtime: syNetplayRollbackSemanticsActive() gates reacquire/cull only.
+ */
 #endif
 
 // // // // // // // // // // // //
@@ -97,10 +103,16 @@ static void ftSamusSpecialNPortEnsureCoupledChargeShot(GObj *fighter_gobj)
 	Vec3f pos;
 
 	ftSamusSpecialNPortValidateCoupledCharge(fp);
-	if (fp->status_vars.samus.specialn.charge_gobj == NULL)
+#if defined(SSB64_NETMENU)
+	/* Netplay rollback only: reacquire orphaned charge shot after snapshot scrub. */
+	if (syNetplayRollbackSemanticsActive() != FALSE)
 	{
-		fp->status_vars.samus.specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+		if (fp->status_vars.samus.specialn.charge_gobj == NULL)
+		{
+			fp->status_vars.samus.specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+		}
 	}
+#endif
 	if (fp->status_vars.samus.specialn.charge_gobj == NULL)
 	{
 		ftSamusSpecialNGetChargeShotPosition(fp, &pos);
@@ -109,10 +121,17 @@ static void ftSamusSpecialNPortEnsureCoupledChargeShot(GObj *fighter_gobj)
 	}
 	if (fp->status_vars.samus.specialn.charge_gobj != NULL)
 	{
-		syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.samus.specialn.charge_gobj);
+#if defined(SSB64_NETMENU)
+		/* Netplay rollback only: cull duplicate charge shots on shared grid. */
+		if (syNetplayRollbackSemanticsActive() != FALSE)
+		{
+			syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.samus.specialn.charge_gobj);
+		}
+#endif
 		ftSamusSpecialNPortRefreshChargeShotGfx(fp);
 	}
 }
+
 #endif
 
 // 0x8015D300
@@ -126,8 +145,12 @@ void ftSamusSpecialNDestroyChargeShot(GObj *fighter_gobj)
 
         fp->status_vars.samus.specialn.charge_gobj = NULL;
     }
-#ifdef PORT
-    syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, NULL);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, NULL);
+    }
+
 #endif
 }
 
@@ -157,10 +180,14 @@ void ftSamusSpecialNSetChargeShotPosition(FTStruct *fp)
 
 #ifdef PORT
     ftSamusSpecialNPortValidateCoupledCharge(fp);
-    if (fp->status_vars.samus.specialn.charge_gobj == NULL)
+#if defined(SSB64_NETMENU)
+    /* Netplay rollback only: reacquire charge shot pointer after rollback load. */
+    if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+        (fp->status_vars.samus.specialn.charge_gobj == NULL))
     {
         fp->status_vars.samus.specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
     }
+#endif
 #endif
     if (fp->status_vars.samus.specialn.charge_gobj != NULL)
     {
@@ -365,16 +392,20 @@ void ftSamusSpecialNEndProcUpdate(GObj *fighter_gobj)
 
         ftSamusSpecialNGetChargeShotPosition(fp, &pos);
 
-#ifdef PORT
-        if (fp->status_vars.samus.specialn.charge_gobj == NULL)
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayRollbackSemanticsActive() != FALSE)
         {
-            fp->status_vars.samus.specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+            if (fp->status_vars.samus.specialn.charge_gobj == NULL)
+            {
+                fp->status_vars.samus.specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+            }
         }
         if (fp->status_vars.samus.specialn.charge_gobj == NULL)
         {
             fp->status_vars.samus.specialn.charge_gobj =
                 wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.samus.charge_level, TRUE);
         }
+
 #endif
         if (fp->status_vars.samus.specialn.charge_gobj != NULL)
         {

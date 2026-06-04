@@ -22,7 +22,7 @@ sb32 ftCommonSleepCheckIgnorePauseMenu(GObj *fighter_gobj)
 
     if ((gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_STOCK) && (gSCManagerBattleState->is_team_battle == TRUE) && (fp->status_id == nFTCommonStatusSleep))
     {
-        if (fp->status_vars.common.sleep.stock_steal_wait == 0)
+        if (ftStatusVarsSleep(fp)->stock_steal_wait == 0)
         {
             for (active_teammate_count = 0, stock_count = 0, player = 0; player < ARRAY_COUNT(gSCManagerBattleState->players); player++)
             {
@@ -63,11 +63,11 @@ void ftCommonSleepProcUpdate(GObj *fighter_gobj)
 
     if ((gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_STOCK) && (gSCManagerBattleState->is_team_battle == TRUE))
     {
-        if (this_fp->status_vars.common.sleep.stock_steal_wait != 0)
+        if (ftStatusVarsSleep(this_fp)->stock_steal_wait != 0)
         {
-            this_fp->status_vars.common.sleep.stock_steal_wait--;
+            ftStatusVarsSleep(this_fp)->stock_steal_wait--;
 
-            if (this_fp->status_vars.common.sleep.stock_steal_wait == 0)
+            if (ftStatusVarsSleep(this_fp)->stock_steal_wait == 0)
             {
                 this_fp->stock_count = 0;
                 gSCManagerBattleState->players[this_fp->player].stock_count = 0;
@@ -109,7 +109,7 @@ void ftCommonSleepProcUpdate(GObj *fighter_gobj)
 
                     gSCManagerBattleState->players[this_fp->player].stock_count = -2;
 
-                    this_fp->status_vars.common.sleep.stock_steal_wait = FTCOMMON_SLEEP_STOCK_STEAL_WAIT;
+                    ftStatusVarsSleep(this_fp)->stock_steal_wait = FTCOMMON_SLEEP_STOCK_STEAL_WAIT;
 
                     ifCommonPlayerStockStealMakeInterface(this_fp->player, steal_from_player[random_steal_target]);
 
@@ -132,7 +132,7 @@ void ftCommonSleepSetStatus(GObj *fighter_gobj)
     fp->is_ghost = TRUE;
     fp->is_menu_ignore = TRUE;
 
-    fp->status_vars.common.sleep.stock_steal_wait = 0;
+    ftStatusVarsSleep(fp)->stock_steal_wait = 0;
 
     fp->camera_mode = nFTCameraModeGhost;
 
