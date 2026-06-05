@@ -93,4 +93,8 @@ extern void lbParticleSetStructPosAll(f32 pos_x, f32 pos_y, f32 pos_z);
 extern void lbParticlePauseAllID(u16 generator_id, s32 link_id);
 extern void lbParticleResumeAllID(u16 generator_id, s32 link_id);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+extern LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj);
+#endif
+
 #endif

@@ -248,19 +248,6 @@ WPDesc dGRSectorArwingWeaponLaser3DWeaponDesc =
 
 // // // // // // // // // // // //
 //                               //
-//          ENUMERATORS          //
-//                               //
-// // // // // // // // // // // //
-
-enum grSectorArwingStatus
-{
-    nGRSectorArwingStatusSleep,
-    nGRSectorArwingStatusWait,
-    nGRSectorArwingStatusPatrol
-};
-
-// // // // // // // // // // // //
-//                               //
 //           FUNCTIONS           //
 //                               //
 // // // // // // // // // // // //
@@ -1065,6 +1052,48 @@ void func_ovl2_80107B30(void)
 }
 
 // 0x80107BA0
+#if defined(PORT) && defined(SSB64_NETMENU)
+/*
+ * Netplay rollback only: keep yakumono line 1 translate aligned with the flight DObj tree during
+ * patrol even when is_arwing_line_active has not flipped yet for the frame. Vanilla UpdateCollisions
+ * gates on line_active && z_near; without this, snapshot kin hashes and the visible mesh diverge at
+ * patrol start and rollback apply pops the deck sideways.
+ */
+void grSectorArwingReconcileDeckYakumonoFromFlightTree(void)
+{
+    GRCommonGroundVarsSector *sec;
+    DObj *d0;
+    DObj *d1;
+    Vec3f pos;
+
+    if (syNetplaySimQuantizeActive() == FALSE)
+    {
+        return;
+    }
+    sec = &gGRCommonStruct.sector;
+    if (sec->arwing_status != nGRSectorArwingStatusPatrol)
+    {
+        return;
+    }
+    if (sec->arwing_pilot_curr == -2)
+    {
+        return;
+    }
+    d0 = sec->map_dobjs[0];
+    d1 = sec->map_dobjs[1];
+    if ((d0 == NULL) || (d1 == NULL) || (d0->anim_wait == AOBJ_ANIM_NULL))
+    {
+        return;
+    }
+    grSectorArwingCanonicalizeSimState();
+    pos.x = d0->translate.vec.f.x + sec->arwing_target_x;
+    pos.y = d0->translate.vec.f.y + d1->translate.vec.f.y;
+    pos.z = 0.0F;
+    syNetplayQuantizeVec3f(&pos);
+    mpCollisionSetYakumonoPosID(1, &pos);
+}
+#endif
+
 void grSectorArwingUpdateCollisions(void)
 {
     Vec3f pos;
@@ -1247,6 +1276,10 @@ void grSectorProcUpdate(GObj *ground_gobj)
     {
         gcPlayAnimAll(gGRCommonStruct.sector.map_gobj);
         grSectorArwingCanonicalizeSimState();
+        if (gGRCommonStruct.sector.arwing_status == nGRSectorArwingStatusPatrol)
+        {
+            grSectorArwingReconcileDeckYakumonoFromFlightTree();
+        }
     }
 
 #endif
@@ -1697,6 +1730,31 @@ void grSectorRepairArwingPresentation(sb32 tree_was_reestablished, s8 flight_pat
         }
     }
     grSectorArwingApplyAnimTransforms(map_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * ApplyAnimTransforms runs gcPlayDObjAnimJoint at the restored cursor, which re-derives root
+     * translate from the flight spline (~one patrol tick behind the snapshot blob). Re-seat blob poses
+     * so rollback deck kin / map hash matches the ring slot saved at end-of-tick.
+     */
+    if ((dobj_translate != NULL) && (dobj_rotate != NULL))
+    {
+        for (di = 0; di < (u32)ARRAY_COUNT(sec->map_dobjs); di++)
+        {
+            if ((dobj_valid_mask & (u16)(1U << di)) == 0U)
+            {
+                continue;
+            }
+            if (sec->map_dobjs[di] == NULL)
+            {
+                continue;
+            }
+            sec->map_dobjs[di]->translate.vec.f = dobj_translate[di];
+            sec->map_dobjs[di]->rotate.vec.f = dobj_rotate[di];
+            syNetplayQuantizeVec3f(&sec->map_dobjs[di]->translate.vec.f);
+            syNetplayQuantizeVec3f(&sec->map_dobjs[di]->rotate.vec.f);
+        }
+    }
+#endif
 }
 
 void grSectorSyncArwingMapGObjFlags(u32 snap_map_gobj_flags)

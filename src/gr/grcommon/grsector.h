@@ -38,6 +38,13 @@ extern void grSectorProcUpdate(GObj *ground_gobj);
 extern void grSectorInitAll(void);
 extern GObj* grSectorMakeGround(void);
 
+typedef enum grSectorArwingStatus
+{
+	nGRSectorArwingStatusSleep,
+	nGRSectorArwingStatusWait,
+	nGRSectorArwingStatusPatrol
+} grSectorArwingStatus;
+
 #ifdef PORT
 typedef struct GRSectorArwingPresentationDiag
 {
@@ -61,6 +68,7 @@ extern void grSectorRepairArwingPresentation(sb32 tree_was_reestablished, s8 fli
                                              u16 dobj_valid_mask);
 #if defined(SSB64_NETMENU)
 extern void grSectorArwingCanonicalizeSimState(void);
+extern void grSectorArwingReconcileDeckYakumonoFromFlightTree(void);
 #endif
 #endif
 

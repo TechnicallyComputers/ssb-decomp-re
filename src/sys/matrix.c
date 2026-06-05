@@ -99,22 +99,13 @@ s32 syMatrixFastCos(f32 x)
     return cosx;
 }
 
-#if defined(PORT) && defined(SSB64_NETMENU)
-/* PORT: Render-only float sin/cos from gSYSinTable (s14 fixed-point → float). Netmenu MVP
- * paths use these instead of N64 __sinf/__cosf polynomial (degenerate FTOFIX32 matrices).
- * Sim / sync TUs keep __sinf/__cosf. See docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
-#define SYMATRIX_S14_TO_F32(v) ((f32)(v) / 16384.0F)
-
-f32 syMatrixSinF(f32 x)
-{
-    return SYMATRIX_S14_TO_F32(syMatrixFastSin(x));
-}
-
-f32 syMatrixCosF(f32 x)
-{
-    return SYMATRIX_S14_TO_F32(syMatrixFastCos(x));
-}
-#endif /* PORT && SSB64_NETMENU */
+/* PORT: The netmenu render path formerly routed float sin/cos through gSYSinTable
+ * (syMatrixSinF/syMatrixCosF) as a workaround for the pre-fix __cosf=+inf bug. With the
+ * Cody-Waite constants corrected (see gu/cosf.c, gu/sinf.c), render and sim now share the
+ * deterministic N64 polynomial __sinf/__cosf, so those float-table wrappers are gone.
+ * The integer gSYSinTable matrix builders (syGetSinCosUShort / syMatrixRotRpyR…) stay — they
+ * are the original N64 fixed-point path and are already deterministic.
+ * See docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
 
 // As noticed in Kirby64 decomp, these functions are copies from libultra, but
 // with explicit float constants and other slight modifications.
@@ -678,9 +669,11 @@ void syMatrixPerspF
 
     fovy *= DTOR32;
 #if defined(PORT) && defined(SSB64_NETMENU)
-    /* PORT: render-only syMatrixPerspF — table sin/cos (not N64 __sinf poly). */
-    cos = syMatrixCosF(fovy / 2);
-    sin = syMatrixSinF(fovy / 2);
+    /* PORT: netmenu uses the deterministic N64 Cody-Waite poly (was gSYSinTable float wrappers,
+     * a workaround for the pre-fix __cosf=+inf bug). cot = cos/sin, so any scale cancels anyway.
+     * Offline keeps libc cosf/sinf (JRickey parity — do not patch offline). */
+    cos = __cosf(fovy / 2);
+    sin = __sinf(fovy / 2);
 #else
     cos = cosf(fovy / 2);
     sin = sinf(fovy / 2);

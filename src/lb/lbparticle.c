@@ -152,8 +152,12 @@ LBTransform* lbParticleGetTransform(u8 status, u16 generator_id)
 		xf->rotate.x = xf->rotate.y = xf->rotate.z = 0.0F;
 		xf->scale.x = xf->scale.y = xf->scale.z = 1.0F;
 
-		xf->transform_status = status;
-		xf->generator_id = generator_id;
+        xf->transform_status = status;
+        xf->generator_id = generator_id;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		/* Pool reuse must not inherit a stale effect_gobj — rollback UAF false negative. */
+		xf->effect_gobj = NULL;
+#endif
 
 		gLBParticleTransformsUsedNum++;
 
@@ -172,6 +176,9 @@ void lbParticleEjectTransform(LBTransform *xf)
 	{
 		xf->proc_dead(xf);
 	}
+#if defined(PORT) && defined(SSB64_NETMENU)
+	xf->effect_gobj = NULL;
+#endif
 	xf->next = sLBParticleTransformsAllocFree;
 	sLBParticleTransformsAllocFree = xf;
 
@@ -3325,3 +3332,27 @@ void lbParticleResumeAllID(u16 generator_id, s32 link_id)
 		}
 	}
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj)
+{
+	s32 link_id;
+	LBParticle *pc;
+
+	if (effect_gobj == NULL)
+	{
+		return NULL;
+	}
+	for (link_id = 0; link_id < (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks); link_id++)
+	{
+		for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+		{
+			if ((pc->xf != NULL) && (pc->xf->effect_gobj == effect_gobj))
+			{
+				return pc;
+			}
+		}
+	}
+	return NULL;
+}
+#endif

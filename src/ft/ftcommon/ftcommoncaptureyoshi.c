@@ -2,6 +2,9 @@
 #include <it/item.h>
 #ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
+#if defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+#endif
 #endif
 
 // // // // // // // // // // // //
@@ -204,10 +207,28 @@ void ftCommonYoshiEggProcUpdate(GObj *fighter_gobj)
 void ftCommonYoshiEggProcInterrupt(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+    GObj *effect_gobj;
+    DObj *joint;
 
-    if (ftStatusVarsCaptureYoshi(fp)->effect_gobj != NULL)
+    effect_gobj = ftStatusVarsCaptureYoshi(fp)->effect_gobj;
+
+    if (effect_gobj != NULL)
     {
-        DObj *joint = DObjGetStruct(ftStatusVarsCaptureYoshi(fp)->effect_gobj)->child;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+        /* Netplay rollback only: skip wiggle when egg-lay DObj tree is missing after reconcile eject. */
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            DObj *egg_root = DObjGetStruct(effect_gobj);
+
+            if ((egg_root == NULL) || (egg_root->child == NULL))
+            {
+                ftStatusVarsCaptureYoshi(fp)->effect_gobj = NULL;
+                return;
+            }
+        }
+#endif
+        joint = DObjGetStruct(effect_gobj)->child;
 
         if (fp->ga == nMPKineticsGround)
         {

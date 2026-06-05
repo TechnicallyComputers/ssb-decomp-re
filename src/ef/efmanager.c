@@ -9,10 +9,81 @@
 extern void *func_800269C0_275C0(u16 id);
 #ifdef PORT
 /* For the defensive NULL-file_head guard's one-shot warning. */
+#include <stdlib.h>
 extern void port_log(const char *fmt, ...);
 /* Effect jitter is cosmetic; in netplay it must not advance gameplay RNG during rollback/resim. */
 #define syUtilsRandFloat syUtilsRandFloatCosmetic
 #define syUtilsRandIntRange syUtilsRandIntRangeCosmetic
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <lb/lbparticle.h>
+extern u32 syNetInputGetTick(void);
+
+static sb32 efManagerNetplaySnapshotEffectDiagEnabled(void)
+{
+	static int s_env_cache = -999;
+	const char *e;
+
+	if (s_env_cache != -999)
+	{
+		return (s_env_cache != 0) ? TRUE : FALSE;
+	}
+	e = getenv("SSB64_NETPLAY_SNAPSHOT_EFFECT_DIAG");
+	s_env_cache = ((e != NULL) && (e[0] != '\0') && (e[0] != '0')) ? 1 : 0;
+	return (s_env_cache != 0) ? TRUE : FALSE;
+}
+
+static sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, const char **out_reason)
+{
+	LBParticle *pc;
+
+	if (effect_gobj == NULL)
+	{
+		*out_reason = "null_gobj";
+		return FALSE;
+	}
+	if (xf == NULL)
+	{
+		*out_reason = "null_xf";
+		return FALSE;
+	}
+	if (xf->effect_gobj != effect_gobj)
+	{
+		*out_reason = "owner_mismatch";
+		return FALSE;
+	}
+	pc = lbParticleFindStructForEffectGobj(effect_gobj);
+	if (pc == NULL)
+	{
+		*out_reason = "no_particle";
+		return FALSE;
+	}
+	if (pc->xf != xf)
+	{
+		*out_reason = "particle_xf_mismatch";
+		return FALSE;
+	}
+	return TRUE;
+}
+
+static void efManagerNetplayEjectStaleXfEffect(
+	GObj *effect_gobj, EFStruct *ep, LBTransform *xf, const char *proc_tag, const char *reason)
+{
+	if (efManagerNetplaySnapshotEffectDiagEnabled() != FALSE)
+	{
+		port_log(
+		    "SSB64 NetRbSnapshot: effect_xf_stale tick=%u proc=%s reason=%s effect_gobj_id=%u xf=%p xf_owner=%p "
+		    "particle=%p\n",
+		    (unsigned int)syNetInputGetTick(), proc_tag, reason, (unsigned int)effect_gobj->id, (void *)xf,
+		    (xf != NULL) ? (void *)xf->effect_gobj : NULL,
+		    (void *)lbParticleFindStructForEffectGobj(effect_gobj));
+	}
+	if (ep != NULL)
+	{
+		efManagerSetPrevStructAlloc(ep);
+	}
+	gcEjectGObj(effect_gobj);
+}
 #endif
 
 // // // // // // // // // // // //
@@ -2140,6 +2211,24 @@ void efManagerDefaultProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback/reconcile can leave a non-NULL but stale LBTransform pointer. */
+    if (ep == NULL)
+    {
+        efManagerNetplayEjectStaleXfEffect(effect_gobj, NULL, NULL, "DefaultProcUpdate", "null_ep");
+        return;
+    }
+    {
+        LBTransform *xf = ep->effect_vars.common.xf;
+        const char *reason;
+
+        if (efManagerNetplayEffectXfIsLive(effect_gobj, xf, &reason) == FALSE)
+        {
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DefaultProcUpdate", reason);
+            return;
+        }
+    }
+#endif
     ep->effect_vars.common.xf->translate.x += ep->effect_vars.common.vel.x;
     ep->effect_vars.common.xf->translate.y += ep->effect_vars.common.vel.y;
 }
@@ -2870,6 +2959,23 @@ void efManagerDustLightProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ep == NULL)
+    {
+        efManagerNetplayEjectStaleXfEffect(effect_gobj, NULL, NULL, "DustLightProcUpdate", "null_ep");
+        return;
+    }
+    {
+        LBTransform *xf = ep->effect_vars.dust_light.xf;
+        const char *reason;
+
+        if (efManagerNetplayEffectXfIsLive(effect_gobj, xf, &reason) == FALSE)
+        {
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustLightProcUpdate", reason);
+            return;
+        }
+    }
+#endif
     ep->effect_vars.dust_light.xf->translate.x += ep->effect_vars.dust_light.vel1.x;
     ep->effect_vars.dust_light.xf->translate.y += ep->effect_vars.dust_light.vel1.y;
 
@@ -3010,6 +3116,23 @@ void efManagerDustHeavyDoubleProcUpdate(GObj *effect_gobj)
     EFStruct *ep = efGetStruct(effect_gobj);
     s32 unused;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ep == NULL)
+    {
+        efManagerNetplayEjectStaleXfEffect(effect_gobj, NULL, NULL, "DustHeavyDoubleProcUpdate", "null_ep");
+        return;
+    }
+    {
+        LBTransform *xf = ep->effect_vars.dust_heavy.xf;
+        const char *reason;
+
+        if (efManagerNetplayEffectXfIsLive(effect_gobj, xf, &reason) == FALSE)
+        {
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustHeavyDoubleProcUpdate", reason);
+            return;
+        }
+    }
+#endif
     ep->effect_vars.dust_heavy.anim_frame++;
 
     if (ep->effect_vars.dust_heavy.anim_frame == 2)

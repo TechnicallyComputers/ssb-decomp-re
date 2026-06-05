@@ -191,6 +191,13 @@ sb32 ftNessSpecialHiCheckCollidePKThunder(GObj *fighter_gobj)
             ip->weapon_vars.pkthunder.status = nWPNessPKThunderStatusCollide;
 
             fp->status_vars.ness.specialhi.pkthunder_pos = DObjGetStruct(pkthunder_gobj)->translate.vec.f;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            if (syNetplayRollbackSemanticsActive() != FALSE)
+            {
+                syNetplayNessPrepareJibakuCoupling(fighter_gobj, fp);
+                syNetplayNessNotifyJibakuCollide(fighter_gobj, fp);
+            }
+#endif
 
             return TRUE;
         }
@@ -899,40 +906,62 @@ void ftNessSpecialAirHiJibakuProcMap(GObj *fighter_gobj)
     FTStruct* fp = ftGetStruct(fighter_gobj);
     f32 unused;
     Vec3f pos;
+    sb32 defer_ground_paths;
 
+    defer_ground_paths = FALSE;
 #if defined(PORT) && defined(SSB64_NETMENU)
+    /* Defer weapon teardown only — still run wall/ceiling map collision during defer.
+     * Blanket early return caused ~1k-unit position catch-up when defer expired (ledge soak @931).
+     * See docs/bugs/netplay_ness_pkthunder_jibaku_procmap_defer_2026-06-04.md. */
     if ((syNetplayRollbackSemanticsActive() != FALSE) && (fp != NULL) &&
         (syNetplayNessShouldDeferPKThunderTeardownForPlayer(fp->player) != FALSE))
     {
-        return;
+        defer_ground_paths = TRUE;
+        syNetplayNessNotifyAirJibakuProcMapDefer(fighter_gobj, fp);
     }
 #endif
 
     if (mpCommonCheckFighterPassCliff(fighter_gobj, ftNessSpecialHiProcPass) != FALSE)
     {
-        if (fp->coll_data.mask_stat & MAP_FLAG_CLIFF_MASK)
+        if (defer_ground_paths == FALSE)
         {
-            ftCommonCliffCatchSetStatus(fighter_gobj);
-        }
+            if (fp->coll_data.mask_stat & MAP_FLAG_CLIFF_MASK)
+            {
+                ftCommonCliffCatchSetStatus(fighter_gobj);
+            }
+            else if (syVectorAngleDiff3D(&fp->coll_data.floor_angle, &fp->physics.vel_air) > FTNESS_PKJIBAKU_HALT_ANGLE)
+            {
+                fp->physics.vel_air.x = 0.0F;
+                fp->physics.vel_air.y = 0.0F;
+
+                mpCommonSetFighterGround(fp);
+                ftCommonDownBounceSetStatus(fighter_gobj);
+            }
+            else
+            {
+                sb32 block_ground_snap = FALSE;
+
 #if defined(PORT) && defined(SSB64_NETMENU)
-        else if ((syNetplayRollbackSemanticsActive() != FALSE) &&
-                 (syNetplayNessShouldBlockAirJibakuGroundSnap(fp) != FALSE))
-        {
-            syNetplayNessNotifyAirJibakuGroundSnapBlocked(fighter_gobj, fp);
+                /* Netplay rollback only: pass-cliff ground snap guards (launch window,
+                 * pass-through floor descent, defer/grace). See
+                 * docs/bugs/netplay_ness_pkthunder_hold_early_exit_pass_floor_2026-06-02.md. */
+                if (syNetplayRollbackSemanticsActive() != FALSE)
+                {
+                    block_ground_snap = syNetplayNessShouldBlockAirJibakuGroundSnap(fp);
+                    if (block_ground_snap != FALSE)
+                    {
+                        syNetplayNessNotifyAirJibakuGroundSnapBlocked(fighter_gobj, fp);
+                    }
+                }
+#endif
+                if (block_ground_snap == FALSE)
+                {
+                    ftNessSpecialAirHiJibakuSwitchStatusGround(fighter_gobj);
+                }
+            }
+
             return;
         }
-#endif
-        else if (syVectorAngleDiff3D(&fp->coll_data.floor_angle, &fp->physics.vel_air) > FTNESS_PKJIBAKU_HALT_ANGLE)
-        {
-            fp->physics.vel_air.x = 0.0F;
-            fp->physics.vel_air.y = 0.0F;
-
-            mpCommonSetFighterGround(fp);
-            ftCommonDownBounceSetStatus(fighter_gobj);
-        }
-        else ftNessSpecialAirHiJibakuSwitchStatusGround(fighter_gobj);
-
-        return;
     }
 
     pos.x = DObjGetStruct(fighter_gobj)->translate.vec.f.x;
@@ -1016,7 +1045,12 @@ void ftNessSpecialHiJibakuSwitchStatusAir(GObj *fighter_gobj)
 
     fp->jumps_used = fp->attr->jumps_max;
 #if defined(PORT) && defined(SSB64_NETMENU)
-    syNetplayCanonicalizeNessPKJibakuLaunchState(fighter_gobj);
+    /* Grounded->air jibaku conversion (slide-off), NOT a launch: vanilla preserves the
+     * decelerated ground->air transferred velocity here. Quantize the existing physics for
+     * cross-peer agreement instead of recomputing cos/sin * FTNESS_PKJIBAKU_VEL (which would
+     * re-launch Ness at full 200 speed and extend jibaku off ledges). See
+     * docs/bugs/netplay_ness_pkthunder_jibaku_slideoff_relaunch_2026-06-04.md. */
+    syNetplayCanonicalizeNessPKJibakuSimState(fighter_gobj);
 
 #endif
 }
@@ -1053,7 +1087,7 @@ void ftNessSpecialHiJibakuSetStatus(GObj *fighter_gobj)
     Vec3f pos;
 
     if (fp->coll_data.floor_flags & MAP_VERTEX_COLL_PASS) goto setair;
-    
+
     pos.x = DObjGetStruct(fighter_gobj)->translate.vec.f.x - fp->status_vars.ness.specialhi.pkthunder_pos.x;
     pos.y = (DObjGetStruct(fighter_gobj)->translate.vec.f.y + 150.0F) - fp->status_vars.ness.specialhi.pkthunder_pos.y;
     pos.z = 0.0F;
@@ -1094,6 +1128,7 @@ void ftNessSpecialHiJibakuSetStatus(GObj *fighter_gobj)
 #if defined(PORT) && defined(SSB64_NETMENU)
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
+        syNetplayNessNotifyJibakuCouplingSample(fighter_gobj, fp, "post_anim");
         syNetplayNessFinishJibakuTransition(fighter_gobj);
     }
 #endif
@@ -1116,9 +1151,8 @@ setdown:
 void ftNessSpecialAirHiJibakuSetStatus(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
-    DObj *dobj = DObjGetStruct(fighter_gobj);
-    f32 dist_x = dobj->translate.vec.f.x - fp->status_vars.ness.specialhi.pkthunder_pos.x;
-    f32 dist_y = (dobj->translate.vec.f.y + 150.0F) - fp->status_vars.ness.specialhi.pkthunder_pos.y;
+    f32 dist_x;
+    f32 dist_y;
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     if (syNetplayRollbackSemanticsActive() != FALSE)
@@ -1127,6 +1161,8 @@ void ftNessSpecialAirHiJibakuSetStatus(GObj *fighter_gobj)
         syNetplayNessNotifyJibakuTriggered(fighter_gobj, fp, fp->status_id);
     }
 #endif
+    dist_x = DObjGetStruct(fighter_gobj)->translate.vec.f.x - fp->status_vars.ness.specialhi.pkthunder_pos.x;
+    dist_y = (DObjGetStruct(fighter_gobj)->translate.vec.f.y + 150.0F) - fp->status_vars.ness.specialhi.pkthunder_pos.y;
 
     fp->lr = (dist_x >= 0.0F) ? +1 : -1;
 
@@ -1134,6 +1170,12 @@ void ftNessSpecialAirHiJibakuSetStatus(GObj *fighter_gobj)
 
     fp->physics.vel_air.x = (__cosf(fp->status_vars.ness.specialhi.pkjibaku_angle) * FTNESS_PKJIBAKU_VEL * fp->lr);
     fp->physics.vel_air.y = (__sinf(fp->status_vars.ness.specialhi.pkjibaku_angle) * FTNESS_PKJIBAKU_VEL);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetplayNessNotifyJibakuLaunchDist(fighter_gobj, fp, dist_x, dist_y);
+    }
+#endif
 
     ftNessSpecialHiJibakuInitStatusVars(fighter_gobj);
 #if defined(PORT) && defined(SSB64_NETMENU)
@@ -1153,6 +1195,7 @@ void ftNessSpecialAirHiJibakuSetStatus(GObj *fighter_gobj)
 #if defined(PORT) && defined(SSB64_NETMENU)
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
+        syNetplayNessNotifyJibakuCouplingSample(fighter_gobj, fp, "post_anim");
         syNetplayNessFinishJibakuTransition(fighter_gobj);
     }
 #endif
