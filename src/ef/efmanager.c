@@ -47,6 +47,26 @@ static sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, c
 		*out_reason = "null_xf";
 		return FALSE;
 	}
+	if (lbParticleTransformIsOnFreeList(xf) != FALSE)
+	{
+		*out_reason = "xf_on_free_list";
+		return FALSE;
+	}
+	if (lbParticleTransformIsAllocated(xf) == FALSE)
+	{
+		*out_reason = "xf_not_allocated";
+		return FALSE;
+	}
+	if (xf->users_num == 0U)
+	{
+		*out_reason = "xf_zero_users";
+		return FALSE;
+	}
+	if (xf->transform_status > nLBTransformStatusFinished)
+	{
+		*out_reason = "xf_bad_status";
+		return FALSE;
+	}
 	if (xf->effect_gobj != effect_gobj)
 	{
 		*out_reason = "owner_mismatch";
@@ -69,14 +89,25 @@ static sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, c
 static void efManagerNetplayEjectStaleXfEffect(
 	GObj *effect_gobj, EFStruct *ep, LBTransform *xf, const char *proc_tag, const char *reason)
 {
-	if (efManagerNetplaySnapshotEffectDiagEnabled() != FALSE)
+	static u32 s_stale_log_budget = 64U;
+	sb32 verbose;
+
+	verbose = efManagerNetplaySnapshotEffectDiagEnabled();
+	if ((verbose != FALSE) || (s_stale_log_budget > 0U))
 	{
+		if (s_stale_log_budget > 0U)
+		{
+			s_stale_log_budget--;
+		}
 		port_log(
 		    "SSB64 NetRbSnapshot: effect_xf_stale tick=%u proc=%s reason=%s effect_gobj_id=%u xf=%p xf_owner=%p "
-		    "particle=%p\n",
+		    "particle=%p free=%d alloc=%d users=%u\n",
 		    (unsigned int)syNetInputGetTick(), proc_tag, reason, (unsigned int)effect_gobj->id, (void *)xf,
 		    (xf != NULL) ? (void *)xf->effect_gobj : NULL,
-		    (void *)lbParticleFindStructForEffectGobj(effect_gobj));
+		    (void *)lbParticleFindStructForEffectGobj(effect_gobj),
+		    (xf != NULL) ? (int)lbParticleTransformIsOnFreeList(xf) : -1,
+		    (xf != NULL) ? (int)lbParticleTransformIsAllocated(xf) : -1,
+		    (unsigned int)((xf != NULL) ? xf->users_num : 0U));
 	}
 	if (ep != NULL)
 	{
@@ -2227,6 +2258,14 @@ void efManagerDefaultProcUpdate(GObj *effect_gobj)
             efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DefaultProcUpdate", reason);
             return;
         }
+        if ((xf->effect_gobj != effect_gobj) || (lbParticleTransformIsAllocated(xf) == FALSE))
+        {
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DefaultProcUpdate", "pre_write_race");
+            return;
+        }
+        xf->translate.x += ep->effect_vars.common.vel.x;
+        xf->translate.y += ep->effect_vars.common.vel.y;
+        return;
     }
 #endif
     ep->effect_vars.common.xf->translate.x += ep->effect_vars.common.vel.x;
@@ -2974,6 +3013,22 @@ void efManagerDustLightProcUpdate(GObj *effect_gobj)
             efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustLightProcUpdate", reason);
             return;
         }
+        if ((xf->effect_gobj != effect_gobj) || (lbParticleTransformIsAllocated(xf) == FALSE))
+        {
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustLightProcUpdate", "pre_write_race");
+            return;
+        }
+        xf->translate.x += ep->effect_vars.dust_light.vel1.x;
+        xf->translate.y += ep->effect_vars.dust_light.vel1.y;
+
+        if (ep->effect_vars.dust_light.lifetime != 0)
+        {
+            ep->effect_vars.dust_light.lifetime--;
+
+            ep->effect_vars.dust_light.vel1.x += ep->effect_vars.dust_light.vel2.x;
+            ep->effect_vars.dust_light.vel1.y += ep->effect_vars.dust_light.vel2.y;
+        }
+        return;
     }
 #endif
     ep->effect_vars.dust_light.xf->translate.x += ep->effect_vars.dust_light.vel1.x;
@@ -3131,6 +3186,22 @@ void efManagerDustHeavyDoubleProcUpdate(GObj *effect_gobj)
             efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustHeavyDoubleProcUpdate", reason);
             return;
         }
+        if ((xf->effect_gobj != effect_gobj) || (lbParticleTransformIsAllocated(xf) == FALSE))
+        {
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustHeavyDoubleProcUpdate", "pre_write_race");
+            return;
+        }
+        ep->effect_vars.dust_heavy.anim_frame++;
+
+        if (ep->effect_vars.dust_heavy.anim_frame == 2)
+        {
+            Vec3f pos = xf->translate;
+
+            pos.y -= 126.0F;
+
+            efManagerDustHeavyMakeEffect(&pos, -ep->effect_vars.dust_heavy.lr);
+        }
+        return;
     }
 #endif
     ep->effect_vars.dust_heavy.anim_frame++;

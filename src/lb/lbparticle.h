@@ -94,6 +94,8 @@ extern void lbParticlePauseAllID(u16 generator_id, s32 link_id);
 extern void lbParticleResumeAllID(u16 generator_id, s32 link_id);
 
 #if defined(PORT) && defined(SSB64_NETMENU)
+extern sb32 lbParticleTransformIsOnFreeList(const LBTransform *xf);
+extern sb32 lbParticleTransformIsAllocated(const LBTransform *xf);
 extern LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj);
 #endif
 

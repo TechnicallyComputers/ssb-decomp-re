@@ -3334,6 +3334,58 @@ void lbParticleResumeAllID(u16 generator_id, s32 link_id)
 }
 
 #if defined(PORT) && defined(SSB64_NETMENU)
+sb32 lbParticleTransformIsOnFreeList(const LBTransform *xf)
+{
+	LBTransform *free_xf;
+
+	if (xf == NULL)
+	{
+		return FALSE;
+	}
+	for (free_xf = sLBParticleTransformsAllocFree; free_xf != NULL; free_xf = free_xf->next)
+	{
+		if (free_xf == xf)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
+sb32 lbParticleTransformIsAllocated(const LBTransform *xf)
+{
+	s32 link_id;
+	LBParticle *pc;
+	LBGenerator *gn;
+
+	if (xf == NULL)
+	{
+		return FALSE;
+	}
+	if (lbParticleTransformIsOnFreeList(xf) != FALSE)
+	{
+		return FALSE;
+	}
+	for (link_id = 0; link_id < (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks); link_id++)
+	{
+		for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+		{
+			if (pc->xf == xf)
+			{
+				return TRUE;
+			}
+		}
+	}
+	for (gn = sLBParticleGeneratorsQueued; gn != NULL; gn = gn->next)
+	{
+		if (gn->xf == xf)
+		{
+			return TRUE;
+		}
+	}
+	return FALSE;
+}
+
 LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj)
 {
 	s32 link_id;
