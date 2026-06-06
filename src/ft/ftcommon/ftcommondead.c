@@ -26,10 +26,19 @@ s32 ftCommonDeadGetWait(const FTStruct *fp)
 
 void ftCommonDeadSetWait(FTStruct *fp, s32 wait)
 {
+    /*
+     * Ordering constraint (PORT + SSB64_NETMENU): the union member must be written
+     * before the dead_gate_wait mirror. ftStatusVarsDead() runs the statusvars
+     * witness integrity check on evaluation; if the mirror is updated first the
+     * witness observes union(old) vs mirror(new) skewed by one for this call,
+     * emitting spurious "corrupt dead_gate" lines and a 1-tick capture/hash skew
+     * every dead-countdown frame. Writing the union first keeps the observation
+     * consistent (union==mirror at the accessor) on both offline and netmenu builds.
+     */
+    ftStatusVarsDead(fp)->wait = wait;
 #if defined(PORT) && defined(SSB64_NETMENU)
     fp->dead_gate_wait = (s16)wait;
 #endif
-    ftStatusVarsDead(fp)->wait = wait;
 }
 
 void ftCommonDeadClearGateWait(FTStruct *fp)

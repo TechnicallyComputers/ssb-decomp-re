@@ -154,9 +154,12 @@ void ftKirbyCopyMarioSpecialNInitStatusVars(GObj *fighter_gobj)
 
     fp->motion_vars.flags.flag0 = 0;
 #if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: clear the fireball latch (flag1) and the once-per-throw retry
+     * marker (flag2) at throw entry; flag2 caps the resim-only recovery re-spawn. */
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
         fp->motion_vars.flags.flag1 = 0;
+        fp->motion_vars.flags.flag2 = 0;
     }
 
 #endif

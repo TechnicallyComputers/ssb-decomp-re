@@ -1890,6 +1890,7 @@ EFStruct* efManagerGetNextStructAlloc(sb32 is_force_return)
     ep->fighter_gobj = NULL;
     ep->xf = NULL;
     ep->is_pause_effect = FALSE;
+    ep->proc_update = NULL;
 
     sEFManagerStructsFreeNum--;
 
@@ -1911,6 +1912,7 @@ EFStruct* efManagerGetEffectForce(void)
 // 0x800FD4F8
 void efManagerSetPrevStructAlloc(EFStruct *ep)
 {
+    ep->proc_update = NULL;
     ep->next = sEFManagerStructsAllocFree;
 
     sEFManagerStructsAllocFree = ep;

@@ -4,6 +4,7 @@
 extern void *func_800269C0_275C0(u16 id);
 #if defined(SSB64_NETMENU)
 #include <sys/netplay_sim_quantize.h>
+#include <sys/netrollbacksnapshot.h>
 #endif
 #endif
 
@@ -129,6 +130,27 @@ void ftCommonCaptureYoshiProcCapture(GObj *fighter_gobj, GObj *capture_gobj)
     mpCommonUpdateFighterProjectFloor(fighter_gobj);
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+static void ftCommonYoshiEggBeginPrepareAnimForNetplay(GObj *effect_gobj)
+{
+    EFStruct *ep;
+
+    if ((effect_gobj == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+    {
+        return;
+    }
+    ep = efGetStruct(effect_gobj);
+    if (ep == NULL)
+    {
+        return;
+    }
+    /* Netplay rollback only: victim egg skips throw intro (index 2) so prepare wiggle starts immediately. */
+    ep->effect_vars.yoshi_egg_lay.force_index = 0;
+    efManagerYoshiEggLaySetAnim(effect_gobj, 0);
+    gcSetAnimSpeed(effect_gobj, 1.0F);
+}
+#endif
+
 // 0x8014C958
 void ftCommonYoshiEggMakeEffect(GObj *fighter_gobj)
 {
@@ -140,6 +162,9 @@ void ftCommonYoshiEggMakeEffect(GObj *fighter_gobj)
 
         if (ftStatusVarsCaptureYoshi(fp)->effect_gobj != NULL)
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            ftCommonYoshiEggBeginPrepareAnimForNetplay(ftStatusVarsCaptureYoshi(fp)->effect_gobj);
+#endif
             fp->is_effect_attach = TRUE;
         }
     }
@@ -188,8 +213,19 @@ void ftCommonYoshiEggProcUpdate(GObj *fighter_gobj)
         Vec3f pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
         pos.z = 0.0F;
 
-        efManagerYoshiEggExplodeMakeEffect(&pos);
-        efManagerEggBreakMakeEffect(&pos);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+        /* Netplay rollback only: defer hatch shell/particles to first visible frame after load/resim. */
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            syNetRbSnapQueueYoshiEggLayHatchCosmeticsLive(fighter_gobj);
+        }
+        else
+#endif
+        {
+            efManagerYoshiEggExplodeMakeEffect(&pos);
+            efManagerEggBreakMakeEffect(&pos);
+        }
         func_800269C0_275C0(nSYAudioFGMYoshiEggLayShatter);
 
         fp->physics.vel_air.y = FTCOMMON_YOSHIEGG_ESCAPE_VEL_Y;

@@ -1090,7 +1090,18 @@ void grSectorArwingReconcileDeckYakumonoFromFlightTree(void)
     pos.y = d0->translate.vec.f.y + d1->translate.vec.f.y;
     pos.z = 0.0F;
     syNetplayQuantizeVec3f(&pos);
-    mpCollisionSetYakumonoPosID(1, &pos);
+    /*
+     * Early patrol only: line 1 is not yet live under vanilla gating. SetPos here aligns yakumono
+     * translate with the flight tree for snapshot hash / mesh parity.
+     *
+     * When line_active && z_near, grSectorArwingUpdateCollisions must be the sole SetPos call this
+     * frame — speed is (new_pos - old_translate) and a second SetPos at the same position zeroes
+     * gMPCollisionSpeeds[1], so grounded fighters see a moving deck with no platform carry (ftmain).
+     */
+    if ((sec->is_arwing_line_active == FALSE) || (sec->is_arwing_z_near == FALSE))
+    {
+        mpCollisionSetYakumonoPosID(1, &pos);
+    }
 }
 #endif
 

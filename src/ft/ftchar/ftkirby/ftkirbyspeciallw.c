@@ -1,4 +1,14 @@
 #include <ft/fighter.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+#include <sys/debug.h>
+#include <stdlib.h>
+/*
+ * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
+ * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
+ */
+#define FTKIRBY_STONE_ROLLBACK_RELEASE_SUPPRESS_TICS 4
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -49,6 +59,9 @@ void ftKirbySpecialLwSetDamageResist(GObj *fighter_gobj)
     fp->damage_resist = FTKIRBY_STONE_HEALTH_MAX;
 
     fp->status_vars.kirby.speciallw.duration = FTKIRBY_STONE_DURATION_MAX;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    fp->status_vars.kirby.speciallw.unk_0x2 = 0;
+#endif
     fp->status_vars.kirby.speciallw.colanim_id = nGMColAnimFighterKirbySpeciaLwHigh;
 
     ftParamCheckSetFighterColAnimID(fighter_gobj, nGMColAnimFighterKirbySpeciaLwHigh, 0);
@@ -70,20 +83,90 @@ f32 ftKirbySpecialLwGetGroundAxisYaw(FTStruct *fp)
     return rot_z;
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 ftKirbySpecialLwIsGenuineButtonTapB(const FTStruct *fp)
+{
+    sb32 is_tap;
+
+    is_tap = ((fp->input.pl.button_tap & fp->input.button_mask_b) != 0) ? TRUE : FALSE;
+
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: resim can replay a stale B edge while B is still held from stone entry. */
+    if ((is_tap != FALSE) && (syNetplayRollbackSemanticsActive() != FALSE) &&
+        ((fp->input.pl.button_hold & fp->input.button_mask_b) != 0))
+    {
+        is_tap = FALSE;
+    }
+    return is_tap;
+}
+
+static sb32 ftKirbySpecialLwStoneReleaseDiagEnabled(void)
+{
+    static sb32 cached = -1;
+    const char *env;
+
+    if (cached >= 0)
+    {
+        return cached;
+    }
+    env = getenv("SSB64_NETPLAY_KIRBY_STONE_RELEASE_DIAG");
+    cached = ((env != NULL) && (env[0] != '\0') && (env[0] != '0')) ? TRUE : FALSE;
+    return cached;
+}
+
+static void ftKirbySpecialLwLogStoneRelease(GObj *fighter_gobj, const FTStruct *fp, const char *reason)
+{
+    if (ftKirbySpecialLwStoneReleaseDiagEnabled() == FALSE)
+    {
+        return;
+    }
+    syDebugPrintf("SSB64 KirbyStone: release player=%d status=%d duration=%d reason=%s tap=%d hold=%d suppress=%d\n",
+             (int)fp->player, (int)fp->status_id, (int)fp->status_vars.kirby.speciallw.duration, reason,
+             (int)((fp->input.pl.button_tap & fp->input.button_mask_b) != 0),
+             (int)((fp->input.pl.button_hold & fp->input.button_mask_b) != 0),
+             (int)fp->status_vars.kirby.speciallw.unk_0x2);
+    (void)fighter_gobj;
+}
+#endif
+
 // 0x801614B4
 sb32 ftKirbySpecialLwCheckRelease(GObj *fighter_gobj, sb32 is_allow_release)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+    sb32 is_b_release_tap;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    s16 rollback_release_suppress;
+#endif
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    is_b_release_tap = ftKirbySpecialLwIsGenuineButtonTapB(fp);
+    rollback_release_suppress = fp->status_vars.kirby.speciallw.unk_0x2;
+    if ((syNetplayRollbackSemanticsActive() != FALSE) && (rollback_release_suppress > 0))
+    {
+        /* Netplay rollback only: block stale orphan B taps for a few ticks after snapshot apply. */
+        is_b_release_tap = FALSE;
+        fp->status_vars.kirby.speciallw.unk_0x2 = rollback_release_suppress - 1;
+    }
+#else
+    is_b_release_tap = ((fp->input.pl.button_tap & fp->input.button_mask_b) != 0) ? TRUE : FALSE;
+#endif
 
     if (is_allow_release == TRUE)
     {
-        if (fp->input.pl.button_tap & fp->input.button_mask_b)
+        if (is_b_release_tap != FALSE)
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            ftKirbySpecialLwLogStoneRelease(fighter_gobj, fp, "b_tap_allow");
+#endif
             return TRUE;
         }
     }
-    else if ((fp->status_vars.kirby.speciallw.duration < (FTKIRBY_STONE_DURATION_MAX - FTKIRBY_STONE_DURATION_MIN)) && (fp->input.pl.button_tap & fp->input.button_mask_b))
+    else if ((fp->status_vars.kirby.speciallw.duration < (FTKIRBY_STONE_DURATION_MAX - FTKIRBY_STONE_DURATION_MIN)) &&
+             (is_b_release_tap != FALSE))
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        ftKirbySpecialLwLogStoneRelease(fighter_gobj, fp, "b_tap_min_hold");
+#endif
         return TRUE;
     }
     if (fp->status_vars.kirby.speciallw.duration > 0)
@@ -92,8 +175,42 @@ sb32 ftKirbySpecialLwCheckRelease(GObj *fighter_gobj, sb32 is_allow_release)
 
         return FALSE;
     }
-    else return TRUE;
+    else
+    {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        ftKirbySpecialLwLogStoneRelease(fighter_gobj, fp, "duration_zero");
+#endif
+        return TRUE;
+    }
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 ftKirbySpecialLwStatusIsStoneScope(s32 status_id)
+{
+    return ((status_id >= nFTKirbyStatusSpecialLwStart) && (status_id <= nFTKirbyStatusSpecialAirLwEnd)) ? TRUE : FALSE;
+}
+
+void ftKirbySpecialLwReconcileStoneAfterRollback(GObj *fighter_gobj, s16 blob_duration)
+{
+    FTStruct *fp;
+
+    if ((fighter_gobj == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+    {
+        return;
+    }
+    fp = ftGetStruct(fighter_gobj);
+    if ((fp == NULL) || (fp->fkind != nFTKindKirby) || (ftKirbySpecialLwStatusIsStoneScope(fp->status_id) == FALSE))
+    {
+        return;
+    }
+    if ((fp->is_damage_resist != FALSE) && (fp->status_vars.kirby.speciallw.duration <= 0) && (blob_duration > 0))
+    {
+        fp->status_vars.kirby.speciallw.duration = blob_duration;
+    }
+    /* Netplay rollback only: resim after load can replay orphan B tap on immediate-release stone statuses. */
+    fp->status_vars.kirby.speciallw.unk_0x2 = FTKIRBY_STONE_ROLLBACK_RELEASE_SUPPRESS_TICS;
+}
+#endif
 
 // 0x80161530
 void ftKirbySpecialLwStartProcUpdate(GObj *fighter_gobj)

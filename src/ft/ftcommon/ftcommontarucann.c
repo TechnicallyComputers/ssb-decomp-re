@@ -193,6 +193,8 @@ void ftCommonTaruCannReconcileShootStateAfterRollback(GObj *fighter_gobj, u32 sn
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     GObj *tarucann_gobj;
+    s32 release_wait;
+    s32 shoot_wait;
 
     if ((fp == NULL) || (fp->status_id != nFTCommonStatusTaruCann))
     {
@@ -209,24 +211,33 @@ void ftCommonTaruCannReconcileShootStateAfterRollback(GObj *fighter_gobj, u32 sn
     }
     ftStatusVarsTaruCann(fp)->tarucann_gobj = tarucann_gobj;
 
-    if (ftStatusVarsTaruCann(fp)->shoot_wait > 0)
+    release_wait = ftStatusVarsTaruCann(fp)->release_wait;
+    shoot_wait = ftStatusVarsTaruCann(fp)->shoot_wait;
+
+    /* In-progress shot from snapshot: sync barrel anim only; ProcUpdate owns countdown + eject. */
+    if (shoot_wait > 0)
     {
         grJungleTaruCannAddAnimShoot(tarucann_gobj);
         return;
     }
-    if (grJungleTaruCannIsChildShootAnimActive(tarucann_gobj) != FALSE)
+    /* Rollback load may restore past the auto-fire threshold without shoot_wait armed yet. */
+    if (release_wait >= FTCOMMON_TARUCANN_RELEASE_WAIT)
     {
-        if (ftStatusVarsTaruCann(fp)->shoot_wait == 0)
-        {
-            ftStatusVarsTaruCann(fp)->shoot_wait = 1;
-        }
+        ftStatusVarsTaruCann(fp)->shoot_wait = FTCOMMON_TARUCANN_SHOOT_WAIT;
         grJungleTaruCannAddAnimShoot(tarucann_gobj);
         return;
     }
+    /* Manual fire only: confirmed tap edge on the restore tick. */
     if (ftCommonTaruCannTryRearmShootFromInputHistory(fp, snap_tick) != FALSE)
     {
         ftStatusVarsTaruCann(fp)->shoot_wait = FTCOMMON_TARUCANN_SHOOT_WAIT;
         grJungleTaruCannAddAnimShoot(tarucann_gobj);
+        return;
+    }
+    /* Orphan shoot joint during release countdown: suppress pop; do not arm shoot_wait. */
+    if (grJungleTaruCannIsChildShootAnimActive(tarucann_gobj) != FALSE)
+    {
+        grJungleTaruCannAddAnimFill(tarucann_gobj);
         return;
     }
     grJungleTaruCannAddAnimFill(tarucann_gobj);

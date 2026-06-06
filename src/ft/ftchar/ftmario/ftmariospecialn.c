@@ -135,10 +135,13 @@ void ftMarioSpecialNInitStatusVars(GObj *fighter_gobj)
     fp->motion_vars.flags.flag0 = FALSE;
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-    /* Netplay rollback only: clear motion flag1 during active rollback session. */
+    /* Netplay rollback only: clear the fireball latch (flag1) and the once-per-throw retry
+     * marker (flag2) at throw entry. flag2 caps the resim-only recovery re-spawn so a
+     * point-blank throw whose ball is consumed each frame does not stream fireballs. */
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
         fp->motion_vars.flags.flag1 = 0;
+        fp->motion_vars.flags.flag2 = 0;
     }
 #endif
     fp->proc_accessory = ftMarioSpecialNProcAccessory;

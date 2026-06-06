@@ -36,6 +36,9 @@ extern void ftKirbySpecialLwSetDamageResist(GObj* fighter_gobj);
 extern void ftKirbySpecialLwSetDropFallVel(FTStruct* fp);
 extern f32 ftKirbySpecialLwGetGroundAxisYaw(FTStruct* fp);
 extern sb32 ftKirbySpecialLwCheckRelease(GObj* fighter_gobj, sb32 is_allow_release);
+#if defined(PORT) && defined(SSB64_NETMENU)
+extern void ftKirbySpecialLwReconcileStoneAfterRollback(GObj* fighter_gobj, s16 blob_duration);
+#endif
 extern void ftKirbySpecialLwStartProcUpdate(GObj* fighter_gobj);
 extern void ftKirbySpecialAirLwStartProcUpdate(GObj* fighter_gobj);
 extern void ftKirbySpecialLwUnkDecideNextStatus(GObj* fighter_gobj, sb32 ga);
