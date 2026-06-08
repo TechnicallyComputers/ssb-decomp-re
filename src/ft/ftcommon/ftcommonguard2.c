@@ -3,6 +3,14 @@
 #include <ef/efmanager.h>
 extern void *func_800269C0_275C0(u16 id);
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+/*
+ * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
+ * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
+ * See docs/netplay_rollback_refactor_contracts.md.
+ */
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -60,11 +68,46 @@ sb32 ftCommonGuardCheckInterruptEscape(GObj *fighter_gobj)
     else return FALSE;
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 ftCommonGuardNetplayCatchCheckInterruptGuardDrop(GObj *fighter_gobj)
+{
+    /*
+     * GuardOff / GuardSetOff have NULL proc_interrupt in vanilla. Offline, a release→re-press cadence
+     * reaches Wait before the grab edge is consumed; netplay input-delay phase-shift can land the
+     * re-press inside the drop window instead. Use vanilla-aligned catch paths only:
+     *   - Common: Z held + A tap (neutral grab)
+     *   - Guard:  A tap (shield-grab parity with GuardOn/Guard)
+     * Do NOT use Attack11 (Z tap alone) here — that path is jab-chain-only in vanilla and caused
+     * spurious Z-only grabs when pressing Z to re-shield during GuardOff (follow-up 2026-06-07).
+     */
+    if (ftCommonCatchCheckInterruptCommon(fighter_gobj) != FALSE)
+    {
+        return TRUE;
+    }
+    if (ftCommonCatchCheckInterruptGuard(fighter_gobj) != FALSE)
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
 // 0x80148F74
 void ftCommonGuardOffProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: GuardOff has no proc_interrupt; see docs/bugs/netplay_guardoff_catch_interrupt_2026-06-07.md. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        if (ftCommonGuardNetplayCatchCheckInterruptGuardDrop(fighter_gobj) != FALSE)
+        {
+            return;
+        }
+    }
+#endif
     ftCommonGuardUpdateShieldVars(fighter_gobj);
 
     if (fp->shield_health == 0)
@@ -98,6 +141,17 @@ void ftCommonGuardSetOffProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: GuardSetOff has no proc_interrupt; see docs/bugs/netplay_guardoff_catch_interrupt_2026-06-07.md. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        if (ftCommonGuardNetplayCatchCheckInterruptGuardDrop(fighter_gobj) != FALSE)
+        {
+            return;
+        }
+    }
+#endif
     ftCommonGuardCheckScheduleRelease(fp);
 
     ftStatusVarsGuard(fp)->setoff_frames--;

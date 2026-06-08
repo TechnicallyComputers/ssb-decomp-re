@@ -4526,12 +4526,44 @@ void ftMainAddHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
     DObj *new_child_joint;
     DObj *parent_joint;
 
+#ifdef PORT
+    {
+        FTHiddenPart *hp_table = (FTHiddenPart*)PORT_RESOLVE(fp->attr->hiddenparts);
+
+        if (hp_table == NULL)
+        {
+            return;
+        }
+        if ((hiddenpart_id < 0) || (hiddenpart_id >= 32))
+        {
+            return;
+        }
+        hiddenpart = &hp_table[hiddenpart_id];
+        if ((hiddenpart->root_joint_id < 0) ||
+            (hiddenpart->root_joint_id >= FTPARTS_JOINT_NUM_MAX))
+        {
+            return;
+        }
+        root_joint = fp->joints[hiddenpart->root_joint_id];
+        if (root_joint == NULL)
+        {
+            return;
+        }
+    }
+#else
     hiddenpart = &((FTHiddenPart*)PORT_RESOLVE(fp->attr->hiddenparts))[hiddenpart_id];
     root_joint = fp->joints[hiddenpart->root_joint_id];
+#endif
 
     if (hiddenpart->root_joint_id == nFTPartsJointTransN)
     {
         parent_joint = root_joint->parent;
+#ifdef PORT
+        if (parent_joint == NULL)
+        {
+            return;
+        }
+#endif
         child_joint = root_joint->child;
         new_parent_joint = parent_joint;
         new_child_joint = child_joint;
@@ -4593,6 +4625,12 @@ void ftMainAddHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
         root_joint->parent = NULL;
 
         new_parent_joint = fp->joints[hiddenpart->parent_joint_id];
+#ifdef PORT
+        if (new_parent_joint == NULL)
+        {
+            return;
+        }
+#endif
 
         if (new_parent_joint->child != NULL)
         {
@@ -4614,17 +4652,58 @@ void ftMainAddHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
 // 0x800E6E00
 void ftMainEjectHiddenPartID(FTStruct *fp, s32 hiddenpart_id)
 {
-    FTHiddenPart *hiddenpart = &((FTHiddenPart*)PORT_RESOLVE(fp->attr->hiddenparts))[hiddenpart_id];
-    DObj *root_joint = fp->joints[hiddenpart->root_joint_id];
+    FTHiddenPart *hiddenpart;
+    DObj *root_joint;
     DObj *parent_joint;
     DObj *child_joint;
     DObj *sibling_joint;
     DObj *new_sibling_joint;
 
+#ifdef PORT
+    {
+        FTHiddenPart *hp_table = (FTHiddenPart*)PORT_RESOLVE(fp->attr->hiddenparts);
+
+        if (hp_table == NULL)
+        {
+            return;
+        }
+        if ((hiddenpart_id < 0) || (hiddenpart_id >= 32))
+        {
+            return;
+        }
+        hiddenpart = &hp_table[hiddenpart_id];
+        if ((hiddenpart->root_joint_id < 0) ||
+            (hiddenpart->root_joint_id >= FTPARTS_JOINT_NUM_MAX))
+        {
+            return;
+        }
+        root_joint = fp->joints[hiddenpart->root_joint_id];
+        if ((root_joint == NULL) || (ftGetParts(root_joint) == NULL))
+        {
+            fp->joints[hiddenpart->root_joint_id] = NULL;
+            return;
+        }
+    }
+#else
+    hiddenpart = &((FTHiddenPart*)PORT_RESOLVE(fp->attr->hiddenparts))[hiddenpart_id];
+    root_joint = fp->joints[hiddenpart->root_joint_id];
+#endif
+
     ftManagerSetPrevPartsAlloc(ftGetParts(root_joint));
 
     child_joint = root_joint->child;
     parent_joint = root_joint->parent;
+#ifdef PORT
+    if (parent_joint == NULL)
+    {
+        fp->joints[hiddenpart->root_joint_id] = NULL;
+        root_joint->sib_next = NULL;
+        root_joint->sib_prev = NULL;
+        root_joint->child = NULL;
+        gcEjectDObj(root_joint);
+        return;
+    }
+#endif
 
     if (child_joint != NULL)
     {
