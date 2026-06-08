@@ -1,6 +1,7 @@
 #include <ft/fighter.h>
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_sim_quantize.h>
+#include <sys/netrollback.h>
 #include <sys/debug.h>
 #include <stdlib.h>
 /*
@@ -139,9 +140,12 @@ static sb32 ftKirbySpecialLwIsGenuineButtonTapB(const FTStruct *fp)
 
     is_tap = ((fp->input.pl.button_tap & fp->input.button_mask_b) != 0) ? TRUE : FALSE;
 
-    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-    /* Netplay rollback only: resim can replay a stale B edge while B is still held from stone entry. */
-    if ((is_tap != FALSE) && (syNetplayRollbackSemanticsActive() != FALSE) &&
+    /*
+     * SSB64_NETMENU: stripped from offline builds. Runtime: resim only.
+     * Netplay rollback only: resim can replay a stale B edge while B is still held from stone entry.
+     * Forward netplay must accept tap+hold on the first frame of a fresh B press (vanilla release path).
+     */
+    if ((is_tap != FALSE) && (syNetRollbackIsResimulating() != FALSE) &&
         ((fp->input.pl.button_hold & fp->input.button_mask_b) != 0))
     {
         is_tap = FALSE;
