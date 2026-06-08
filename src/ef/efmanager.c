@@ -6388,6 +6388,16 @@ LBParticle* efManagerEggBreakMakeEffect(Vec3f *pos)
 void efManagerKirbyInhaleWindProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: orphan inhale-wind GObjs can outlive EFStruct pool recycle. See
+     * docs/bugs/netplay_kirby_inhale_wind_orphan_effect_2026-06-07.md. */
+    if ((ep == NULL) || (ep->xf == NULL) || (ep->fighter_gobj == NULL) ||
+        (DObjGetStruct(ep->fighter_gobj) == NULL))
+    {
+        gcEjectGObj(effect_gobj);
+        return;
+    }
+#endif
     LBTransform *xf = ep->xf;
 
     xf->translate = DObjGetStruct(ep->fighter_gobj)->translate.vec.f;

@@ -50,10 +50,59 @@ void ftKirbySpecialLwUpdateColAnim(GObj *fighter_gobj)
     }
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 ftKirbySpecialLwStatusIsStoneScope(s32 status_id)
+{
+    return ((status_id >= nFTKirbyStatusSpecialLwStart) && (status_id <= nFTKirbyStatusSpecialAirLwEnd)) ? TRUE : FALSE;
+}
+
+static sb32 ftKirbySpecialLwStatusIsMidStoneHold(s32 status_id)
+{
+    return ((status_id == nFTKirbyStatusSpecialLwHold) || (status_id == nFTKirbyStatusSpecialAirLwHold) ||
+            (status_id == nFTKirbyStatusSpecialAirLwLanding) || (status_id == nFTKirbyStatusSpecialAirLwFall)) ?
+           TRUE :
+           FALSE;
+}
+
+static sb32 ftKirbySpecialLwRollbackShouldSkipFullStoneReset(const FTStruct *fp)
+{
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: SetDamageResist full reset is entry-only; mid-hold landing must keep countdown. */
+    if ((fp == NULL) || (syNetplayRollbackSemanticsActive() == FALSE) ||
+        (ftKirbySpecialLwStatusIsStoneScope(fp->status_id) == FALSE))
+    {
+        return FALSE;
+    }
+    if ((fp->status_id == nFTKirbyStatusSpecialLwEnd) || (fp->status_id == nFTKirbyStatusSpecialAirLwEnd))
+    {
+        return FALSE;
+    }
+    /*
+     * Fresh ground/air stone entry calls SetDamageResist with is_damage_resist still FALSE while
+     * speciallw.duration aliases stale union bytes (e.g. specialN.copy_id). Require resist already
+     * active so only mid-hold rollback/resim continuation skips the full 160-frame reset.
+     */
+    if ((fp->is_damage_resist != FALSE) && (ftKirbySpecialLwStatusIsMidStoneHold(fp->status_id) != FALSE) &&
+        (fp->status_vars.kirby.speciallw.duration > 0))
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+#endif
+
 // 0x8016141C
 void ftKirbySpecialLwSetDamageResist(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ftKirbySpecialLwRollbackShouldSkipFullStoneReset(fp) != FALSE)
+    {
+        fp->is_damage_resist = TRUE;
+        return;
+    }
+#endif
 
     fp->is_damage_resist = TRUE;
     fp->damage_resist = FTKIRBY_STONE_HEALTH_MAX;
@@ -185,12 +234,7 @@ sb32 ftKirbySpecialLwCheckRelease(GObj *fighter_gobj, sb32 is_allow_release)
 }
 
 #if defined(PORT) && defined(SSB64_NETMENU)
-static sb32 ftKirbySpecialLwStatusIsStoneScope(s32 status_id)
-{
-    return ((status_id >= nFTKirbyStatusSpecialLwStart) && (status_id <= nFTKirbyStatusSpecialAirLwEnd)) ? TRUE : FALSE;
-}
-
-void ftKirbySpecialLwReconcileStoneAfterRollback(GObj *fighter_gobj, s16 blob_duration)
+void ftKirbySpecialLwReconcileStoneAfterRollback(GObj *fighter_gobj, s16 blob_duration, sb32 blob_is_damage_resist)
 {
     FTStruct *fp;
 
@@ -202,6 +246,10 @@ void ftKirbySpecialLwReconcileStoneAfterRollback(GObj *fighter_gobj, s16 blob_du
     if ((fp == NULL) || (fp->fkind != nFTKindKirby) || (ftKirbySpecialLwStatusIsStoneScope(fp->status_id) == FALSE))
     {
         return;
+    }
+    if ((fp->status_id != nFTKirbyStatusSpecialLwEnd) && (fp->status_id != nFTKirbyStatusSpecialAirLwEnd))
+    {
+        fp->is_damage_resist = (blob_is_damage_resist != FALSE) ? TRUE : FALSE;
     }
     if ((fp->is_damage_resist != FALSE) && (fp->status_vars.kirby.speciallw.duration <= 0) && (blob_duration > 0))
     {
