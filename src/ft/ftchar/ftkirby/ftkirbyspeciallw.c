@@ -2,8 +2,9 @@
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_sim_quantize.h>
 #include <sys/netrollback.h>
-#include <sys/debug.h>
 #include <stdlib.h>
+
+extern void port_log(const char *fmt, ...);
 /*
  * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
  * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
@@ -173,12 +174,43 @@ static void ftKirbySpecialLwLogStoneRelease(GObj *fighter_gobj, const FTStruct *
     {
         return;
     }
-    syDebugPrintf("SSB64 KirbyStone: release player=%d status=%d duration=%d reason=%s tap=%d hold=%d suppress=%d\n",
+    port_log("SSB64 KirbyStone: release player=%d status=%d duration=%d reason=%s tap=%d hold=%d suppress=%d\n",
              (int)fp->player, (int)fp->status_id, (int)fp->status_vars.kirby.speciallw.duration, reason,
              (int)((fp->input.pl.button_tap & fp->input.button_mask_b) != 0),
              (int)((fp->input.pl.button_hold & fp->input.button_mask_b) != 0),
              (int)fp->status_vars.kirby.speciallw.unk_0x2);
     (void)fighter_gobj;
+}
+
+static sb32 ftKirbySpecialLwStoneDamageDiagEnabled(void)
+{
+    static sb32 cached = -1;
+    const char *env;
+
+    if (cached >= 0)
+    {
+        return cached;
+    }
+    env = getenv("SSB64_NETPLAY_KIRBY_STONE_DAMAGE_DIAG");
+    cached = ((env != NULL) && (env[0] != '\0') && (env[0] != '0')) ? TRUE : FALSE;
+    return cached;
+}
+
+void ftKirbySpecialLwLogStoneDamageHit(const FTStruct *fp, s32 hit_damage, s32 resist_before, sb32 was_resist,
+                                       sb32 applied, s32 aftermath_damage)
+{
+    if ((fp == NULL) || (ftKirbySpecialLwStoneDamageDiagEnabled() == FALSE) ||
+        (syNetplayRollbackSemanticsActive() == FALSE) || (fp->fkind != nFTKindKirby) ||
+        (ftKirbySpecialLwStatusIsStoneScope(fp->status_id) == FALSE) || (was_resist == FALSE))
+    {
+        return;
+    }
+    port_log(
+        "SSB64 KirbyStone: hit player=%d status=%d hit_dmg=%d resist_before=%d resist_after=%d is_resist=%d pct=%d "
+        "applied=%d aftermath_dmg=%d\n",
+        (int)fp->player, (int)fp->status_id, (int)hit_damage, (int)resist_before, (int)fp->damage_resist,
+        (int)(fp->is_damage_resist != FALSE), (int)fp->percent_damage, (int)(applied != FALSE),
+        (int)aftermath_damage);
 }
 #endif
 

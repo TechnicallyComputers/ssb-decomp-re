@@ -25,6 +25,7 @@ static sb32 ftMainDecompDiagEnabled(void)
 #endif
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
+#include <ft/ftchar/ftkirby/ftkirbyfunctions.h>
 #include <sys/netfighterphase.h>
 #include <sys/netplay_sim_quantize.h>
 #include <sys/net_debug_agent_log.h>
@@ -2353,6 +2354,17 @@ void ftMainPlayHitSFX(FTStruct *fp, FTAttackColl *attack_coll)
 // 0x800E2CC0
 sb32 ftMainCheckGetUpdateDamage(FTStruct *fp, s32 *damage)
 {
+    s32 hit_damage;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    s32 resist_before;
+    sb32 was_resist;
+#endif
+
+    hit_damage = *damage;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    resist_before = fp->damage_resist;
+    was_resist = fp->is_damage_resist;
+#endif
     if (fp->is_damage_resist)
     {
         fp->damage_resist -= *damage;
@@ -2372,9 +2384,15 @@ sb32 ftMainCheckGetUpdateDamage(FTStruct *fp, s32 *damage)
         {
             fp->damage_lag = *damage;
         }
+#if defined(PORT) && defined(SSB64_NETMENU)
+        ftKirbySpecialLwLogStoneDamageHit(fp, hit_damage, resist_before, was_resist, TRUE, *damage);
+#endif
         return TRUE;
     }
-    else return FALSE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    ftKirbySpecialLwLogStoneDamageHit(fp, hit_damage, resist_before, was_resist, FALSE, 0);
+#endif
+    return FALSE;
 }
 
 // 0x800E2D44

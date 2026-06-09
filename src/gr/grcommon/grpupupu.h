@@ -21,6 +21,17 @@ enum grPupupuWhispyWindStatus
 	nGRPupupuWhispyWindStatusEnumCount
 };
 
+enum grPupupuFlowerStatus
+{
+	nGRPupupuFlowerStatusDefault,
+	nGRPupupuFlowerStatusWindStart,
+	nGRPupupuFlowerStatusWindLoopStart,
+	nGRPupupuFlowerStatusWindLoop,
+	nGRPupupuFlowerStatusWindLoopEnd,
+	nGRPupupuFlowerStatusWindStop,
+	nGRPupupuFlowerStatusEnumCount
+};
+
 extern s32 grPupupuWhispyGetLR(GObj *ground_gobj);
 extern void grPupupuWhispySetWindPush(void);
 extern void grPupupuWhispyUpdateSleep(void);
@@ -47,5 +58,14 @@ extern void grPupupuProcUpdate(GObj *ground_gobj);
 extern GObj* grPupupuMakeMapGObj(intptr_t o_dobjdesc, intptr_t o_mobjsub, void (*proc_display)(GObj*), u8 dl_link);
 extern void grPupupuInitAll(void);
 extern GObj* grPupupuMakeGround(void);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+extern void grPupupuWhispyEjectLeavesEffect(void);
+extern void grPupupuWhispyEjectDustEffect(void);
+extern void grPupupuWhispyNullParticleXfHandles(void);
+extern void grPupupuWhispyRepairPresentationCosmetic(void);
+extern void grPupupuWhispyWarmupLiveEffects(void);
+extern void grPupupuWhispyWarmupLiveEffectsEx(s32 ticks);
+#endif
 
 #endif

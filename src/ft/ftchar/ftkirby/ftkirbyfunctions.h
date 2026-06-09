@@ -38,6 +38,7 @@ extern f32 ftKirbySpecialLwGetGroundAxisYaw(FTStruct* fp);
 extern sb32 ftKirbySpecialLwCheckRelease(GObj* fighter_gobj, sb32 is_allow_release);
 #if defined(PORT) && defined(SSB64_NETMENU)
 extern void ftKirbySpecialLwReconcileStoneAfterRollback(GObj* fighter_gobj, s16 blob_duration, sb32 blob_is_damage_resist);
+extern void ftKirbySpecialLwLogStoneDamageHit(const FTStruct* fp, s32 hit_damage, s32 resist_before, sb32 was_resist, sb32 applied, s32 aftermath_damage);
 #endif
 extern void ftKirbySpecialLwStartProcUpdate(GObj* fighter_gobj);
 extern void ftKirbySpecialAirLwStartProcUpdate(GObj* fighter_gobj);

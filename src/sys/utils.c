@@ -34,6 +34,8 @@ s32 sSYUtilsCosmeticRandomSeed = 1;
  * the replay does not perturb the authoritative shared seed.
  */
 extern sb32 syNetRollbackIsResimulating(void);
+extern void syNetSyncRngTraceBeforeGameSeedStep(void);
+extern void syNetSyncRngTraceAfterGameSeedStep(s32 seed_after);
 #endif
 
 s32 sSYUtilsQSortItemSize = 0;
@@ -202,8 +204,12 @@ void syUtilsSetRandomSeedPtr(s32 *seedptr)
 u16 syUtilsRandUShort(void)
 {
 #ifdef PORT
-    u32 step = ((u32)*sSYUtilsRandomSeedPtr * 214013u) + 2531011u;
+    u32 step;
+
+    syNetSyncRngTraceBeforeGameSeedStep();
+    step = ((u32)*sSYUtilsRandomSeedPtr * 214013u) + 2531011u;
     *sSYUtilsRandomSeedPtr = (s32)step;
+    syNetSyncRngTraceAfterGameSeedStep((s32)step);
 #else
     s32 step = (*sSYUtilsRandomSeedPtr * 214013) + 2531011;
     *sSYUtilsRandomSeedPtr = step;

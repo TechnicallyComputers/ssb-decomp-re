@@ -156,6 +156,17 @@ void ftCommonYoshiEggMakeEffect(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: adopt an existing shell before vanilla mints a twin @ YoshiEgg entry. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        if (syNetRbSnapTryAdoptLiveYoshiEggLayEffectForFighter(fighter_gobj) != FALSE)
+        {
+            return;
+        }
+    }
+#endif
     if (ftStatusVarsCaptureYoshi(fp)->effect_gobj == NULL)
     {
         ftStatusVarsCaptureYoshi(fp)->effect_gobj = efManagerYoshiEggLayMakeEffect(fighter_gobj);

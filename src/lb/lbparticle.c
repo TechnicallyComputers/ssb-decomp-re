@@ -5,10 +5,94 @@
 #include <ef/efdef.h>
 
 #ifdef PORT
+#include <stdlib.h>
+#include <sys/taskman.h>
 extern float port_widescreen_clip_x_scale(void);
 /* Particle generator variance is visual-only; keep it off the gameplay RNG stream in netplay. */
 #define syUtilsRandFloat syUtilsRandFloatCosmetic
 #define syUtilsRandIntRange syUtilsRandIntRangeCosmetic
+#endif
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+static sb32 lbParticleWhispyRenderDiagEnabled(void)
+{
+	const char *e = getenv("SSB64_NETPLAY_WHISPY_REPAIR_DIAG");
+
+	return (e != NULL) && (e[0] != '\0') && (strcmp(e, "0") != 0);
+}
+
+static u32 sLBParticleWhispyRenderDiagFrame;
+static u32 sLBParticleWhispyRenderDiagMaskPass[16];
+static u32 sLBParticleWhispyRenderDiagSizePass[16];
+static u32 sLBParticleWhispyRenderDiagDrawn[16];
+static u32 sLBParticleWhispyRenderDiagCulled[16];
+static u32 sLBParticleWhispyRenderDiagTexMiss[16];
+
+void lbParticleWhispyRenderDiagResetFrame(void)
+{
+	if (lbParticleWhispyRenderDiagEnabled() == FALSE)
+	{
+		return;
+	}
+	if (sLBParticleWhispyRenderDiagFrame != dSYTaskmanFrameCount)
+	{
+		sLBParticleWhispyRenderDiagFrame = dSYTaskmanFrameCount;
+		memset(sLBParticleWhispyRenderDiagMaskPass, 0, sizeof(sLBParticleWhispyRenderDiagMaskPass));
+		memset(sLBParticleWhispyRenderDiagSizePass, 0, sizeof(sLBParticleWhispyRenderDiagSizePass));
+		memset(sLBParticleWhispyRenderDiagDrawn, 0, sizeof(sLBParticleWhispyRenderDiagDrawn));
+		memset(sLBParticleWhispyRenderDiagCulled, 0, sizeof(sLBParticleWhispyRenderDiagCulled));
+		memset(sLBParticleWhispyRenderDiagTexMiss, 0, sizeof(sLBParticleWhispyRenderDiagTexMiss));
+	}
+}
+
+void lbParticleWhispyRenderDiagGetLink(
+    s32 link_id, u32 *mask_pass, u32 *size_pass, u32 *drawn, u32 *culled, u32 *tex_miss)
+{
+	if ((link_id < 0) || (link_id >= 16))
+	{
+		if (mask_pass != NULL)
+		{
+			*mask_pass = 0U;
+		}
+		if (size_pass != NULL)
+		{
+			*size_pass = 0U;
+		}
+		if (drawn != NULL)
+		{
+			*drawn = 0U;
+		}
+		if (culled != NULL)
+		{
+			*culled = 0U;
+		}
+		if (tex_miss != NULL)
+		{
+			*tex_miss = 0U;
+		}
+		return;
+	}
+	if (mask_pass != NULL)
+	{
+		*mask_pass = sLBParticleWhispyRenderDiagMaskPass[link_id];
+	}
+	if (size_pass != NULL)
+	{
+		*size_pass = sLBParticleWhispyRenderDiagSizePass[link_id];
+	}
+	if (drawn != NULL)
+	{
+		*drawn = sLBParticleWhispyRenderDiagDrawn[link_id];
+	}
+	if (culled != NULL)
+	{
+		*culled = sLBParticleWhispyRenderDiagCulled[link_id];
+	}
+	if (tex_miss != NULL)
+	{
+		*tex_miss = sLBParticleWhispyRenderDiagTexMiss[link_id];
+	}
+}
 #endif
 
 extern u16 gSYSinTable[0x800];
@@ -1533,6 +1617,9 @@ void lbParticleStructFuncRun(GObj *gobj)
 // 0x800D0D34
 void lbParticleDrawTextures(GObj *gobj)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    sb32 whispy_render_diag = lbParticleWhispyRenderDiagEnabled();
+#endif
     LBParticle *pc;
     void *prev_image, *prev_palette;
     s32 prev_ac, prev_alpha;
@@ -1754,15 +1841,34 @@ void lbParticleDrawTextures(GObj *gobj)
     tlut = -1;
     
     dLBParticleCurrentTransformID++;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (whispy_render_diag != FALSE)
+    {
+        lbParticleWhispyRenderDiagResetFrame();
+    }
+#endif
     
     for (j = 0; j < ARRAY_COUNT(sLBParticleStructsAllocLinks); j++)
     {
         if (gobj->camera_mask & (1 << j))
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            if (whispy_render_diag != FALSE)
+            {
+                sLBParticleWhispyRenderDiagMaskPass[j]++;
+            }
+#endif
             for (pc = sLBParticleStructsAllocLinks[j]; pc != NULL; pc = pc->next)
             {
                 if (pc->size != 0.0F)
                 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+                    if (whispy_render_diag != FALSE)
+                    {
+                        sLBParticleWhispyRenderDiagSizePass[j]++;
+                    }
+#endif
                     pos_x = pc->pos.x;
                     pos_y = pc->pos.y;
                     pos_z = pc->pos.z;
@@ -1874,7 +1980,12 @@ void lbParticleDrawTextures(GObj *gobj)
                             (tz < +0.0F) || (tz > 1.0F)
                         )
                         {
-                            // uh huh
+#if defined(PORT) && defined(SSB64_NETMENU)
+                            if (whispy_render_diag != FALSE)
+                            {
+                                sLBParticleWhispyRenderDiagCulled[j]++;
+                            }
+#endif
                         }
                         else
                         {
@@ -1929,6 +2040,12 @@ void lbParticleDrawTextures(GObj *gobj)
                                     p_palette = &tex->data[tex->count];
                                     palette = PORT_RESOLVE((!(pc->flags & LBPARTICLE_FLAG_SHAREDPAL)) ? p_palette[pc->frame_id] : p_palette[0]);
                                 }
+#if defined(SSB64_NETMENU)
+                                if ((whispy_render_diag != FALSE) && (image == NULL))
+                                {
+                                    sLBParticleWhispyRenderDiagTexMiss[j]++;
+                                }
+#endif
                             }
 #else
                             fmt = sLBParticleTextureBanks[bank_id][pc->texture_id]->fmt;
@@ -2231,6 +2348,12 @@ void lbParticleDrawTextures(GObj *gobj)
                             }
                             gDPSetPrimDepth(gSYTaskmanDLHeads[0]++, (s32) (tz * 32.0F), 0);
                             gSPScisTextureRectangle(gSYTaskmanDLHeads[0]++, xl, yl, xh, yh, G_TX_RENDERTILE, s, t, dsdx, dtdy);
+#if defined(PORT) && defined(SSB64_NETMENU)
+                            if (whispy_render_diag != FALSE)
+                            {
+                                sLBParticleWhispyRenderDiagDrawn[j]++;
+                            }
+#endif
                         }
                     }
                 }
@@ -2241,6 +2364,40 @@ void lbParticleDrawTextures(GObj *gobj)
     {
         gDPSetTextureLUT(gSYTaskmanDLHeads[0]++, G_TT_NONE);
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (whispy_render_diag != FALSE)
+    {
+        static u32 s_lbWhispyRenderDiagLastLogFrame;
+        s32 link;
+
+        for (link = 1; link <= 2; link++)
+        {
+            if ((sLBParticleWhispyRenderDiagSizePass[link] > 0U) ||
+                (sLBParticleWhispyRenderDiagMaskPass[link] > 0U))
+            {
+                if ((dSYTaskmanFrameCount - s_lbWhispyRenderDiagLastLogFrame) >= 30U)
+                {
+                    extern void port_log(const char *fmt, ...);
+
+                    port_log(
+                        "SSB64 WhispyRepair: render_draw link=%d display_gobj=%p display_mask_lo=0x%X "
+                        "mask_pass=%u size_pass=%u drawn=%u culled=%u tex_miss=%u frame=%u\n",
+                        link,
+                        (void *)gobj,
+                        (unsigned int)(gobj->camera_mask & 0xFFFFULL),
+                        sLBParticleWhispyRenderDiagMaskPass[link],
+                        sLBParticleWhispyRenderDiagSizePass[link],
+                        sLBParticleWhispyRenderDiagDrawn[link],
+                        sLBParticleWhispyRenderDiagCulled[link],
+                        sLBParticleWhispyRenderDiagTexMiss[link],
+                        (unsigned int)dSYTaskmanFrameCount);
+                    s_lbWhispyRenderDiagLastLogFrame = dSYTaskmanFrameCount;
+                }
+                break;
+            }
+        }
+    }
+#endif
 }
 #else
 #pragma GLOBAL_ASM("asm/nonmatchings/lb/lbparticle/lbParticleDrawTextures.s")
@@ -3406,5 +3563,109 @@ LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj)
 		}
 	}
 	return NULL;
+}
+
+f32 lbParticleGetMaxDrawSizeForGeneratorID(u16 generator_id, s32 link_id)
+{
+	LBParticle *pc;
+	f32 max_size = -1.0F;
+
+	if ((link_id < 0) || (link_id >= (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks)))
+	{
+		return max_size;
+	}
+	for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+	{
+		if ((pc->generator_id == generator_id) && (pc->size > max_size))
+		{
+			max_size = pc->size;
+		}
+	}
+	return max_size;
+}
+
+s32 lbParticleCountDrawableForGeneratorID(u16 generator_id, s32 link_id)
+{
+	LBParticle *pc;
+	s32 count = 0;
+
+	if ((link_id < 0) || (link_id >= (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks)))
+	{
+		return 0;
+	}
+	for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+	{
+		if ((pc->generator_id == generator_id) && (pc->size != 0.0F))
+		{
+			count++;
+		}
+	}
+	return count;
+}
+
+s32 lbParticleCountStructsForGeneratorID(u16 generator_id, s32 link_id)
+{
+	LBParticle *pc;
+	s32 count = 0;
+
+	if ((link_id < 0) || (link_id >= (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks)))
+	{
+		return 0;
+	}
+	for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+	{
+		if (pc->generator_id == generator_id)
+		{
+			count++;
+		}
+	}
+	return count;
+}
+
+s32 lbParticleCountQueuedGeneratorsForID(u16 generator_id)
+{
+	LBGenerator *gn;
+	s32 count = 0;
+
+	for (gn = sLBParticleGeneratorsQueued; gn != NULL; gn = gn->next)
+	{
+		if (gn->generator_id == generator_id)
+		{
+			count++;
+		}
+	}
+	return count;
+}
+
+s32 lbParticleWarmupGeneratorID(u16 generator_id, s32 link_id, s32 ticks)
+{
+	s32 i;
+	LBParticle *pc;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+	extern GObj *gEFParticleGeneratorsGObj;
+#endif
+
+	if ((link_id < 0) || (link_id >= (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks)) || (ticks <= 0))
+	{
+		return lbParticleCountDrawableForGeneratorID(generator_id, link_id);
+	}
+	for (i = 0; i < ticks; i++)
+	{
+		for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+		{
+			if (pc->generator_id == generator_id)
+			{
+				lbParticleUpdateStruct(pc, NULL, link_id);
+			}
+		}
+#if defined(PORT) && defined(SSB64_NETMENU)
+		if (gEFParticleGeneratorsGObj != NULL)
+		{
+			lbParticleGeneratorFuncRun(gEFParticleGeneratorsGObj);
+		}
+#endif
+	}
+	return lbParticleCountDrawableForGeneratorID(generator_id, link_id);
 }
 #endif

@@ -5,6 +5,7 @@ extern void *func_800269C0_275C0(u16 id);
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_sim_quantize.h>
+#include <sys/netrollbacksnapshot.h>
 /*
  * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
  * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
@@ -30,7 +31,14 @@ void ftCommonGuardSetStatusFromEscape(GObj *fighter_gobj)
     {
         if (fp->fkind == nFTKindYoshi)
         {
-            ftStatusVarsGuard(fp)->effect_gobj = efManagerYoshiShieldMakeEffect(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* Netplay rollback only: reuse cosmetic egg shell minted during shield escape roll. */
+            if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+                (syNetRbSnapTryAdoptLiveYoshiShieldForEscapeEnd(fighter_gobj) == NULL))
+#endif
+            {
+                ftStatusVarsGuard(fp)->effect_gobj = efManagerYoshiShieldMakeEffect(fighter_gobj);
+            }
 
             ftParamHideModelPartAll(fighter_gobj);
             ftCommonGuardSetHitStatusYoshi(fighter_gobj);

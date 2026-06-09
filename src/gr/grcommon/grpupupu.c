@@ -7,6 +7,140 @@
 #ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <stdlib.h>
+#include <string.h>
+#include <ef/efparticle.h>
+#include <lb/lbparticle.h>
+#include <sc/scmanager.h>
+#include <sys/netplay_sim_quantize.h>
+#include <sys/netrollback.h>
+#include <sys/objtypes.h>
+extern void port_log(const char *fmt, ...);
+
+static sb32 grPupupuWhispyXfParticleBroken(const LBTransform *xf, s32 particle_link)
+{
+	f32 max_size;
+	s32 drawable;
+	s32 structs;
+
+	if ((xf == NULL) || (lbParticleTransformIsAllocated(xf) == FALSE))
+	{
+		return FALSE;
+	}
+	drawable = lbParticleCountDrawableForGeneratorID(xf->generator_id, particle_link);
+	if (drawable > 0)
+	{
+		return FALSE;
+	}
+	max_size = lbParticleGetMaxDrawSizeForGeneratorID(xf->generator_id, particle_link);
+	structs = lbParticleCountStructsForGeneratorID(xf->generator_id, particle_link);
+	if ((structs > 0) && (max_size > 0.0F))
+	{
+		/* Live structs warming up — not a broken shell. */
+		return FALSE;
+	}
+	if ((structs > 0) && (max_size <= 0.0F))
+	{
+		return TRUE;
+	}
+	if ((structs == 0) && (max_size <= 0.0F))
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
+static sb32 grPupupuWhispyXfNeedsRespawn(const LBTransform *xf)
+{
+	if (xf == NULL)
+	{
+		return TRUE;
+	}
+	return (lbParticleTransformIsAllocated(xf) == FALSE) ? TRUE : FALSE;
+}
+
+static sb32 grPupupuWhispyXfNeedsRespawnForLink(const LBTransform *xf, s32 particle_link)
+{
+	if (grPupupuWhispyXfNeedsRespawn(xf) != FALSE)
+	{
+		return TRUE;
+	}
+	return grPupupuWhispyXfParticleBroken(xf, particle_link);
+}
+
+static sb32 grPupupuWhispyRepairDiagEnabled(void)
+{
+	const char *e = getenv("SSB64_NETPLAY_WHISPY_REPAIR_DIAG");
+
+	return (e != NULL) && (e[0] != '\0') && (strcmp(e, "0") != 0);
+}
+
+static void grPupupuWhispyLogEffectDisplayGObjs(s32 leaves_link, s32 dust_link)
+{
+	GObj *gobj;
+	u32 leaves_render_mask = 0U;
+	u32 leaves_render_size = 0U;
+	u32 leaves_render_drawn = 0U;
+	u32 leaves_render_culled = 0U;
+	u32 leaves_render_tex_miss = 0U;
+	u32 dust_render_mask = 0U;
+	u32 dust_render_size = 0U;
+	u32 dust_render_drawn = 0U;
+	u32 dust_render_culled = 0U;
+	u32 dust_render_tex_miss = 0U;
+
+	lbParticleWhispyRenderDiagGetLink(
+	    leaves_link, &leaves_render_mask, &leaves_render_size, &leaves_render_drawn,
+	    &leaves_render_culled, &leaves_render_tex_miss);
+	lbParticleWhispyRenderDiagGetLink(
+	    dust_link, &dust_render_mask, &dust_render_size, &dust_render_drawn, &dust_render_culled,
+	    &dust_render_tex_miss);
+	port_log(
+	    "SSB64 WhispyRepair: render_tick leaves_link=%d dust_link=%d "
+	    "leaves_mask_pass=%u leaves_size_pass=%u leaves_drawn=%u leaves_culled=%u leaves_tex_miss=%u "
+	    "dust_mask_pass=%u dust_size_pass=%u dust_drawn=%u dust_culled=%u dust_tex_miss=%u\n",
+	    leaves_link,
+	    dust_link,
+	    leaves_render_mask,
+	    leaves_render_size,
+	    leaves_render_drawn,
+	    leaves_render_culled,
+	    leaves_render_tex_miss,
+	    dust_render_mask,
+	    dust_render_size,
+	    dust_render_drawn,
+	    dust_render_culled,
+	    dust_render_tex_miss);
+	for (gobj = gGCCommonLinks[nGCCommonLinkIDEffect]; gobj != NULL; gobj = gobj->link_next)
+	{
+		u32 mask_lo;
+		u32 link_bit;
+
+		if (gobj->proc_display == NULL)
+		{
+			continue;
+		}
+		mask_lo = (u32)(gobj->camera_mask & 0xFFFFULL);
+		link_bit = (u32)(((1U << leaves_link) | (1U << dust_link)) & mask_lo);
+		if (link_bit == 0U)
+		{
+			continue;
+		}
+		port_log(
+		    "SSB64 WhispyRepair: display_gobj gobj=%p id=%u dl_link=%u mask_lo=0x%X flags=0x%X "
+		    "norun=%d hidden=%d frame_draw_last=%u\n",
+		    (void *)gobj,
+		    (u32)gobj->id,
+		    (u32)gobj->dl_link_id,
+		    mask_lo,
+		    (unsigned int)gobj->flags,
+		    (int)((gobj->flags & GOBJ_FLAG_NORUN) != 0U),
+		    (int)((gobj->flags & GOBJ_FLAG_HIDDEN) != 0U),
+		    (unsigned int)gobj->frame_draw_last);
+	}
+}
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -44,17 +178,6 @@ enum grPupupuWhispyEyesTexture
     nGRPupupuWhispyEyesTexture1,
     nGRPupupuWhispyEyesTexture2,
     nGRPupupuWhispyEyesTextureEnumCount
-};
-
-enum grPupupuFlowerStatus
-{
-	nGRPupupuFlowerStatusDefault,
-	nGRPupupuFlowerStatusWindStart,
-	nGRPupupuFlowerStatusWindLoopStart,
-	nGRPupupuFlowerStatusWindLoop,
-	nGRPupupuFlowerStatusWindLoopEnd,
-	nGRPupupuFlowerStatusWindStop,
-    nGRPupupuFlowerStatusEnumCount
 };
 
 // // // // // // // // // // // //
@@ -233,6 +356,340 @@ void grPupupuWhispyUpdateSleep(void)
     }
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+#define GRPUPUPU_WHISPY_DUST_GEN_CACHE_MAX 8U
+#define GRPUPUPU_WHISPY_DRAWABLE_STALL_RESPAWN_TICKS 30U
+#define GRPUPUPU_WHISPY_BLOW_DIAG_INTERVAL 30U
+
+static u16 sGRPupupuWhispyDustSpawnRetryWait;
+static u16 sGRPupupuWhispyLeavesSpawnRetryWait;
+static u16 sGRPupupuWhispyLeavesDrawableStall;
+static u16 sGRPupupuWhispyDustDrawableStall;
+static u16 sGRPupupuWhispyBlowDiagTick;
+static u8 sGRPupupuWhispyForwardTextureFlowersF = 0xFFU;
+static u8 sGRPupupuWhispyForwardTextureFlowersB = 0xFFU;
+static u8 sGRPupupuWhispyDustGenCount;
+static u16 sGRPupupuWhispyDustGenIds[GRPUPUPU_WHISPY_DUST_GEN_CACHE_MAX];
+
+static void grPupupuWhispyClearDustGeneratorCache(void);
+
+static s32 grPupupuWhispyParticleAllocLink(void)
+{
+	return (gGRCommonStruct.pupupu.particle_bank_id | LBPARTICLE_MASK_GENLINK(0)) >> 3;
+}
+
+static s32 grPupupuWhispyDustParticleAllocLink(void)
+{
+	return (gGRCommonStruct.pupupu.particle_bank_id | LBPARTICLE_MASK_GENLINK(1)) >> 3;
+}
+
+static sb32 grPupupuWhispyParticleEffectDrawable(LBTransform *xf, s32 particle_link)
+{
+	if (xf == NULL)
+	{
+		return FALSE;
+	}
+	return (lbParticleCountDrawableForGeneratorID(xf->generator_id, particle_link) > 0) ? TRUE : FALSE;
+}
+
+static s8 grPupupuWhispyMouthTextureForFlowerStatus(u8 flower_status)
+{
+	switch (flower_status)
+	{
+	case nGRPupupuFlowerStatusWindStart:
+		return (s8)nGRPupupuWhispyMouthTextureOpen;
+
+	case nGRPupupuFlowerStatusWindLoopStart:
+	case nGRPupupuFlowerStatusWindLoop:
+		return (s8)nGRPupupuWhispyMouthTextureBlow;
+
+	case nGRPupupuFlowerStatusWindLoopEnd:
+	case nGRPupupuFlowerStatusWindStop:
+		return (s8)nGRPupupuWhispyMouthTextureClose;
+
+	default:
+		return -1;
+	}
+}
+
+static s8 grPupupuWhispyEyesTextureForFlowerStatus(u8 flower_status)
+{
+	switch (flower_status)
+	{
+	case nGRPupupuFlowerStatusWindStart:
+		return (s8)nGRPupupuWhispyEyesTexture0;
+
+	case nGRPupupuFlowerStatusWindLoopStart:
+	case nGRPupupuFlowerStatusWindLoop:
+		return (s8)nGRPupupuWhispyEyesTexture1;
+
+	case nGRPupupuFlowerStatusWindLoopEnd:
+	case nGRPupupuFlowerStatusWindStop:
+		return (s8)nGRPupupuWhispyEyesTexture2;
+
+	default:
+		return -1;
+	}
+}
+
+void grPupupuWhispyNullParticleXfHandles(void)
+{
+	gGRCommonStruct.pupupu.leaves_xf = NULL;
+	gGRCommonStruct.pupupu.dust_xf = NULL;
+	grPupupuWhispyClearDustGeneratorCache();
+	sGRPupupuWhispyDustSpawnRetryWait = 0U;
+	sGRPupupuWhispyLeavesSpawnRetryWait = 0U;
+	sGRPupupuWhispyLeavesDrawableStall = 0U;
+	sGRPupupuWhispyDustDrawableStall = 0U;
+}
+
+void grPupupuWhispyEjectLeavesEffect(void)
+{
+	LBTransform *xf = gGRCommonStruct.pupupu.leaves_xf;
+
+	if (xf != NULL)
+	{
+		if (lbParticleTransformIsAllocated(xf) != FALSE)
+		{
+			lbParticleEjectStructID(xf->generator_id, grPupupuWhispyParticleAllocLink());
+		}
+		gGRCommonStruct.pupupu.leaves_xf = NULL;
+	}
+}
+
+static void grPupupuWhispyClearDustGeneratorCache(void)
+{
+	sGRPupupuWhispyDustGenCount = 0U;
+}
+
+static void grPupupuWhispyRememberDustGeneratorId(u16 generator_id)
+{
+	u8 i;
+
+	if (generator_id == 0U)
+	{
+		return;
+	}
+	for (i = 0; i < sGRPupupuWhispyDustGenCount; i++)
+	{
+		if (sGRPupupuWhispyDustGenIds[i] == generator_id)
+		{
+			return;
+		}
+	}
+	if (sGRPupupuWhispyDustGenCount < GRPUPUPU_WHISPY_DUST_GEN_CACHE_MAX)
+	{
+		sGRPupupuWhispyDustGenIds[sGRPupupuWhispyDustGenCount] = generator_id;
+		sGRPupupuWhispyDustGenCount++;
+	}
+}
+
+static void grPupupuWhispyEjectDustGeneratorOnBothLinks(u16 generator_id)
+{
+	lbParticleEjectStructID(generator_id, grPupupuWhispyDustParticleAllocLink());
+	lbParticleEjectStructID(generator_id, grPupupuWhispyParticleAllocLink());
+	lbParticleEjectGeneratorID(generator_id);
+}
+
+static void grPupupuWhispyEjectAllRememberedDustGenerators(void)
+{
+	u8 i;
+
+	for (i = 0; i < sGRPupupuWhispyDustGenCount; i++)
+	{
+		grPupupuWhispyEjectDustGeneratorOnBothLinks(sGRPupupuWhispyDustGenIds[i]);
+	}
+	grPupupuWhispyClearDustGeneratorCache();
+}
+
+static void grPupupuWhispyEjectDustForWindStop(const char *reason)
+{
+	u8 i;
+
+	if (gGRCommonStruct.pupupu.dust_xf != NULL)
+	{
+		grPupupuWhispyRememberDustGeneratorId(gGRCommonStruct.pupupu.dust_xf->generator_id);
+	}
+	if ((grPupupuWhispyRepairDiagEnabled() != FALSE) && (reason != NULL))
+	{
+		port_log(
+		    "SSB64 WhispyRepair: dust_eject reason=%s gen_count=%u",
+		    reason,
+		    (u32)sGRPupupuWhispyDustGenCount);
+		for (i = 0; i < sGRPupupuWhispyDustGenCount; i++)
+		{
+			port_log(" gen_id[%u]=%u", (u32)i, (u32)sGRPupupuWhispyDustGenIds[i]);
+		}
+		port_log("\n");
+	}
+	grPupupuWhispyEjectAllRememberedDustGenerators();
+	gGRCommonStruct.pupupu.dust_xf = NULL;
+	sGRPupupuWhispyDustSpawnRetryWait = 0U;
+}
+
+void grPupupuWhispyEjectDustEffect(void)
+{
+	LBTransform *xf = gGRCommonStruct.pupupu.dust_xf;
+	s32 dust_link;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (xf == NULL)
+	{
+		grPupupuWhispyEjectAllRememberedDustGenerators();
+		return;
+	}
+	if (lbParticleTransformIsAllocated(xf) != FALSE)
+	{
+		grPupupuWhispyRememberDustGeneratorId(xf->generator_id);
+		grPupupuWhispyEjectDustGeneratorOnBothLinks(xf->generator_id);
+	}
+	gGRCommonStruct.pupupu.dust_xf = NULL;
+#else
+	if (xf == NULL)
+	{
+		return;
+	}
+	dust_link = grPupupuWhispyParticleAllocLink();
+	lbParticleEjectStructID(xf->generator_id, dust_link);
+	gGRCommonStruct.pupupu.dust_xf = NULL;
+#endif
+}
+
+void grPupupuWhispyRepairPresentationCosmetic(void)
+{
+	GRCommonGroundVarsPupupu *pu = &gGRCommonStruct.pupupu;
+	s8 mouth_tex;
+	s8 eyes_tex;
+
+	if (pu->whispy_status != nGRPupupuWhispyWindStatusBlow)
+	{
+		return;
+	}
+	/* Hash-safe: derive textures from snapshotted flower status only; never write back to pu. */
+	mouth_tex = grPupupuWhispyMouthTextureForFlowerStatus(pu->flowers_back_status);
+	eyes_tex = grPupupuWhispyEyesTextureForFlowerStatus(pu->flowers_front_status);
+	if ((mouth_tex >= 0) && (pu->map_gobj[2] != NULL))
+	{
+		gcAddAnimJointAll(
+		    pu->map_gobj[2],
+		    (AObjEvent32 **)(dGRPupupuWhispyMouthTextures[pu->lr_players][mouth_tex] + (uintptr_t)pu->map_head),
+		    0.0F);
+		gcPlayAnimAll(pu->map_gobj[2]);
+	}
+	if ((eyes_tex >= 0) && (pu->map_gobj[3] != NULL))
+	{
+		gcAddAnimJointAll(
+		    pu->map_gobj[3],
+		    (AObjEvent32 **)(dGRPupupuWhispyEyesTextures[pu->lr_players][eyes_tex] + (uintptr_t)pu->map_head),
+		    0.0F);
+		gcPlayAnimAll(pu->map_gobj[3]);
+	}
+	if (grPupupuWhispyRepairDiagEnabled() != FALSE)
+	{
+		port_log(
+		    "SSB64 WhispyRepair: presentation flowers_f=%u flowers_b=%u mouth_tex_applied=%d eyes_tex_applied=%d\n",
+		    (u32)pu->flowers_front_status,
+		    (u32)pu->flowers_back_status,
+		    (int)mouth_tex,
+		    (int)eyes_tex);
+	}
+}
+
+static void grPupupuWhispyWarmupParticleEffect(LBTransform *xf, s32 particle_link, s32 ticks)
+{
+	if ((xf != NULL) && (ticks > 0))
+	{
+		(void)lbParticleWarmupGeneratorID(xf->generator_id, particle_link, ticks);
+	}
+}
+
+void grPupupuWhispyWarmupLiveEffectsEx(s32 ticks)
+{
+	GRCommonGroundVarsPupupu *pu = &gGRCommonStruct.pupupu;
+
+	if (pu->whispy_status != nGRPupupuWhispyWindStatusBlow)
+	{
+		return;
+	}
+	if (ticks <= 0)
+	{
+		ticks = 64;
+	}
+	grPupupuWhispyWarmupParticleEffect(pu->leaves_xf, grPupupuWhispyParticleAllocLink(), ticks);
+	grPupupuWhispyWarmupParticleEffect(pu->dust_xf, grPupupuWhispyDustParticleAllocLink(), ticks);
+}
+
+void grPupupuWhispyWarmupLiveEffects(void)
+{
+	grPupupuWhispyWarmupLiveEffectsEx(64);
+}
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+static void grPupupuWhispyNetplaySpawnLeavesFresh(void)
+{
+	grPupupuWhispyEjectLeavesEffect();
+	grPupupuWhispyLeavesMakeEffect();
+	if (gGRCommonStruct.pupupu.leaves_xf != NULL)
+	{
+		grPupupuWhispyWarmupParticleEffect(
+		    gGRCommonStruct.pupupu.leaves_xf, grPupupuWhispyParticleAllocLink(), 64);
+	}
+}
+
+static void grPupupuWhispyNetplaySpawnDustFresh(void)
+{
+	grPupupuWhispyEjectDustEffect();
+	grPupupuWhispyDustMakeEffect();
+	if (gGRCommonStruct.pupupu.dust_xf != NULL)
+	{
+		grPupupuWhispyWarmupParticleEffect(
+		    gGRCommonStruct.pupupu.dust_xf, grPupupuWhispyDustParticleAllocLink(), 64);
+	}
+}
+#endif
+
+static void grPupupuWhispyForwardTextureRefreshIfNeeded(void)
+{
+	GRCommonGroundVarsPupupu *pu = &gGRCommonStruct.pupupu;
+	s8 mouth_tex;
+	s8 eyes_tex;
+
+	if (pu->whispy_status != nGRPupupuWhispyWindStatusBlow)
+	{
+		sGRPupupuWhispyForwardTextureFlowersF = 0xFFU;
+		sGRPupupuWhispyForwardTextureFlowersB = 0xFFU;
+		return;
+	}
+	if ((pu->whispy_mouth_texture != -1) || (pu->whispy_eyes_texture != -1))
+	{
+		return;
+	}
+	if ((pu->flowers_front_status == sGRPupupuWhispyForwardTextureFlowersF) &&
+	    (pu->flowers_back_status == sGRPupupuWhispyForwardTextureFlowersB))
+	{
+		return;
+	}
+	mouth_tex = grPupupuWhispyMouthTextureForFlowerStatus(pu->flowers_back_status);
+	eyes_tex = grPupupuWhispyEyesTextureForFlowerStatus(pu->flowers_front_status);
+	if ((mouth_tex < 0) && (eyes_tex < 0))
+	{
+		return;
+	}
+	grPupupuWhispyRepairPresentationCosmetic();
+	sGRPupupuWhispyForwardTextureFlowersF = pu->flowers_front_status;
+	sGRPupupuWhispyForwardTextureFlowersB = pu->flowers_back_status;
+	if (grPupupuWhispyRepairDiagEnabled() != FALSE)
+	{
+		port_log(
+		    "SSB64 WhispyRepair: forward_texture flowers_f=%u flowers_b=%u mouth_derived=%d eyes_derived=%d\n",
+		    (u32)pu->flowers_front_status,
+		    (u32)pu->flowers_back_status,
+		    (int)mouth_tex,
+		    (int)eyes_tex);
+	}
+}
+#endif
+
 // 0x80105B18
 void grPupupuWhispyLeavesMakeEffect(void)
 {
@@ -321,7 +778,26 @@ void grPupupuWhispyUpdateOpen(void)
 
         gGRCommonStruct.pupupu.rumble_wait = 0;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+        sGRPupupuWhispyDustSpawnRetryWait = 0U;
+        sGRPupupuWhispyLeavesSpawnRetryWait = 0U;
+        sGRPupupuWhispyLeavesDrawableStall = 0U;
+        sGRPupupuWhispyDustDrawableStall = 0U;
+        sGRPupupuWhispyBlowDiagTick = 0U;
+        grPupupuWhispyClearDustGeneratorCache();
+        efParticleGObjClearSkipID(1);
+        efParticleGObjClearSkipID(2);
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            grPupupuWhispyNetplaySpawnLeavesFresh();
+        }
+        else
+        {
+            grPupupuWhispyLeavesMakeEffect();
+        }
+#else
         grPupupuWhispyLeavesMakeEffect();
+#endif
 
         func_800269C0_275C0(nSYAudioFGMPupupuWhispyWind);
     }
@@ -342,6 +818,220 @@ void grPupupuWhispyUpdateWindRumble(void)
 // 0x80105D6C
 void grPupupuWhispyUpdateBlow(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: snapshot load wipes LBParticles; xf handles can stay non-NULL. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        GRCommonGroundVarsPupupu *pu = &gGRCommonStruct.pupupu;
+        sb32 needs_leaves =
+            grPupupuWhispyXfNeedsRespawnForLink(pu->leaves_xf, grPupupuWhispyParticleAllocLink());
+        sb32 needs_dust = FALSE;
+
+        if ((needs_leaves != FALSE) &&
+            (grPupupuWhispyParticleEffectDrawable(pu->leaves_xf, grPupupuWhispyParticleAllocLink()) != FALSE))
+        {
+            needs_leaves = FALSE;
+        }
+        if ((needs_leaves == FALSE) && (pu->leaves_xf != NULL) &&
+            (grPupupuWhispyXfNeedsRespawnForLink(pu->leaves_xf, grPupupuWhispyParticleAllocLink()) != FALSE))
+        {
+            needs_leaves = TRUE;
+        }
+        if (pu->flowers_front_status >= (u8)nGRPupupuFlowerStatusWindLoopStart)
+        {
+            needs_dust =
+                grPupupuWhispyXfNeedsRespawnForLink(pu->dust_xf, grPupupuWhispyDustParticleAllocLink());
+            if ((needs_dust != FALSE) &&
+                (grPupupuWhispyParticleEffectDrawable(pu->dust_xf, grPupupuWhispyDustParticleAllocLink()) != FALSE))
+            {
+                needs_dust = FALSE;
+            }
+            if ((needs_dust != FALSE) && (pu->dust_xf != NULL))
+            {
+                s32 dust_link = grPupupuWhispyDustParticleAllocLink();
+                s32 dust_structs =
+                    lbParticleCountStructsForGeneratorID(pu->dust_xf->generator_id, dust_link);
+                f32 dust_max_size =
+                    lbParticleGetMaxDrawSizeForGeneratorID(pu->dust_xf->generator_id, dust_link);
+
+                if ((dust_structs > 0) && (dust_max_size > 0.0F))
+                {
+                    needs_dust = FALSE;
+                }
+            }
+            if ((needs_dust == FALSE) && (pu->dust_xf != NULL) &&
+                (grPupupuWhispyXfNeedsRespawnForLink(pu->dust_xf, grPupupuWhispyDustParticleAllocLink()) != FALSE))
+            {
+                needs_dust = TRUE;
+            }
+        }
+        if (needs_leaves != FALSE)
+        {
+            if (sGRPupupuWhispyLeavesSpawnRetryWait > 0U)
+            {
+                sGRPupupuWhispyLeavesSpawnRetryWait--;
+                needs_leaves = FALSE;
+            }
+            else
+            {
+                grPupupuWhispyNetplaySpawnLeavesFresh();
+                if (pu->leaves_xf == NULL)
+                {
+                    sGRPupupuWhispyLeavesSpawnRetryWait = 30U;
+                    needs_leaves = FALSE;
+                }
+                else
+                {
+                    needs_leaves = FALSE;
+                }
+            }
+        }
+        if (needs_dust != FALSE)
+        {
+            if (sGRPupupuWhispyDustSpawnRetryWait > 0U)
+            {
+                sGRPupupuWhispyDustSpawnRetryWait--;
+                needs_dust = FALSE;
+            }
+            else
+            {
+                grPupupuWhispyNetplaySpawnDustFresh();
+                if (pu->dust_xf == NULL)
+                {
+                    sGRPupupuWhispyDustSpawnRetryWait = 30U;
+                    needs_dust = FALSE;
+                }
+                else
+                {
+                    needs_dust = FALSE;
+                }
+            }
+        }
+        {
+            s32 leaves_link = grPupupuWhispyParticleAllocLink();
+            s32 dust_link = grPupupuWhispyDustParticleAllocLink();
+            s32 leaves_drawable = 0;
+            s32 dust_drawable = 0;
+
+            if (pu->leaves_xf != NULL)
+            {
+                leaves_drawable =
+                    lbParticleCountDrawableForGeneratorID(pu->leaves_xf->generator_id, leaves_link);
+                if (leaves_drawable == 0)
+                {
+                    grPupupuWhispyWarmupParticleEffect(pu->leaves_xf, leaves_link, 32);
+                    leaves_drawable =
+                        lbParticleCountDrawableForGeneratorID(pu->leaves_xf->generator_id, leaves_link);
+                }
+            }
+            if (pu->dust_xf != NULL)
+            {
+                dust_drawable =
+                    lbParticleCountDrawableForGeneratorID(pu->dust_xf->generator_id, dust_link);
+                if (dust_drawable == 0)
+                {
+                    grPupupuWhispyWarmupParticleEffect(pu->dust_xf, dust_link, 32);
+                    dust_drawable =
+                        lbParticleCountDrawableForGeneratorID(pu->dust_xf->generator_id, dust_link);
+                }
+            }
+            if (leaves_drawable > 0)
+            {
+                sGRPupupuWhispyLeavesDrawableStall = 0U;
+            }
+            else if (pu->leaves_xf != NULL)
+            {
+                sGRPupupuWhispyLeavesDrawableStall++;
+                if (sGRPupupuWhispyLeavesDrawableStall >= GRPUPUPU_WHISPY_DRAWABLE_STALL_RESPAWN_TICKS)
+                {
+                    grPupupuWhispyNetplaySpawnLeavesFresh();
+                    grPupupuWhispyWarmupParticleEffect(pu->leaves_xf, leaves_link, 128);
+                    sGRPupupuWhispyLeavesDrawableStall = 0U;
+                }
+            }
+            if (dust_drawable > 0)
+            {
+                sGRPupupuWhispyDustDrawableStall = 0U;
+            }
+            else if ((pu->dust_xf != NULL) &&
+                     (pu->flowers_front_status >= (u8)nGRPupupuFlowerStatusWindLoopStart))
+            {
+                sGRPupupuWhispyDustDrawableStall++;
+                if (sGRPupupuWhispyDustDrawableStall >= GRPUPUPU_WHISPY_DRAWABLE_STALL_RESPAWN_TICKS)
+                {
+                    grPupupuWhispyNetplaySpawnDustFresh();
+                    grPupupuWhispyWarmupParticleEffect(pu->dust_xf, dust_link, 128);
+                    sGRPupupuWhispyDustDrawableStall = 0U;
+                }
+            }
+            sGRPupupuWhispyBlowDiagTick++;
+            if ((grPupupuWhispyRepairDiagEnabled() != FALSE) &&
+                ((sGRPupupuWhispyBlowDiagTick <= 5U) ||
+                 ((sGRPupupuWhispyBlowDiagTick % GRPUPUPU_WHISPY_BLOW_DIAG_INTERVAL) == 0U)))
+            {
+                s32 leaves_structs = 0;
+                s32 dust_structs = 0;
+                f32 leaves_max_size = -1.0F;
+                f32 dust_max_size = -1.0F;
+                u32 struct_skip_flags = 0U;
+                u32 gen_skip_flags = 0U;
+
+                if (gEFParticleStructsGObj != NULL)
+                {
+                    struct_skip_flags = gEFParticleStructsGObj->flags;
+                }
+                if (gEFParticleGeneratorsGObj != NULL)
+                {
+                    gen_skip_flags = gEFParticleGeneratorsGObj->flags;
+                }
+                if (pu->leaves_xf != NULL)
+                {
+                    leaves_structs =
+                        lbParticleCountStructsForGeneratorID(pu->leaves_xf->generator_id, leaves_link);
+                    leaves_max_size =
+                        lbParticleGetMaxDrawSizeForGeneratorID(pu->leaves_xf->generator_id, leaves_link);
+                    leaves_drawable =
+                        lbParticleCountDrawableForGeneratorID(pu->leaves_xf->generator_id, leaves_link);
+                }
+                if (pu->dust_xf != NULL)
+                {
+                    dust_structs =
+                        lbParticleCountStructsForGeneratorID(pu->dust_xf->generator_id, dust_link);
+                    dust_max_size =
+                        lbParticleGetMaxDrawSizeForGeneratorID(pu->dust_xf->generator_id, dust_link);
+                    dust_drawable =
+                        lbParticleCountDrawableForGeneratorID(pu->dust_xf->generator_id, dust_link);
+                }
+                port_log(
+                    "SSB64 WhispyRepair: forward_tick status=%u flowers_f=%u needs_leaves=%d needs_dust=%d "
+                    "leaves_xf=%p dust_xf=%p leaves_alloc=%d dust_alloc=%d "
+                    "leaves_drawable=%d dust_drawable=%d leaves_structs=%d dust_structs=%d "
+                    "leaves_max_size=%f dust_max_size=%f leaves_stall=%u dust_stall=%u "
+                    "struct_skip=0x%X gen_skip=0x%X\n",
+                    (u32)pu->whispy_status,
+                    (u32)pu->flowers_front_status,
+                    (int)needs_leaves,
+                    (int)needs_dust,
+                    (void *)pu->leaves_xf,
+                    (void *)pu->dust_xf,
+                    (int)lbParticleTransformIsAllocated(pu->leaves_xf),
+                    (int)lbParticleTransformIsAllocated(pu->dust_xf),
+                    leaves_drawable,
+                    dust_drawable,
+                    leaves_structs,
+                    dust_structs,
+                    (double)leaves_max_size,
+                    (double)dust_max_size,
+                    (u32)sGRPupupuWhispyLeavesDrawableStall,
+                    (u32)sGRPupupuWhispyDustDrawableStall,
+                    (unsigned int)struct_skip_flags,
+                    (unsigned int)gen_skip_flags);
+                grPupupuWhispyLogEffectDisplayGObjs(leaves_link, dust_link);
+            }
+        }
+        grPupupuWhispyForwardTextureRefreshIfNeeded();
+    }
+#endif
     gGRCommonStruct.pupupu.whispy_wind_duration--;
 
     if (gGRCommonStruct.pupupu.whispy_wind_duration == 0)
@@ -352,10 +1042,16 @@ void grPupupuWhispyUpdateBlow(void)
 
         gGRCommonStruct.pupupu.whispy_status = nGRPupupuWhispyWindStatusStop;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+        grPupupuWhispyEjectLeavesEffect();
+        grPupupuWhispyEjectDustForWindStop("wind_duration");
+        sGRPupupuWhispyLeavesSpawnRetryWait = 0U;
+#else
         if (gGRCommonStruct.pupupu.leaves_xf != NULL)
         {
             lbParticleEjectStructID(gGRCommonStruct.pupupu.leaves_xf->generator_id, 1);
         }
+#endif
     }
     grPupupuWhispyUpdateWindRumble();
 }
@@ -497,9 +1193,15 @@ void grPupupuWhispyDustMakeEffect(void)
 {
     LBParticle *pc;
     LBTransform *xf;
+    s32 dust_genlink;
 
     xf = NULL;
-    pc = lbParticleMakeScriptID(gGRCommonStruct.pupupu.particle_bank_id | LBPARTICLE_MASK_GENLINK(0), 1);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    dust_genlink = LBPARTICLE_MASK_GENLINK(1);
+#else
+    dust_genlink = LBPARTICLE_MASK_GENLINK(0);
+#endif
+    pc = lbParticleMakeScriptID(gGRCommonStruct.pupupu.particle_bank_id | dust_genlink, 1);
 
     if (pc != NULL)
     {
@@ -526,6 +1228,12 @@ void grPupupuWhispyDustMakeEffect(void)
         }
     }
     gGRCommonStruct.pupupu.dust_xf = xf;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if ((xf != NULL) && (pc != NULL))
+    {
+        grPupupuWhispyRememberDustGeneratorId(pc->generator_id);
+    }
+#endif
 }
 
 // 0x801061CC
@@ -537,7 +1245,16 @@ void grPupupuFlowersFrontLoopStart(void)
         gGRCommonStruct.pupupu.flowers_front_status = nGRPupupuFlowerStatusWindLoop;
         gGRCommonStruct.pupupu.flowers_front_wait = 22;
 
-        grPupupuWhispyDustMakeEffect();
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            grPupupuWhispyNetplaySpawnDustFresh();
+        }
+        else
+#endif
+        {
+            grPupupuWhispyDustMakeEffect();
+        }
     }
 }
 
@@ -552,10 +1269,14 @@ void grPupupuFlowersFrontLoopEnd(void)
         gGRCommonStruct.pupupu.flowers_front_status = nGRPupupuFlowerStatusWindStop;
         gGRCommonStruct.pupupu.flowers_front_wait = 22;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+        grPupupuWhispyEjectDustForWindStop("loop_end");
+#else
         if (gGRCommonStruct.pupupu.dust_xf != NULL)
         {
             lbParticleEjectStructID(gGRCommonStruct.pupupu.dust_xf->generator_id, 1);
         }
+#endif
     }
     else grPupupuWhispySetWindPush();
 }

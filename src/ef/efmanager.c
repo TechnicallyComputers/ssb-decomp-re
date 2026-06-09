@@ -4012,10 +4012,28 @@ void efManagerQuakeProcUpdate(GObj *effect_gobj)
     }
     else
     {
+#ifdef PORT
+        if (gGMCameraGObj == NULL)
+        {
+            return;
+        }
+#endif
         cobj = CObjGetStruct(gGMCameraGObj);
-
+#ifdef PORT
+        if (cobj == NULL)
+        {
+            return;
+        }
+#endif
         dobj = DObjGetStruct(effect_gobj);
-
+#ifdef PORT
+        if (dobj == NULL)
+        {
+            efManagerSetPrevStructAlloc(efGetStruct(effect_gobj));
+            gcEjectGObj(effect_gobj);
+            return;
+        }
+#endif
         syVectorDiff3D(&sub, &cobj->vec.at, &cobj->vec.eye);
 
         mag = syVectorMag3D(&sub);

@@ -97,6 +97,14 @@ extern void lbParticleResumeAllID(u16 generator_id, s32 link_id);
 extern sb32 lbParticleTransformIsOnFreeList(const LBTransform *xf);
 extern sb32 lbParticleTransformIsAllocated(const LBTransform *xf);
 extern LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj);
+extern f32 lbParticleGetMaxDrawSizeForGeneratorID(u16 generator_id, s32 link_id);
+extern s32 lbParticleCountDrawableForGeneratorID(u16 generator_id, s32 link_id);
+extern s32 lbParticleCountStructsForGeneratorID(u16 generator_id, s32 link_id);
+extern s32 lbParticleCountQueuedGeneratorsForID(u16 generator_id);
+extern s32 lbParticleWarmupGeneratorID(u16 generator_id, s32 link_id, s32 ticks);
+extern void lbParticleWhispyRenderDiagResetFrame(void);
+extern void lbParticleWhispyRenderDiagGetLink(
+    s32 link_id, u32 *mask_pass, u32 *size_pass, u32 *drawn, u32 *culled, u32 *tex_miss);
 #endif
 
 #endif
