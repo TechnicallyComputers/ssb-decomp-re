@@ -10,6 +10,7 @@ extern void *func_800269C0_275C0(u16 id);
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <stdlib.h>
 #include <string.h>
+#include <ef/efdisplay.h>
 #include <ef/efparticle.h>
 #include <lb/lbparticle.h>
 #include <sc/scmanager.h>
@@ -116,23 +117,30 @@ static void grPupupuWhispyLogEffectDisplayGObjs(s32 leaves_link, s32 dust_link)
 	{
 		u32 mask_lo;
 		u32 link_bit;
+		sb32 is_infra;
 
 		if (gobj->proc_display == NULL)
 		{
 			continue;
 		}
+		is_infra = efDisplayIsInfrastructureGObj(gobj);
 		mask_lo = (u32)(gobj->camera_mask & 0xFFFFULL);
 		link_bit = (u32)(((1U << leaves_link) | (1U << dust_link)) & mask_lo);
-		if (link_bit == 0U)
+		if ((is_infra == FALSE) && (link_bit == 0U))
+		{
+			continue;
+		}
+		if ((is_infra == FALSE) && (gobj->dl_link_id != 15U) && (gobj->dl_link_id != 18U))
 		{
 			continue;
 		}
 		port_log(
-		    "SSB64 WhispyRepair: display_gobj gobj=%p id=%u dl_link=%u mask_lo=0x%X flags=0x%X "
+		    "SSB64 WhispyRepair: display_gobj gobj=%p id=%u dl_link=%u infra=%d mask_lo=0x%X flags=0x%X "
 		    "norun=%d hidden=%d frame_draw_last=%u\n",
 		    (void *)gobj,
 		    (u32)gobj->id,
 		    (u32)gobj->dl_link_id,
+		    (int)is_infra,
 		    mask_lo,
 		    (unsigned int)gobj->flags,
 		    (int)((gobj->flags & GOBJ_FLAG_NORUN) != 0U),

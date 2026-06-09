@@ -1811,6 +1811,9 @@ GObj* gcInitGObjCommon(u32 id, void (*func_run)(GObj*), u8 link, u32 priority)
 	new_gobj->anim_frame = 0.0F;
 	new_gobj->func_anim = NULL;
 	new_gobj->user_data.p = NULL;
+	new_gobj->proc_display = NULL;
+	new_gobj->camera_mask = 0;
+	new_gobj->camera_tag = ~0;
 
 	return new_gobj;
 }

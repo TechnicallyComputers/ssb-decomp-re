@@ -210,6 +210,17 @@ void ftCommonYoshiEggProcUpdate(GObj *fighter_gobj)
             {
                 is_escape = TRUE;
             }
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+            /* Netplay rollback only: escape window must tick down even when shell exists but break anim incomplete. */
+            else if ((syNetplayRollbackSemanticsActive() != FALSE) && (fp->motion_vars.flags.flag0 == 1))
+            {
+                if (ftStatusVarsCaptureYoshi(fp)->breakout_wait-- <= 0)
+                {
+                    is_escape = TRUE;
+                }
+            }
+#endif
         }
         else if (fp->motion_vars.flags.flag0 == 1)
         {

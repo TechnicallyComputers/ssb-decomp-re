@@ -76,6 +76,85 @@ void efDisplayZPerspAAXLUProcDisplay(GObj *effect_gobj)
     gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
 }
 
+static sb32 efDisplayDllinkHasProcDisplay(u8 dl_link, void (*proc_display)(GObj *))
+{
+    GObj *gobj;
+
+    if (proc_display == NULL)
+    {
+        return FALSE;
+    }
+    for (gobj = gGCCommonDLLinks[dl_link]; gobj != NULL; gobj = gobj->dl_link_next)
+    {
+        if (gobj->proc_display == proc_display)
+        {
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
+sb32 efDisplayIsInfrastructureGObj(const GObj *gobj)
+{
+    if ((gobj == NULL) || (gobj->proc_display == NULL) || (gobj->obj != NULL) || (gobj->user_data.p != NULL))
+    {
+        return FALSE;
+    }
+    if (gobj->proc_display == efDisplayZPerspCLDProcDisplay)
+    {
+        if ((gobj->dl_link_id == 15) && (gobj->camera_mask == COBJ_MASK_DLLINK(1)))
+        {
+            return TRUE;
+        }
+        if ((gobj->dl_link_id == 18) &&
+            (gobj->camera_mask == (COBJ_MASK_DLLINK(2) | COBJ_MASK_DLLINK(0))))
+        {
+            return TRUE;
+        }
+    }
+    if ((gobj->proc_display == efDisplayZPerspAAXLUProcDisplay) && (gobj->dl_link_id == 10) &&
+        (gobj->camera_mask == COBJ_MASK_DLLINK(4)))
+    {
+        return TRUE;
+    }
+    if ((gobj->proc_display == efDisplayZPerspXLUProcDisplay) && (gobj->link_id == nGCCommonLinkIDInterface) &&
+        (gobj->dl_link_id == 25) && (gobj->camera_mask == COBJ_MASK_DLLINK(3)))
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+void efDisplayEnsureParticleDrawInfrastructure(void)
+{
+    GObj *gobj;
+
+    if (efDisplayDllinkHasProcDisplay(18, efDisplayZPerspCLDProcDisplay) == FALSE)
+    {
+        gobj = gcMakeGObjSPAfter(nGCCommonKindEffect, NULL, nGCCommonLinkIDEffect, GOBJ_PRIORITY_DEFAULT);
+        gcAddGObjDisplay(gobj, efDisplayZPerspCLDProcDisplay, 18, 1, ~0);
+        gobj->camera_mask = COBJ_MASK_DLLINK(2) | COBJ_MASK_DLLINK(0);
+    }
+    if (efDisplayDllinkHasProcDisplay(15, efDisplayZPerspCLDProcDisplay) == FALSE)
+    {
+        gobj = gcMakeGObjSPAfter(nGCCommonKindEffect, NULL, nGCCommonLinkIDEffect, GOBJ_PRIORITY_DEFAULT);
+        gcAddGObjDisplay(gobj, efDisplayZPerspCLDProcDisplay, 15, 1, ~0);
+        gobj->camera_mask = COBJ_MASK_DLLINK(1);
+    }
+    if (efDisplayDllinkHasProcDisplay(10, efDisplayZPerspAAXLUProcDisplay) == FALSE)
+    {
+        gobj = gcMakeGObjSPAfter(nGCCommonKindEffect, NULL, nGCCommonLinkIDEffect, GOBJ_PRIORITY_DEFAULT);
+        gcAddGObjDisplay(gobj, efDisplayZPerspAAXLUProcDisplay, 10, GOBJ_PRIORITY_DEFAULT, ~0);
+        gobj->camera_mask = COBJ_MASK_DLLINK(4);
+    }
+    if (efDisplayDllinkHasProcDisplay(25, efDisplayZPerspXLUProcDisplay) == FALSE)
+    {
+        gobj = gcMakeGObjSPAfter(nGCCommonKindInterface, NULL, nGCCommonLinkIDInterface, GOBJ_PRIORITY_DEFAULT);
+        gcAddGObjDisplay(gobj, efDisplayZPerspXLUProcDisplay, 25, GOBJ_PRIORITY_DEFAULT, ~0);
+        gobj->camera_mask = COBJ_MASK_DLLINK(3);
+    }
+}
+
 // 0x800FD18C
 void efDisplayInitAll(void)
 {

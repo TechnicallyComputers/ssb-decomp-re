@@ -18,5 +18,7 @@ extern void efDisplayZPerspXLUProcDisplay(GObj *effect_gobj);
 extern void efDisplayZPerspCLDProcDisplay(GObj *effect_gobj);
 extern void efDisplayZPerspAAXLUProcDisplay(GObj *effect_gobj);
 extern void efDisplayInitAll(void);
+extern sb32 efDisplayIsInfrastructureGObj(const GObj *gobj);
+extern void efDisplayEnsureParticleDrawInfrastructure(void);
 
 #endif
