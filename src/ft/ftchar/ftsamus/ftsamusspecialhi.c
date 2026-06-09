@@ -1,4 +1,7 @@
 #include <ft/fighter.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_fallspecial_pass_diag.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -37,12 +40,18 @@ void ftSamusSpecialHiProcPhysics(GObj *fighter_gobj)
 sb32 ftSamusSpecialHiProcPass(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+    sb32 block;
 
     if (!(fp->coll_data.floor_flags & MAP_VERTEX_COLL_PASS) || (fp->input.pl.stick_range.y >= FTSAMUS_SCREWATTACK_PASS_STICK_RANGE_MIN))
     {
-        return TRUE;
+        block = TRUE;
     }
-    else return FALSE;
+    else block = FALSE;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFallSpecialPassDiagLogProcPass(fighter_gobj, "samus_screw", block);
+#endif
+    return block;
 }
 
 // 0x8015DD58
@@ -62,7 +71,13 @@ void ftSamusSpecialHiProcMap(GObj *fighter_gobj)
             {
                 ftCommonCliffCatchSetStatus(fighter_gobj);
             }
-            else ftCommonLandingFallSpecialSetStatus(fighter_gobj, FALSE, FTSAMUS_SCREWATTACK_LANDING_LAG);
+            else
+            {
+#if defined(PORT) && defined(SSB64_NETMENU)
+                syNetplayFallSpecialPassDiagLogPassCliff(fighter_gobj, "samus_screw_map");
+#endif
+                ftCommonLandingFallSpecialSetStatus(fighter_gobj, FALSE, FTSAMUS_SCREWATTACK_LANDING_LAG);
+            }
         }
     }
     else mpCommonSetFighterFallOnEdgeBreak(fighter_gobj);

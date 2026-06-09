@@ -1,4 +1,7 @@
 #include <ft/fighter.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_fallspecial_pass_diag.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -41,12 +44,18 @@ void ftCommonFallSpecialProcPhysics(GObj *fighter_gobj)
 sb32 ftCommonFallSpecialProcPass(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+    sb32 block;
 
     if ((ftStatusVarsFallSpecial(fp)->is_allow_pass == FALSE) || !(fp->coll_data.floor_flags & MAP_VERTEX_COLL_PASS) || (fp->input.pl.stick_range.y >= FTCOMMON_FALLSPECIAL_PASS_STICK_RANGE_MIN))
     {
-        return TRUE;
+        block = TRUE;
     }
-    else return FALSE;
+    else block = FALSE;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFallSpecialPassDiagLogProcPass(fighter_gobj, "fallspecial", block);
+#endif
+    return block;
 }
 
 // 0x8014384C
@@ -60,11 +69,17 @@ void ftCommonFallSpecialProcMap(GObj *fighter_gobj)
         {
             ftCommonCliffCatchSetStatus(fighter_gobj);
         }
-        else if ((ftStatusVarsFallSpecial(fp)->is_goto_landing != FALSE) || (fp->physics.vel_air.y < FTCOMMON_FALLSPECIAL_SKIPLANDING_VEL_Y_MAX))
+        else
         {
-            ftCommonLandingFallSpecialSetStatus(fighter_gobj, ftStatusVarsFallSpecial(fp)->is_allow_interrupt, ftStatusVarsFallSpecial(fp)->landing_lag);
+#if defined(PORT) && defined(SSB64_NETMENU)
+            syNetplayFallSpecialPassDiagLogPassCliff(fighter_gobj, "fallspecial_map");
+#endif
+            if ((ftStatusVarsFallSpecial(fp)->is_goto_landing != FALSE) || (fp->physics.vel_air.y < FTCOMMON_FALLSPECIAL_SKIPLANDING_VEL_Y_MAX))
+            {
+                ftCommonLandingFallSpecialSetStatus(fighter_gobj, ftStatusVarsFallSpecial(fp)->is_allow_interrupt, ftStatusVarsFallSpecial(fp)->landing_lag);
+            }
+            else ftCommonWaitSetStatus(fighter_gobj);
         }
-        else ftCommonWaitSetStatus(fighter_gobj);
     }
 }
 
@@ -96,4 +111,8 @@ void ftCommonFallSpecialSetStatus(GObj *fighter_gobj, f32 drift, sb32 unknown, s
     ftPublicTryPlayFallSpecialReact(fighter_gobj);
 
     fp->is_special_interrupt = TRUE;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFallSpecialPassDiagLogFallSpecialEnter(fighter_gobj, "set_status");
+#endif
 }

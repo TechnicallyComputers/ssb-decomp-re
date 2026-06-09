@@ -75,7 +75,7 @@ static void ftKirbyCopySamusSpecialNPortRefreshChargeShotGfx(FTStruct *fp)
 	{
 		return;
 	}
-	wp->weapon_vars.charge_shot.charge_size = fp->passive_vars.samus.charge_level;
+	wp->weapon_vars.charge_shot.charge_size = fp->passive_vars.kirby.copysamus_charge_level;
 	scale = dWPSamusChargeShotWeaponAttributes[wp->weapon_vars.charge_shot.charge_size].gfx_size /
 	        WPCHARGESHOT_GFX_SIZE_DIV;
 	DObjGetStruct(charge_gobj)->scale.vec.f.x = scale;
@@ -369,7 +369,7 @@ void ftKirbyCopySamusSpecialNLoopSetStatus(GObj *fighter_gobj)
     ftMainSetStatus(fighter_gobj, nFTKirbyStatusCopySamusSpecialNLoop, 0.0F, 1.0F, FTSTATUS_PRESERVE_COLANIM);
 
     fp->proc_damage = ftKirbyCopySamusSpecialNProcDamage;
-    fp->status_vars.samus.specialn.charge_int = FTKIRBY_COPYSAMUS_CHARGE_INT;
+    fp->status_vars.kirby.copysamus_specialn.charge_int = FTKIRBY_COPYSAMUS_CHARGE_INT;
 
     ftKirbyCopySamusSpecialNGetChargeShotPosition(fp, &pos);
 #if defined(PORT) && defined(SSB64_NETMENU)
