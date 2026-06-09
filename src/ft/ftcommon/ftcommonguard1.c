@@ -1,6 +1,9 @@
 #include <ft/fighter.h>
 #include <ef/efmanager.h>
 #include <ft/ftcommon/ftcommonfunctions.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_guard_grab_diag.h>
+#endif
 extern void *func_800269C0_275C0(u16 id);
 
 // // // // // // // // // // // //
@@ -486,6 +489,9 @@ sb32 ftCommonGuardOnCheckInterruptSuccess(GObj *fighter_gobj, s32 slide_tics)
     if ((fp->input.pl.button_hold & fp->input.button_mask_z) && (fp->shield_health != 0))
     {
         ftCommonGuardOnSetStatus(fighter_gobj, slide_tics);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetplayGuardGrabDiagLogGuardOn(fighter_gobj, "GuardOnCheckInterruptSuccess");
+#endif
 
         return TRUE;
     }

@@ -28,6 +28,7 @@ static sb32 ftMainDecompDiagEnabled(void)
 #include <ft/ftchar/ftkirby/ftkirbyfunctions.h>
 #include <sys/netfighterphase.h>
 #include <sys/netplay_sim_quantize.h>
+#include <sys/netplay_guard_grab_diag.h>
 #include <sys/net_debug_agent_log.h>
 #include <sys/netinput.h>
 #endif
@@ -1397,6 +1398,9 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             pl->button_release = (this_fp->hitlag_tics != 0) ? pl->button_release | button_tap_mask : button_tap_mask;
 
             pl->button_hold = button_hold;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            syNetplayGuardGrabDiagLogRInputEdge(fighter_gobj);
+#endif
             break;
 
         case nFTPlayerKindCom:

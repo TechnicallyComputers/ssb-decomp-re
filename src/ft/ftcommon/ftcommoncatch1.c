@@ -1,4 +1,7 @@
 #include <ft/fighter.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_guard_grab_diag.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -128,16 +131,42 @@ sb32 ftCommonCatchCheckInterruptCommon(GObj *fighter_gobj)
     if (ftCommonLightThrowCheckItemTypeThrow(fp) != FALSE)
     {
         ftCommonLightThrowDecideSetStatus(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetplayGuardGrabDiagLogCatchAttempt(fighter_gobj, TRUE, "light_throw");
+#endif
 
         return TRUE;
     }
     else if ((fp->input.pl.button_hold & fp->input.button_mask_z) && (fp->input.pl.button_tap & fp->input.button_mask_a) && (attr->is_have_catch))
     {
         ftCommonCatchSetStatus(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetplayGuardGrabDiagLogCatchAttempt(fighter_gobj, TRUE, "z_hold_a_tap");
+#endif
 
         return TRUE;
     }
-    else return FALSE;
+    else
+    {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        const char *reason = "other";
+
+        if ((fp->input.pl.button_hold & fp->input.button_mask_z) == 0)
+        {
+            reason = "no_z_hold";
+        }
+        else if ((fp->input.pl.button_tap & fp->input.button_mask_a) == 0)
+        {
+            reason = "no_a_tap";
+        }
+        else if (attr->is_have_catch == FALSE)
+        {
+            reason = "no_catch_attr";
+        }
+        syNetplayGuardGrabDiagLogCatchAttempt(fighter_gobj, FALSE, reason);
+#endif
+        return FALSE;
+    }
 }
 
 // 0x80149D80

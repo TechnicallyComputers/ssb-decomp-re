@@ -6,6 +6,7 @@ extern void *func_800269C0_275C0(u16 id);
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_sim_quantize.h>
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_guard_grab_diag.h>
 /*
  * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
  * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
@@ -112,6 +113,7 @@ void ftCommonGuardOffProcUpdate(GObj *fighter_gobj)
     {
         if (ftCommonGuardNetplayCatchCheckInterruptGuardDrop(fighter_gobj) != FALSE)
         {
+            syNetplayGuardGrabDiagLogGuardDropCatch(fighter_gobj, TRUE, fp->status_id);
             return;
         }
     }
