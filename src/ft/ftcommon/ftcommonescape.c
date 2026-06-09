@@ -1,4 +1,7 @@
 #include <ft/fighter.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_yoshi_shield_escape_probe.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -49,12 +52,28 @@ void ftCommonEscapeSetStatus(GObj *fighter_gobj, s32 status_id, s32 itemthrow_bu
 
     fp->proc_status = ftCommonEscapeProcStatus;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayYoshiShieldEscapeProbeEnabled() != FALSE)
+    {
+        syNetplayYoshiShieldEscapeProbeLogEscapeSetStatus(fighter_gobj, status_id, itemthrow_buffer_tics,
+                                                          "escape_enter_pre");
+    }
+#endif
+
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftMainPlayAnimEventsAll(fighter_gobj);
 
     fp->is_jostle_ignore = TRUE;
 
     ftStatusVarsEscape(fp)->itemthrow_buffer_tics = itemthrow_buffer_tics;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayYoshiShieldEscapeProbeEnabled() != FALSE)
+    {
+        syNetplayYoshiShieldEscapeProbeLogEscapeSetStatus(fighter_gobj, status_id, itemthrow_buffer_tics,
+                                                          "escape_enter_post");
+    }
+#endif
 }
 
 // 0x801492F8

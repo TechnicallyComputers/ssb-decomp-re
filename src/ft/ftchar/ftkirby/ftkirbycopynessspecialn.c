@@ -1,5 +1,14 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+/*
+ * Netplay rollback forward-sim: gate policy on syNetplayRollbackSemanticsActive().
+ * See docs/netplay_rollback_refactor_contracts.md.
+ */
+
+#endif
 // // // // // // // // // // // //
 //                               //
 //             MACROS            //
@@ -14,17 +23,16 @@
 //                               //
 // // // // // // // // // // // //
 
-// 0x80155B40
-void ftKirbyCopyNessSpecialNProcAccessory(GObj *fighter_gobj)
+static void ftKirbyCopyNessSpecialNProcAccessoryVanilla(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     Vec3f pos;
     Vec3f vel;
     f32 angle;
 
-    if (fp->motion_vars.flags.flag0 != FALSE) // Check if flag to summon PK Fire is true
+    if (fp->motion_vars.flags.flag0 != FALSE)
     {
-        fp->motion_vars.flags.flag0 = FALSE; // Revert to 0 if PK Fire is summoned, so it doesn't repeat on every frame of the move
+        fp->motion_vars.flags.flag0 = FALSE;
 
         pos.x = 0.0F;
         pos.y = 0.0F;
@@ -50,8 +58,40 @@ void ftKirbyCopyNessSpecialNProcAccessory(GObj *fighter_gobj)
             vel.y = __sinf(FTKIRBY_COPYNESS_PKFIRE_SPARK_ANGLE_GROUND) * FTKIRBY_COPYNESS_PKFIRE_SPARK_VEL_GROUND;
         }
 
-        wpNessPKFireMakeWeapon(fighter_gobj, &pos, &vel, angle); // Spawn PK Fire
+        wpNessPKFireMakeWeapon(fighter_gobj, &pos, &vel, angle);
     }
+}
+
+// 0x80155B40
+void ftKirbyCopyNessSpecialNProcUpdate(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        FTStruct *fp = ftGetStruct(fighter_gobj);
+
+        if ((syNetRbSnapFireballProcAccessoryWillRun(fighter_gobj) == FALSE) ||
+            ((fp != NULL) && (fp->proc_accessory == NULL)))
+        {
+            syNetRbSnapTrySpawnPKFireFromAccessory(fighter_gobj);
+        }
+    }
+
+#endif
+    ftAnimEndCheckSetStatus(fighter_gobj, mpCommonSetFighterWaitOrFall);
+}
+
+void ftKirbyCopyNessSpecialNProcAccessory(GObj *fighter_gobj)
+{
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapTrySpawnPKFireFromAccessory(fighter_gobj);
+        return;
+    }
+
+#endif
+    ftKirbyCopyNessSpecialNProcAccessoryVanilla(fighter_gobj);
 }
 
 // 0x80155CAC
@@ -95,6 +135,7 @@ void ftKirbyCopyNessSpecialNInitStatusVars(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
     fp->motion_vars.flags.flag0 = 0;
+    fp->motion_vars.flags.flag1 = 0;
 
     fp->proc_accessory = ftKirbyCopyNessSpecialNProcAccessory;
 }

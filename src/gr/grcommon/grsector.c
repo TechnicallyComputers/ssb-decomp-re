@@ -10,7 +10,7 @@
 extern void *func_800269C0_275C0(u16 id);
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
-extern sb32 syNetRollbackIsActive(void);
+extern sb32 syNetplayRollbackSemanticsActive(void);
 #include <sys/netplay_sim_quantize.h>
 #include <mp/mpcollision.h>
 #endif
@@ -1283,7 +1283,7 @@ void grSectorProcUpdate(GObj *ground_gobj)
      * freshly-stepped cursor). Gated to active rollback so offline play keeps using the engine anim
      * process untouched and we never double-step.
      */
-    if ((syNetRollbackIsActive() != FALSE) && (gGRCommonStruct.sector.map_gobj != NULL))
+    if ((syNetplayRollbackSemanticsActive() != FALSE) && (gGRCommonStruct.sector.map_gobj != NULL))
     {
         gcPlayAnimAll(gGRCommonStruct.sector.map_gobj);
         grSectorArwingCanonicalizeSimState();

@@ -700,7 +700,7 @@ FTStatusDesc dFTKirbySpecialStatusDescs[/* */] =
 		nFTStatusAttackIDSpecialNCopyNess,			// Status attack ID
 
 		//////////////////////// Process Callbacks /////////////////////////////
-		ftAnimEndSetWait,				// Proc Update
+		ftKirbyCopyNessSpecialNProcUpdate,				// Proc Update
 		NULL,											// Proc Interrupt
 		ftPhysicsApplyGroundVelFriction,				// Proc Physics
 		ftKirbyCopyNessSpecialNProcMap				// Proc Map
@@ -720,7 +720,7 @@ FTStatusDesc dFTKirbySpecialStatusDescs[/* */] =
 		nFTStatusAttackIDSpecialNCopyNess,			// Status attack ID
 
 		//////////////////////// Process Callbacks /////////////////////////////
-		ftAnimEndSetFall,				// Proc Update
+		ftKirbyCopyNessSpecialNProcUpdate,				// Proc Update
 		NULL,											// Proc Interrupt
 		ftPhysicsApplyAirVelFriction,					// Proc Physics
 		ftKirbyCopyNessSpecialAirNProcMap			// Proc Map

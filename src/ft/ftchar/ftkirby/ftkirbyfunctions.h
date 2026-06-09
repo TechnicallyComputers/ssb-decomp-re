@@ -241,6 +241,7 @@ extern void ftKirbyCopyPikachuSpecialNSetStatus(GObj* fighter_gobj);
 extern void ftKirbyCopyPikachuSpecialAirNSetStatus(GObj* fighter_gobj);
 
 // CopyNessSpecialN
+extern void ftKirbyCopyNessSpecialNProcUpdate(GObj* fighter_gobj);
 extern void ftKirbyCopyNessSpecialNProcAccessory(GObj* fighter_gobj);
 extern void ftKirbyCopyNessSpecialNProcMap(GObj* fighter_gobj);
 extern void ftKirbyCopyNessSpecialAirNProcMap(GObj* fighter_gobj);

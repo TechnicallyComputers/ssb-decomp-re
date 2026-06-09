@@ -1,6 +1,7 @@
 #include <ft/fighter.h>
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_fallspecial_pass_diag.h>
+#include <sys/netplay_fallspecial_pass_gate.h>
 #endif
 
 // // // // // // // // // // // //
@@ -46,6 +47,9 @@ sb32 ftCommonFallSpecialProcPass(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     sb32 block;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFallSpecialPassGateHardenAllowPass(fighter_gobj);
+#endif
     if ((ftStatusVarsFallSpecial(fp)->is_allow_pass == FALSE) || !(fp->coll_data.floor_flags & MAP_VERTEX_COLL_PASS) || (fp->input.pl.stick_range.y >= FTCOMMON_FALLSPECIAL_PASS_STICK_RANGE_MIN))
     {
         block = TRUE;

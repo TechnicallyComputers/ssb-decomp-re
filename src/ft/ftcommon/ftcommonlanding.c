@@ -36,12 +36,24 @@
 void ftCommonLandingProcInterrupt(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+    sb32 is_allow_interrupt;
 
     if (fighter_gobj->anim_frame < FTCOMMON_LANDING_INTERRUPT_BEGIN)
     {
         return;
     }
-    else if ((ftStatusVarsLanding(fp)->is_allow_interrupt != FALSE) && !(ftCommonLandingCheckInterrupt(fighter_gobj)))
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Status 59 owns fallspecial overlay; landing accessor stomps drift at union +0. */
+    if (fp->status_id == nFTCommonStatusLandingFallSpecial)
+    {
+        is_allow_interrupt = ftStatusVarsFallSpecial(fp)->is_allow_interrupt;
+    }
+    else
+#endif
+    {
+        is_allow_interrupt = ftStatusVarsLanding(fp)->is_allow_interrupt;
+    }
+    if ((is_allow_interrupt != FALSE) && !(ftCommonLandingCheckInterrupt(fighter_gobj)))
     {
         if ((fighter_gobj->anim_frame >= FTCOMMON_LANDING_INTERRUPT_BEGIN) && (fighter_gobj->anim_frame < (FTCOMMON_LANDING_INTERRUPT_BEGIN + DObjGetStruct(fighter_gobj)->anim_speed)))
         {
@@ -64,7 +76,16 @@ void ftCommonLandingSetStatusParam(GObj *fighter_gobj, s32 status_id, sb32 is_al
     mpCommonSetFighterGround(fp);
     ftMainSetStatus(fighter_gobj, status_id, 0.0F, anim_speed, FTSTATUS_PRESERVE_NONE);
 
-    ftStatusVarsLanding(fp)->is_allow_interrupt = is_allow_interrupt;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (status_id == nFTCommonStatusLandingFallSpecial)
+    {
+        ftStatusVarsFallSpecial(fp)->is_allow_interrupt = is_allow_interrupt;
+    }
+    else
+#endif
+    {
+        ftStatusVarsLanding(fp)->is_allow_interrupt = is_allow_interrupt;
+    }
 }
 
 // 0x80142D9C

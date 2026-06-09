@@ -7,6 +7,7 @@ extern void *func_800269C0_275C0(u16 id);
 #include <sys/netplay_sim_quantize.h>
 #include <sys/netrollbacksnapshot.h>
 #include <sys/netplay_guard_grab_diag.h>
+#include <sys/netplay_yoshi_shield_escape_probe.h>
 /*
  * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
  * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
@@ -24,9 +25,29 @@ extern void *func_800269C0_275C0(u16 id);
 void ftCommonGuardSetStatusFromEscape(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    sb32 adopt_attempted = FALSE;
+    sb32 adopt_ok = FALSE;
+    GObj *adopted_gobj = NULL;
+#endif
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayYoshiShieldEscapeProbeEnabled() != FALSE)
+    {
+        syNetplayYoshiShieldEscapeProbeLogGuardFromEscape(fighter_gobj, "guard_reenter_pre", FALSE, FALSE);
+    }
+#endif
 
     ftMainSetStatus(fighter_gobj, nFTCommonStatusGuardOn, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE); // Why? It overwrites this with Guard later down.
     ftMainPlayAnimEventsAll(fighter_gobj);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayYoshiShieldEscapeProbeEnabled() != FALSE)
+    {
+        syNetplayYoshiShieldEscapeProbeLogGuardFromEscape(fighter_gobj, "guard_reenter_post_guardon_none", FALSE,
+                                                          FALSE);
+    }
+#endif
 
     if (fp->shield_health != 0)
     {
@@ -34,8 +55,13 @@ void ftCommonGuardSetStatusFromEscape(GObj *fighter_gobj)
         {
 #if defined(PORT) && defined(SSB64_NETMENU)
             /* Netplay rollback only: reuse cosmetic egg shell minted during shield escape roll. */
-            if ((syNetplayRollbackSemanticsActive() != FALSE) &&
-                (syNetRbSnapTryAdoptLiveYoshiShieldForEscapeEnd(fighter_gobj) == NULL))
+            if (syNetplayRollbackSemanticsActive() != FALSE)
+            {
+                adopt_attempted = TRUE;
+                adopted_gobj = syNetRbSnapTryAdoptLiveYoshiShieldForEscapeEnd(fighter_gobj);
+                adopt_ok = (adopted_gobj != NULL) ? TRUE : FALSE;
+            }
+            if ((adopt_attempted == FALSE) || (adopted_gobj == NULL))
 #endif
             {
                 ftStatusVarsGuard(fp)->effect_gobj = efManagerYoshiShieldMakeEffect(fighter_gobj);
@@ -48,6 +74,15 @@ void ftCommonGuardSetStatusFromEscape(GObj *fighter_gobj)
 
         fp->is_shield = TRUE;
     }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayYoshiShieldEscapeProbeEnabled() != FALSE)
+    {
+        syNetplayYoshiShieldEscapeProbeLogGuardFromEscape(fighter_gobj, "guard_reenter_post_mint", adopt_attempted,
+                                                          adopt_ok);
+    }
+#endif
+
     ftCommonGuardUpdateJoints(fighter_gobj);
 
     ftStatusVarsGuard(fp)->release_lag = FTCOMMON_GUARD_RELEASE_LAG;
@@ -61,6 +96,14 @@ void ftCommonGuardSetStatusFromEscape(GObj *fighter_gobj)
     ftCommonGuardInitJoints(fighter_gobj);
 
     fp->is_shield = TRUE;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayYoshiShieldEscapeProbeEnabled() != FALSE)
+    {
+        syNetplayYoshiShieldEscapeProbeLogGuardFromEscape(fighter_gobj, "guard_reenter_done", adopt_attempted,
+                                                          adopt_ok);
+    }
+#endif
 }
 
 // 0x80148F24
