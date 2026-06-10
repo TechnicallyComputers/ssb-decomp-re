@@ -10,6 +10,7 @@ extern void func_800267F4_273F4(void *arg0);
 
 #ifdef PORT
 extern void port_log(const char *fmt, ...);
+extern void *portRelocTryResolvePointer(u32 token);
 extern void portFixupSprite(void *sprite);
 extern void portFixupBitmap(void *bitmap);
 extern void portFixupBitmapArray(void *bitmaps, unsigned int count);
@@ -880,11 +881,30 @@ void lbCommonAddFighterPartsFigatree(DObj *root_dobj, void **figatree, f32 anim_
     {
 #ifdef PORT
         u32 anim_token = *(u32*)figatree;
-        void *anim = (anim_token != 0) ? PORT_RESOLVE(anim_token) : NULL;
+        /*
+         * TryResolve avoids RelocPointerTable error spam when figatree cursor drifts (rollback load
+         * hidden-part topology skew). Treat invalid tokens as NULL anim for this DObj.
+         */
+        void *anim = (anim_token != 0) ? portRelocTryResolvePointer(anim_token) : NULL;
 #else
         void *anim = *figatree;
 #endif
         FTParts *parts = current_dobj->user_data.p;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: stripped from offline builds. Rollback load may leave tree DObjs without FTParts. */
+        if (parts == NULL)
+        {
+            current_dobj->anim_wait = AOBJ_ANIM_NULL;
+#ifdef PORT
+            figatree = (void**)(void*)(((u32*)figatree) + 1);
+#else
+            figatree++;
+#endif
+            current_dobj = lbCommonGetTreeDObjNextFromRoot(current_dobj, root_dobj);
+            continue;
+        }
+#endif
         
         if (anim != NULL)
         {

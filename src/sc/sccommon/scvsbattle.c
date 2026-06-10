@@ -168,6 +168,25 @@ void scVSBattleFuncUpdate(void)
 	{
 		syNetRollbackPumpCorrectionBeforeBattleSim();
 	}
+	if (syNetRollbackIsBattleSimHoldActive() != FALSE)
+	{
+		static u32 sLastHoldBlockedBattleUpdateLogTick = ~(u32)0;
+		u32 sim_tick;
+
+		sim_tick = syNetInputGetTick();
+		if (sim_tick != sLastHoldBlockedBattleUpdateLogTick)
+		{
+			port_log(
+			    "SSB64 VS: battle update frozen (BATTLE_SIM_HOLD) sim=%u peer_vs_active=%d resim=%d\n",
+			    sim_tick,
+			    (int)syNetPeerIsVSSessionActive(),
+			    (int)syNetRollbackIsResimulating());
+			sLastHoldBlockedBattleUpdateLogTick = sim_tick;
+		}
+		syNetPeerUpdate();
+		syNetRollbackPumpLoadFailBattleExit();
+		return;
+	}
 	if ((syNetPeerIsVSSessionActive() != FALSE) && (syNetRollbackIsResimulating() != FALSE))
 	{
 		/* Resim advances only via syNetRollbackUpdate → AdvanceResimBudget → BattleSimOnly. */
@@ -216,6 +235,10 @@ void scVSBattleFuncUpdate(void)
 		syNetReplayUpdate();
 	}
 	syNetPeerUpdate();
+	if (syNetRollbackIsBattleSimHoldActive() != FALSE)
+	{
+		return;
+	}
 	if (syNetInputStrictContractSkippedPublishThisPass() == FALSE)
 	{
 		syNetRollbackAfterBattleUpdate();
@@ -228,6 +251,10 @@ void scVSBattleFuncUpdate(void)
 #if defined(PORT) && defined(SSB64_NETMENU)
 void scVSBattleFuncUpdateBattleSimOnly(void)
 {
+	if (syNetRollbackIsBattleSimHoldActive() != FALSE)
+	{
+		return;
+	}
 	ifCommonBattleUpdateInterfaceAll();
 	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
 	    (gSCManagerBattleState->game_status == nSCBattleGameStatusGo))
@@ -931,7 +958,28 @@ void scVSBattleStartScene(void)
 	}
 #if defined(PORT) && defined(SSB64_NETMENU)
 	syNetReplayFinishVSSession();
-	syNetPeerEndVSSessionLocally();
+	if (syNetRollbackConsumeLoadFailBattleSceneRetarget() != FALSE)
+	{
+		port_log(
+		    "SSB64 VS: scVSBattleStartScene — load_fail scene retarget preserved (scene_curr=%u), skipping VSResults\n",
+		    (unsigned int)gSCManagerSceneData.scene_curr);
+		return;
+	}
+	if (gSCManagerSceneData.scene_curr != nSCKindVSBattle)
+	{
+		if (syNetRollbackIsBattleSimHoldActive() != FALSE)
+		{
+			syNetRollbackClearLoadFailBattleHold();
+		}
+		port_log(
+		    "SSB64 VS: scVSBattleStartScene — scene already left battle (scene_curr=%u), skipping VSResults\n",
+		    (unsigned int)gSCManagerSceneData.scene_curr);
+		return;
+	}
+	if (syNetPeerIsVSSessionActive() != FALSE)
+	{
+		syNetPeerEndVSSessionLocally();
+	}
 #endif
 	gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
 	gSCManagerSceneData.scene_curr = nSCKindVSResults;
