@@ -35,6 +35,26 @@ extern void port_coroutine_yield(void);
 extern void *func_800269C0_275C0(u16 id);
 extern void func_800266A0_272A0(void);
 
+#ifdef PORT
+/* VS on Final Destination is a port addition — the N64 game never offered
+ * FD outside the 1P final battle. The FD map file's bgm_id is the one-shot
+ * Master Hand entrance sting (nSYAudioBGMBossEntry), which the 1P flow
+ * depends on (sc1pgame.c switches to the real FD theme after the entrance
+ * cutscene), so the data file can't change. In VS there is no entrance —
+ * mpCollisionSetPlayBGM played the sting once and the match went silent
+ * (issue #228). Re-aim the default at the FD battle theme right after the
+ * map BGM starts. Metal Cavern / Battlefield carry looping themes in their
+ * map files and need no remap. */
+static void scVSBattlePortFixupFDMusic(void)
+{
+	if (gSCManagerSceneData.gkind == nGRKindLast)
+	{
+		gMPCollisionBGMCurrent = gMPCollisionBGMDefault = nSYAudioBGMLast;
+		syAudioPlayBGM(0, nSYAudioBGMLast);
+	}
+}
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //       INITIALIZED DATA        //
@@ -547,6 +567,9 @@ void scVSBattleStartBattle(void)
 	ifCommonPlayerStockInitInterface();
 	ifCommonEntryAllMakeInterface();
 	mpCollisionSetPlayBGM();
+#ifdef PORT
+	scVSBattlePortFixupFDMusic();
+#endif
 	func_800269C0_275C0(nSYAudioVoicePublicExcited);
 	ifCommonTimerMakeInterface(ifCommonAnnounceTimeUpInitInterface);
 	ifCommonTimerMakeDigits();
@@ -833,6 +856,9 @@ void scVSBattleStartSuddenDeath(void)
 	ifCommonPlayerStockInitInterface();
 	ifCommonSuddenDeathMakeInterface();
 	mpCollisionSetPlayBGM();
+#ifdef PORT
+	scVSBattlePortFixupFDMusic();
+#endif
 	func_800269C0_275C0(nSYAudioVoicePublicExcited);
 	ifCommonTimerMakeInterface(ifCommonAnnounceTimeUpInitInterface);
 	ifCommonTimerMakeDigits();
