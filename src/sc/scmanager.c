@@ -4,6 +4,7 @@ extern char *getenv(const char *name);
 extern int atoi(const char *s);
 extern void port_coroutine_yield(void);
 #if defined(SSB64_NETMENU)
+#include <sys/netplay_save.h>
 #include "mm_bootstrap.h"
 #include <stdlib.h>
 #include <string.h>
@@ -916,6 +917,9 @@ void scManagerRunLoop(sb32 arg)
 	}
 	lbBackupIsSramValid();
 	lbBackupApplyOptions();
+#if defined(PORT) && defined(SSB64_NETMENU)
+	syNetplaySaveLoad();
+#endif
 
 #ifndef PORT
 	/* N64 only — no physical framebuffers on PC; Fast3D manages them. */

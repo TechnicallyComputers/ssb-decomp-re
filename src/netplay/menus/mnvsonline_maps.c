@@ -34,6 +34,9 @@ static void mnVSNetLevelPrefsMapsAnchorSObjX(SObj *sobj)
 }
 #endif
 #include <lb/lbcommon.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_save.h>
+#endif
 
 /*
  * Netmenu level prefs: mnmaps fork for nSCKindVSNetLevelPrefs only (SSB64_NETMENU).
@@ -236,14 +239,14 @@ static u32 mnVSNetLevelPrefsMapsPopcount16(u16 v)
 	return n;
 }
 
-static u16 mnVSNetLevelPrefsMapsSanitizeUserBanMask(u16 mask)
+u16 mnVSNetLevelPrefsMapsSanitizeUserBanMask(u16 mask)
 {
-	mask &= (u16)((1u << 9) - 1u);
+	mask &= MN_VSNET_LEVEL_PREFS_STAGE_SLOT_MASK;
 
-	if (mnVSNetLevelPrefsMapsCheckLocked(nGRKindInishie) != FALSE)
+	if ((gSCManagerBackupData.unlock_mask & LBBACKUP_UNLOCK_MASK_INISHIE) == 0)
 		mask &= (u16)~(u16)(1u << 4);
 
-	while (mnVSNetLevelPrefsMapsPopcount16(mask) > 2u)
+	while (mnVSNetLevelPrefsMapsPopcount16(mask) > MN_VSNET_LEVEL_PREFS_MAX_USER_BANS)
 		mask &= (u16)(mask - 1u);
 
 	return mask;
@@ -347,7 +350,7 @@ static void mnVSNetLevelPrefsMapsTryToggleBanAtCursor(void)
 		}
 		else
 		{
-			if (mnVSNetLevelPrefsMapsPopcount16(*m) >= 2u)
+			if (mnVSNetLevelPrefsMapsPopcount16(*m) >= MN_VSNET_LEVEL_PREFS_MAX_USER_BANS)
 				return;
 
 			*m |= bit;
@@ -355,6 +358,7 @@ static void mnVSNetLevelPrefsMapsTryToggleBanAtCursor(void)
 		}
 		*m = mnVSNetLevelPrefsMapsSanitizeUserBanMask(*m);
 	}
+	syNetplaySaveWriteStageBanMask(*m);
 	mnVSNetLevelPrefsMapsRefreshIconBanTints();
 	mnVSNetLevelPrefsMapsRefreshAllWallpaperGreys();
 	if (sMNVSNetLevelPrefsMapsIsTrainingMode == FALSE)

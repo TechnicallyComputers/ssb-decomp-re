@@ -193,7 +193,6 @@ void ftCommonTaruCannReconcileShootStateAfterRollback(GObj *fighter_gobj, u32 sn
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     GObj *tarucann_gobj;
-    s32 release_wait;
     s32 shoot_wait;
 
     if ((fp == NULL) || (fp->status_id != nFTCommonStatusTaruCann))
@@ -211,19 +210,11 @@ void ftCommonTaruCannReconcileShootStateAfterRollback(GObj *fighter_gobj, u32 sn
     }
     ftStatusVarsTaruCann(fp)->tarucann_gobj = tarucann_gobj;
 
-    release_wait = ftStatusVarsTaruCann(fp)->release_wait;
     shoot_wait = ftStatusVarsTaruCann(fp)->shoot_wait;
 
     /* In-progress shot from snapshot: sync barrel anim only; ProcUpdate owns countdown + eject. */
     if (shoot_wait > 0)
     {
-        grJungleTaruCannAddAnimShoot(tarucann_gobj);
-        return;
-    }
-    /* Rollback load may restore past the auto-fire threshold without shoot_wait armed yet. */
-    if (release_wait >= FTCOMMON_TARUCANN_RELEASE_WAIT)
-    {
-        ftStatusVarsTaruCann(fp)->shoot_wait = FTCOMMON_TARUCANN_SHOOT_WAIT;
         grJungleTaruCannAddAnimShoot(tarucann_gobj);
         return;
     }
@@ -234,12 +225,15 @@ void ftCommonTaruCannReconcileShootStateAfterRollback(GObj *fighter_gobj, u32 sn
         grJungleTaruCannAddAnimShoot(tarucann_gobj);
         return;
     }
-    /* Orphan shoot joint during release countdown: suppress pop; do not arm shoot_wait. */
+    /*
+     * Orphan shoot joint during release countdown: suppress pop; do not arm shoot_wait.
+     * Auto-fire @ release_wait==180 is owned by ftCommonTaruCannProcUpdate during forward sim only
+     * (no threshold catch-up here — restore re-arm caused premature shoot anims without eject).
+     * Idle fill joint is left alone; ApplyBarrel already restored the captured child anim.
+     */
     if (grJungleTaruCannIsChildShootAnimActive(tarucann_gobj) != FALSE)
     {
         grJungleTaruCannAddAnimFill(tarucann_gobj);
-        return;
     }
-    grJungleTaruCannAddAnimFill(tarucann_gobj);
 }
 #endif
