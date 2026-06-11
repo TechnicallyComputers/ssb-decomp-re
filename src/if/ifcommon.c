@@ -19,6 +19,7 @@ extern void syAudioSetBGMVolume(u32, u32);
 extern sb32 syNetPeerIsVSSessionActive(void);
 extern u32 syNetSyncNetplayEffectiveTimeLimitMinutes(void);
 extern void syNetSyncOnNetplayBattleGo(void);
+extern void syNetSyncLogNetplayBattleGoApply(u32 sim_tick);
 #include <stdio.h>
 #if defined(SSB64_NETMENU)
 #include <sys/net_debug_agent_log.h>
@@ -2316,6 +2317,7 @@ void ifCommonAnnounceGoSetStatus(void)
     gIFCommonPlayerInterface.is_magnify_display = TRUE;
 
 #if defined(PORT) && defined(SSB64_NETMENU)
+    syNetSyncLogNetplayBattleGoApply(syNetInputGetTick());
     syNetSyncOnNetplayBattleGo();
 #endif
 }

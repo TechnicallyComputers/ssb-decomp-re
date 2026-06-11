@@ -11,6 +11,7 @@ extern void port_coroutine_yield(void);
 #include <sys/netpeer.h>
 #include <sys/netreplay.h>
 #include <sys/netrollback.h>
+#include <sys/netrollbacksnapshot.h>
 #include <sys/netsync.h>
 #endif
 #include <sys/video.h>
@@ -168,6 +169,14 @@ void scVSBattleFuncUpdate(void)
 	{
 		syNetRollbackPumpCorrectionBeforeBattleSim();
 	}
+	if ((syNetPeerIsVSSessionActive() != FALSE) &&
+	    (syNetRollbackShouldDeferInterfaceDuringResimWait() != FALSE))
+	{
+		/* Seal-wait: no live interface or battle sim until baseline gate opens (prevents LOAD_SLOT_LIVE_DRIFT). */
+		syNetRollbackRefreshDeferredIntroPresentation();
+		syNetPeerUpdate();
+		return;
+	}
 	if (syNetRollbackIsBattleSimHoldActive() != FALSE)
 	{
 		static u32 sLastHoldBlockedBattleUpdateLogTick = ~(u32)0;
@@ -222,7 +231,15 @@ void scVSBattleFuncUpdate(void)
 		syNetPeerPumpIngressTransport("battle_pre_interface");
 	}
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if (syNetRollbackShouldDeferInterfaceDuringResimWait() == FALSE)
+	{
+		ifCommonBattleUpdateInterfaceAll();
+		syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
+	}
+#else
 	ifCommonBattleUpdateInterfaceAll();
+#endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
 	    (gSCManagerBattleState->game_status == nSCBattleGameStatusGo))
@@ -256,6 +273,7 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 		return;
 	}
 	ifCommonBattleUpdateInterfaceAll();
+	syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
 	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
 	    (gSCManagerBattleState->game_status == nSCBattleGameStatusGo))
 	{
