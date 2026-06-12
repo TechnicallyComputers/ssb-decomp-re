@@ -234,8 +234,26 @@ void scVSBattleFuncUpdate(void)
 #if defined(PORT) && defined(SSB64_NETMENU)
 	if (syNetRollbackShouldDeferInterfaceDuringResimWait() == FALSE)
 	{
+		/*
+		 * Intro presentation repair (unhalfswap + figatree refresh) is resim-only.
+		 * Running it on forward sim — including offline NETMENU VS — poisoned figatree
+		 * heaps during Entry and collapsed Appear to one tick with corrupted joints.
+		 */
+		if (syNetRollbackIsResimulating() != FALSE)
+		{
+			syNetRbSnapshotPreSimUnhalfswapIntroAppearAnim();
+			syNetRbSnapshotPreSimUnhalfswapGameplayResimAnim();
+		}
 		ifCommonBattleUpdateInterfaceAll();
-		syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
+		if (syNetRollbackIsResimulating() != FALSE)
+		{
+			syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
+		}
+	}
+	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
+	    (gSCManagerBattleState->game_status == nSCBattleGameStatusWait))
+	{
+		syNetSyncTryApplyAuthoritativeNetplayGo(syNetInputGetTick());
 	}
 #else
 	ifCommonBattleUpdateInterfaceAll();
@@ -272,8 +290,15 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 	{
 		return;
 	}
+	syNetRbSnapshotPreSimUnhalfswapIntroAppearAnim();
+	syNetRbSnapshotPreSimUnhalfswapGameplayResimAnim();
 	ifCommonBattleUpdateInterfaceAll();
 	syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
+	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
+	    (gSCManagerBattleState->game_status == nSCBattleGameStatusWait))
+	{
+		syNetSyncTryApplyAuthoritativeNetplayGo(syNetInputGetTick());
+	}
 	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
 	    (gSCManagerBattleState->game_status == nSCBattleGameStatusGo))
 	{
