@@ -145,6 +145,24 @@ void ftCommonDeadUpdateScore(FTStruct *this_fp)
     }
     if (gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_BONUS)
     {
+#ifdef PORT
+        /* Classic Co-op bonus stage: one player falling doesn't fail the
+         * attempt while the partner is still in (the faller stays out —
+         * see ftCommonDeadCheckRebirth). The pkind guard keeps stale co-op
+         * handoff state from ever affecting solo bonus practice. */
+        if (sc1PManagerIsCoopActive())
+        {
+            s32 _other = (this_fp->player == gSCManagerSceneData.player) ? gSCManagerSceneData.coop_player2 : gSCManagerSceneData.player;
+
+            if ((gSCManagerBattleState->players[this_fp->player].pkind == nFTPlayerKindMan) &&
+                (gSCManagerBattleState->players[_other].pkind == nFTPlayerKindMan) &&
+                (gSCManagerBattleState->players[_other].stock_count != -1))
+            {
+                gSCManagerBattleState->players[this_fp->player].stock_count = -1;
+                return;
+            }
+        }
+#endif
         ifCommonAnnounceEndMessage();
     }
 }
@@ -189,8 +207,23 @@ void ftCommonDeadCheckRebirth(GObj *fighter_gobj)
     }
 #if defined(PORT) && defined(SSB64_NETMENU)
     syNetplayRebirthGateLogCheckRebirth(fighter_gobj, fp, "rebirth");
-#endif
+  // testing including deadcleargate behind ssb64_netmenu for any issues.  TESTEDIT
     ftCommonDeadClearGateWait(fp);
+#endif
+#ifdef PORT
+    /* Classic Co-op bonus stage: a fallen player stays out for the rest of
+     * the attempt (their slot was marked -1 in the defeat stats above);
+     * without this they would rebirth, since bonus rules are neither STOCK
+     * nor 1PGAME. */
+    else if ((gSCManagerBattleState->game_rules & SCBATTLE_GAMERULE_BONUS) &&
+             sc1PManagerIsCoopActive() &&
+             (gSCManagerBattleState->players[fp->player].pkind == nFTPlayerKindMan) &&
+             (gSCManagerBattleState->players[fp->player].stock_count == -1))
+    {
+        ftCommonSleepSetStatus(fighter_gobj);
+        return;
+    }
+#endif
     ftCommonRebirthDownSetStatus(fighter_gobj);
 }
 

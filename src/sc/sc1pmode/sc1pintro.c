@@ -608,16 +608,51 @@ void sc1PIntroMakeVSName(s32 stage)
 }
 
 // 0x80132634
+#ifdef PORT
+/* Classic Co-op: show P2 on the intro screen for stages that normally have
+ * no ally — P2 takes the ally-1 card to P1's side, exactly like the CPU
+ * partner does on the Mario Bros. stage (where P2 already appears, since
+ * the partner slot IS P2 in co-op). Giant DK likewise already shows P2 via
+ * the ally-1 desc. Excluded: those two stages (handled natively) and the
+ * bonus stages (their intro shows no fighters at all). */
+sb32 sc1PIntroCoopShowP2(s32 stage)
+{
+    if (!sc1PManagerIsCoopActive())
+    {
+        return FALSE;
+    }
+    if (stage > nSC1PGameStageCommonEnd)
+    {
+        return FALSE;
+    }
+    if ((stage == nSC1PGameStageMario) || (stage == nSC1PGameStageDonkey))
+    {
+        return FALSE;
+    }
+    if ((stage == nSC1PGameStageBonus1) || (stage == nSC1PGameStageBonus2) || (stage == nSC1PGameStageBonus3))
+    {
+        return FALSE;
+    }
+    return TRUE;
+}
+#endif
+
 s32 sc1PIntroGetAlliesNum(s32 stage)
 {
+#ifdef PORT
+    if (sc1PIntroCoopShowP2(stage))
+    {
+        return 1;
+    }
+#endif
     switch (stage)
     {
     case nSC1PGameStageMario:
         return 1;
-        
+
     case nSC1PGameStageDonkey:
         return 2;
-        
+
     default:
         return 0;
     }
@@ -1785,6 +1820,23 @@ void sc1PIntroInitFighters(s32 stage)
         break;
 
     default:
+#ifdef PORT
+        /* Co-op: reuse the Mario Bros. two-fighter layout — P2 takes the
+         * ally card beside P1 instead of P1 posing alone. P2's figatree
+         * heap is the extra slot appended by sc1PIntroGetFighterAllocsNum
+         * (last index), so the stock heap assignments are untouched. The
+         * ally tag is drawn with the Mario-stage variant: that branch is
+         * the one-ally layout this mirrors. */
+        if (sc1PIntroCoopShowP2(stage))
+        {
+            sc1PIntroMakeFighterCamera(sSC1PIntroAlly1FighterDemoDesc.fkind, 2);
+            sc1PIntroMakeFighter(sSC1PIntroAlly1FighterDemoDesc, 2, &sSC1PIntroFigatreeHeaps[sc1PIntroGetFighterAllocsNum(stage) - 1]);
+            sc1PIntroMakeFighterCamera(sSC1PIntroPlayerFighterDemoDesc.fkind, 1);
+            sc1PIntroMakeFighter(sSC1PIntroPlayerFighterDemoDesc, 1, &sSC1PIntroFigatreeHeaps[0]);
+            sc1PIntroMakeAllyText(nSC1PGameStageMario);
+            break;
+        }
+#endif
         sc1PIntroMakeFighterCamera(sSC1PIntroPlayerFighterDemoDesc.fkind, 0);
         sc1PIntroMakeFighter(sSC1PIntroPlayerFighterDemoDesc, 0, &sSC1PIntroFigatreeHeaps[0]);
         break;
@@ -1887,6 +1939,15 @@ s32 sc1PIntroGetFighterAllocsNum(s32 stage)
         13,
         2
     };
+#ifdef PORT
+    /* Co-op: one more fighter alloc + figatree heap for the P2 intro card.
+     * P2 uses the LAST heap slot (index = stock count) so none of the
+     * stock heap indices shift. */
+    if (sc1PIntroCoopShowP2(stage))
+    {
+        return allocs_num[stage] + 1;
+    }
+#endif
     return allocs_num[stage];
 }
 
@@ -2111,6 +2172,13 @@ void sc1PIntroSetupFighterFiles(s32 stage)
         ftManagerSetupFilesAllKind(fkinds[stage]);
         break;
     }
+#ifdef PORT
+    /* Co-op: P2's fighter files for the synthetic ally card. */
+    if (sc1PIntroCoopShowP2(stage))
+    {
+        ftManagerSetupFilesAllKind(sSC1PIntroAlly1FighterDemoDesc.fkind);
+    }
+#endif
 }
 
 // 0x80134B38

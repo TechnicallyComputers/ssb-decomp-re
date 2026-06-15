@@ -847,8 +847,63 @@ void sc1PGameFuncUpdate(void)
 // 0x8018D280
 s32 sc1PGameGetNextFreePlayerPort(s32 player)
 {
+#ifdef PORT
+    /* Co-op: in stock 1P mode every active slot sits on a consecutive port
+     * after .player, so "next port" doubles as "next free port" during
+     * enemy assignment. With P2 on an arbitrary port that breaks — skip
+     * both human ports so enemy setup can never clobber a human slot. The
+     * active-slot walkers use sc1PGameCoopNextActivePort instead. */
+    if (sc1PManagerIsCoopActive())
+    {
+        do
+        {
+            player = (player == (GMCOMMON_PLAYERS_MAX - 1)) ? 0 : player + 1;
+        }
+        while ((player == gSCManagerSceneData.player) || (player == gSCManagerSceneData.coop_player2));
+
+        return player;
+    }
+#endif
     return (player == (GMCOMMON_PLAYERS_MAX - 1)) ? 0 : player + 1;
 }
+
+#ifdef PORT
+/* Co-op: enemy-team shade dedup must consider both humans' costumes, not
+ * just P1's (stock checks read gSCManagerSceneData.fkind/.costume only). */
+sb32 sc1PGameCoopHumanCostumeMatch(s32 fkind, s32 costume)
+{
+    if ((gSCManagerSceneData.fkind == fkind) && (gSCManagerSceneData.costume == costume))
+    {
+        return TRUE;
+    }
+    if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.coop_fkind2 == fkind) && (gSCManagerSceneData.coop_costume2 == costume))
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+/* Co-op: cyclic walk to the next slot with a live player (pkind != Not).
+ * Replaces sc1PGameGetNextFreePlayerPort in the appear/interface walkers,
+ * which otherwise assume actives occupy consecutive ports from .player. */
+s32 sc1PGameCoopNextActivePort(s32 player)
+{
+    s32 i = player;
+
+    do
+    {
+        i = (i == (GMCOMMON_PLAYERS_MAX - 1)) ? 0 : i + 1;
+
+        if (gSCManagerBattleState->players[i].pkind != nFTPlayerKindNot)
+        {
+            return i;
+        }
+    }
+    while (i != player);
+
+    return player;
+}
+#endif
 
 // 0x8018D29C - Really weird match, gets next available costume for CPU player in 1P Game
 s32 sc1PGameGetNextFreeCostume(s32 com)
@@ -1004,6 +1059,17 @@ void sc1PGameSetupStageAll(void)
 
     gSCManagerBattleState->gkind = stagesetup->gkind;
     gSCManagerBattleState->is_team_attack = comsetup->is_team_attack;
+#ifdef PORT
+    /* Co-op: both humans are on team 0 with is_team_battle forced TRUE, so
+     * the stage tables' is_team_attack would let them hit each other.
+     * Friendly fire is off by default, opt-in via the port menu. (Also
+     * stops the Giant DK CPU ally trading hits with the humans.) */
+    if (sc1PManagerIsCoopActive())
+    {
+        extern int port_classic_coop_friendly_fire(void);
+        gSCManagerBattleState->is_team_attack = port_classic_coop_friendly_fire() ? TRUE : FALSE;
+    }
+#endif
 
     switch (gSCManagerSceneData.spgame_stage)
     {
@@ -1044,6 +1110,39 @@ void sc1PGameSetupStageAll(void)
             gSCManagerBattleState->players[i].pkind = nFTPlayerKindNot;
         }
     }
+#ifdef PORT
+    /* Co-op: the blanket clear above wiped P2's slot — re-activate it on
+     * every common stage and the Master Hand fight. Challenger duels
+     * (Luigi/Ness/Purin/Falcon) stay P1-solo, so there P2 remains Not.
+     * fkind/costume/etc. persist from sc1PManagerUpdateScene. P2 spawns
+     * from the same map point as P1 by default; stages with authored ally
+     * spawn points override this in the ally loop below. (Never point P2
+     * at an ally mapobj on a map without one — sc1PGameGetStartPosition
+     * hangs unless exactly one object of the kind exists.) */
+    if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.spgame_stage <= nSC1PGameStageCommonEnd))
+    {
+        s32 p2_slot = gSCManagerSceneData.coop_player2;
+
+        gSCManagerBattleState->players[p2_slot].pkind = nFTPlayerKindMan;
+        gSCManagerBattleState->players[p2_slot].is_single_stockicon = FALSE;
+        sSC1PGamePlayerSetups[p2_slot].mapobj_kind = nMPMapObjKind1PGamePlayer;
+
+        /* Co-op revive: a partner eliminated on the previous stage rejoins
+         * here on their last life. Within a stage, elimination still means
+         * sitting the rest of it out — but the counter must never be
+         * negative at spawn: a fighter spawned at -1 decrements to -2 on
+         * death and ftCommonDeadCheckRebirth's `== -1` elimination test
+         * never fires again, i.e. infinite stocks. */
+        if (gSCManagerBattleState->players[p2_slot].stock_count < 0)
+        {
+            gSCManagerBattleState->players[p2_slot].stock_count = 0;
+        }
+        if (gSCManagerBattleState->players[gSCManagerSceneData.player].stock_count < 0)
+        {
+            gSCManagerBattleState->players[gSCManagerSceneData.player].stock_count = 0;
+        }
+    }
+#endif
     if (gSCManagerSceneData.spgame_stage <= nSC1PGameStageCommonEnd)
     {
         gSCManager1PGameBattleState.players[gSCManagerSceneData.player].is_single_stockicon = FALSE;
@@ -1065,6 +1164,13 @@ void sc1PGameSetupStageAll(void)
         sSC1PGamePlayerSetups[gSCManagerSceneData.player].is_skip_entry = FALSE;
         break;
     }
+#ifdef PORT
+    /* Co-op: P2 enters the same way P1 does on every stage. */
+    if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.spgame_stage <= nSC1PGameStageCommonEnd))
+    {
+        sSC1PGamePlayerSetups[gSCManagerSceneData.coop_player2].is_skip_entry = sSC1PGamePlayerSetups[gSCManagerSceneData.player].is_skip_entry;
+    }
+#endif
     player = gSCManagerSceneData.player;
 
     switch (gSCManagerSceneData.spgame_stage)
@@ -1083,6 +1189,18 @@ void sc1PGameSetupStageAll(void)
     case nSC1PGameStageCaptain:
         for (i = 0; i < stagesetup->ally_count; i++)
         {
+#ifdef PORT
+            /* Co-op: ally slot 0 is P2 (a human, already configured) — keep
+             * the authored ally spawn point and the port walker's
+             * progression, but skip all the CPU-ally configuration. */
+            if (sc1PManagerIsCoopActive() && (i == 0))
+            {
+                player = gSCManagerSceneData.ally_players[0];
+
+                sSC1PGamePlayerSetups[player].mapobj_kind = nMPMapObjKind1PGameAllyStart;
+                continue;
+            }
+#endif
             gSCManagerBattleState->players[gSCManagerSceneData.ally_players[i]].level = comsetup->ally_level[gSCManagerBackupData.spgame_difficulty];
             gSCManagerBattleState->players[gSCManagerSceneData.ally_players[i]].handicap = comsetup->ally_handicap[gSCManagerBackupData.spgame_difficulty];
             gSCManagerBattleState->players[gSCManagerSceneData.ally_players[i]].team = 0;
@@ -1151,13 +1269,25 @@ void sc1PGameSetupStageAll(void)
 
         for (i = 0; i < SC1PGAME_STAGE_MAX_OPPONENT_COUNT; i++)
         {
+#ifdef PORT
+            /* Co-op: two humans leave only two slots for the enemy team;
+             * the rest of the 18 Yoshis arrive through the respawn path. */
+            if (sc1PManagerIsCoopActive() && (i >= 2))
+            {
+                break;
+            }
+#endif
             player = sc1PGameGetNextFreePlayerPort(player);
 
             sc1PGameSetupEnemyPlayer(stagesetup, comsetup, player, 0);
 
             gSCManagerBattleState->players[player].costume = sSC1PGameEnemyVariations[sSC1PGameCurrentEnemyVariation];
 
+#ifdef PORT
+            if (sc1PGameCoopHumanCostumeMatch(nFTKindYoshi, gSCManagerBattleState->players[player].costume))
+#else
             if ((gSCManagerSceneData.fkind == nFTKindYoshi) && (gSCManagerSceneData.costume == gSCManagerBattleState->players[player].costume))
+#endif
             {
                 gSCManagerBattleState->players[player].shade = 1;
             }
@@ -1200,6 +1330,13 @@ void sc1PGameSetupStageAll(void)
 
         for (i = 0; i < SC1PGAME_STAGE_MAX_OPPONENT_COUNT; i++)
         {
+#ifdef PORT
+            /* Co-op: two slots for the Polygon team; respawns cover the rest. */
+            if (sc1PManagerIsCoopActive() && (i >= 2))
+            {
+                break;
+            }
+#endif
             player = sc1PGameGetNextFreePlayerPort(player);
 
             sc1PGameSetupEnemyPlayer(stagesetup, comsetup, player, 0);
@@ -1224,11 +1361,19 @@ void sc1PGameSetupStageAll(void)
 
             sc1PGameSetupEnemyPlayer(stagesetup, comsetup, player, 0);
 
+#ifdef PORT
             sSC1PGameEnemyKirbyCostume = gSCManagerBattleState->players[player].costume =
 
-            ((gSCManagerSceneData.fkind == nFTKindKirby) && (gSCManagerSceneData.costume == gSCManagerBattleState->players[player].costume)) ? 
-                                                                          ftParamGetCostumeCommonID(nFTKindKirby, 1) : 
+            sc1PGameCoopHumanCostumeMatch(nFTKindKirby, gSCManagerBattleState->players[player].costume) ?
+                                                                          ftParamGetCostumeCommonID(nFTKindKirby, 1) :
                                                                                                                   0 ;
+#else
+            sSC1PGameEnemyKirbyCostume = gSCManagerBattleState->players[player].costume =
+
+            ((gSCManagerSceneData.fkind == nFTKindKirby) && (gSCManagerSceneData.costume == gSCManagerBattleState->players[player].costume)) ?
+                                                                          ftParamGetCostumeCommonID(nFTKindKirby, 1) :
+                                                                                                                  0 ;
+#endif
 
             sSC1PGamePlayerSetups[player].team_order = sSC1PGameCurrentEnemyVariation;
             sSC1PGamePlayerSetups[player].copy_kind = dSC1PGameKirbyTeamCopyKinds[sSC1PGameCurrentEnemyVariation];
@@ -1259,6 +1404,13 @@ void sc1PGameSetupStageAll(void)
 
         for (i = 0; i < SC1PGAME_STAGE_MAX_OPPONENT_COUNT; i++)
         {
+#ifdef PORT
+            /* Co-op: two Polygon racers max — P1 + P2 + 2 fills the slots. */
+            if (sc1PManagerIsCoopActive() && (i >= 2))
+            {
+                break;
+            }
+#endif
             player = sc1PGameGetNextFreePlayerPort(player);
 
             sc1PGameSetupEnemyPlayer(stagesetup, comsetup, player, 0);
@@ -1359,7 +1511,11 @@ void sc1PGameSpawnEnemyTeamNext(GObj *player_gobj)
         case nSC1PGameStageYoshi:
             gSCManagerBattleState->players[player].costume = sSC1PGameEnemyVariations[sSC1PGameCurrentEnemyVariation];
 
+#ifdef PORT
+            gSCManagerBattleState->players[player].shade = sc1PGameCoopHumanCostumeMatch(nFTKindYoshi, gSCManagerBattleState->players[player].costume) ? 1 : 0;
+#else
             gSCManagerBattleState->players[player].shade = ((gSCManagerSceneData.fkind == nFTKindYoshi) && (gSCManagerSceneData.costume == gSCManagerBattleState->players[player].costume)) ? 1 : 0;
+#endif
 
             ifCommonPlayerStockSetLUT(player, gSCManagerBattleState->players[player].costume, attr);
             break;
@@ -1444,6 +1600,13 @@ void sc1PGameSetPlayerInterfacePositions(void)
     for (i = 0; i < (gSCManagerBattleState->pl_count + gSCManagerBattleState->cp_count); i++)
     {
         sSC1PGamePlayerInterfacePositionsX[player] = *pos;
+#ifdef PORT
+        if (sc1PManagerIsCoopActive())
+        {
+            player = sc1PGameCoopNextActivePort(player);
+        }
+        else
+#endif
         player = sc1PGameGetNextFreePlayerPort(player);
 
         pos++;
@@ -1494,6 +1657,13 @@ void sc1PGameWaitStageCommonUpdate(void)
         }
         else gcSleepCurrentGObjThread(sleep_tics);
 
+#ifdef PORT
+        if (sc1PManagerIsCoopActive())
+        {
+            player = sc1PGameCoopNextActivePort(player);
+        }
+        else
+#endif
         player = sc1PGameGetNextFreePlayerPort(player);
     }
     if (random == 2)
@@ -1525,10 +1695,25 @@ void sc1PGameWaitStageTeamUpdate(void)
         {
             ftCommonAppearSetStatus(fighter_gobj);
         }
+#ifdef PORT
+        /* Co-op: P2 gets the same entry animation as P1, not the enemy
+         * snap-into-place. */
+        else if (sc1PManagerIsCoopActive() && (player == gSCManagerSceneData.coop_player2))
+        {
+            ftCommonAppearSetStatus(fighter_gobj);
+        }
+#endif
         else ftCommonAppearSetPosition(fighter_gobj);
 
         gcSleepCurrentGObjThread(60);
 
+#ifdef PORT
+        if (sc1PManagerIsCoopActive())
+        {
+            player = sc1PGameCoopNextActivePort(player);
+        }
+        else
+#endif
         player = sc1PGameGetNextFreePlayerPort(player);
     }
 }
@@ -1845,15 +2030,36 @@ void sc1PGameSetPlayerDefeatStats(s32 player, s32 team_order)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     SC1PGameStats *enemy_stats;
 
-    if 
+    if
     (
-        (player == gSCManagerSceneData.player) && 
-        (gSCManagerBattleState->players[player].stock_count == -1) && 
+        (player == gSCManagerSceneData.player) &&
+        (gSCManagerBattleState->players[player].stock_count == -1) &&
         (gSCManagerBattleState->game_status != nSCBattleGameStatusEnd)
     )
     {
+#ifdef PORT
+        /* Co-op: P1's elimination only ends the stage if P2 is already out. */
+        if (sc1PManagerIsCoopActive() &&
+            (gSCManagerBattleState->players[gSCManagerSceneData.coop_player2].stock_count != -1))
+        {
+            return;
+        }
+#endif
         ifCommonAnnounceEndMessage();
     }
+#ifdef PORT
+    /* Co-op: P2 running out last also ends the stage. */
+    else if (sc1PManagerIsCoopActive() &&
+             (player == gSCManagerSceneData.coop_player2) &&
+             (gSCManagerBattleState->players[player].stock_count == -1) &&
+             (gSCManagerBattleState->game_status != nSCBattleGameStatusEnd))
+    {
+        if (gSCManagerBattleState->players[gSCManagerSceneData.player].stock_count == -1)
+        {
+            ifCommonAnnounceEndMessage();
+        }
+    }
+#endif
     else if (gSCManagerBattleState->players[player].is_spgame_enemy != FALSE)
     {
         sSC1PGameEnemyStocksRemaining--;
@@ -2211,6 +2417,17 @@ void sc1PGameFuncStart(void)
 
         sc1PGameGetStartPosition(&desc.pos, sSC1PGamePlayerSetups[i].mapobj_kind);
 
+#ifdef PORT
+        /* Co-op: on stages without an authored ally spawn point P2 shares
+         * P1's map point — offset by a good two fighter-widths so the pair
+         * spawns side by side rather than stacked. (The bonus-stage spawn
+         * keeps a smaller offset; its start platforms are narrow.) */
+        if (sc1PManagerIsCoopActive() && (i == gSCManagerSceneData.coop_player2) &&
+            (sSC1PGamePlayerSetups[i].mapobj_kind == sSC1PGamePlayerSetups[gSCManagerSceneData.player].mapobj_kind))
+        {
+            desc.pos.x += 750.0F;
+        }
+#endif
         desc.lr = sc1PGameGetEnemyStartLR(i);
 
         desc.team = gSCManagerBattleState->players[i].team;
@@ -2880,6 +3097,14 @@ check_heavy_damage:
     }
     if (gSCManagerSceneData.spgame_stage == nSC1PGameStageMario)
     {
+#ifdef PORT
+        /* Co-op: ally slot 0 is the human partner, not a protected CPU —
+         * the protect-your-ally bonuses don't apply. */
+        if (sc1PManagerIsCoopActive())
+        {
+            goto skip_ally_friend_bonus;
+        }
+#endif
         if (gSCManagerBattleState->players[gSCManagerSceneData.ally_players[0]].falls == 0)
         {
             if (gSCManagerBattleState->players[gSCManagerSceneData.ally_players[0]].total_damage_all == 0)
@@ -2893,13 +3118,20 @@ check_heavy_damage:
                 gSCManagerSceneData.bonus_get_mask[1] |= SC1PGAME_BONUS_MASK1_GOODFRIEND;
             }
         }
+#ifdef PORT
+skip_ally_friend_bonus:
+#endif
         if (gSC1PGameBonusBrosCalamity != FALSE)
         {
             // Bros. Calamity
             gSCManagerSceneData.bonus_get_mask[1] |= SC1PGAME_BONUS_MASK1_BROSCALAMITY;
         }
     }
-    if ((gSCManagerSceneData.spgame_stage == nSC1PGameStageDonkey) && (gSCManagerBattleState->players[gSCManagerSceneData.ally_players[0]].falls == 0) && (gSCManagerBattleState->players[gSCManagerSceneData.ally_players[1]].falls == 0))
+    if ((gSCManagerSceneData.spgame_stage == nSC1PGameStageDonkey)
+#ifdef PORT
+        && (!sc1PManagerIsCoopActive())
+#endif
+        && (gSCManagerBattleState->players[gSCManagerSceneData.ally_players[0]].falls == 0) && (gSCManagerBattleState->players[gSCManagerSceneData.ally_players[1]].falls == 0))
     {
         if ((gSCManagerBattleState->players[gSCManagerSceneData.ally_players[0]].total_damage_all == 0) && (gSCManagerBattleState->players[gSCManagerSceneData.ally_players[1]].total_damage_all == 0))
         {
@@ -2994,6 +3226,13 @@ void sc1PGameInitBonusStats(void)
 
     default:
         gSCManagerSceneData.spgame_score += gSCManagerBattleState->players[gSCManagerSceneData.player].score * 1000;
+#ifdef PORT
+        /* Co-op: the run total counts both players' KO scores. */
+        if (sc1PManagerIsCoopActive())
+        {
+            gSCManagerSceneData.spgame_score += gSCManagerBattleState->players[gSCManagerSceneData.coop_player2].score * 1000;
+        }
+#endif
         sc1PGameAppendBonusStats();
         break;
     }

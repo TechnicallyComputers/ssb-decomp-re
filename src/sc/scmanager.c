@@ -942,6 +942,10 @@ void scManagerRunLoop(sb32 arg)
 	gSCManagerSceneData.demo_fkind[1] = nFTKindFox;
 #endif
 #ifdef PORT
+	/* Classic Co-op handoff defaults to "no P2". BSS zero-init would read
+	 * as port 0, which is a valid port — the sentinel must be explicit.
+	 * The co-op CSS rewrites this on every Classic entry. */
+	gSCManagerSceneData.coop_player2 = SCCOMMON_COOP_NO_PLAYER2;
 	{
 		const char *env = getenv("SSB64_START_SCENE");
 		if (env != NULL)
@@ -975,6 +979,20 @@ void scManagerRunLoop(sb32 arg)
 			int f = atoi(fkind_env);
 			gSCManagerSceneData.fkind = f;
 			SCMANAGER_DIAG_LOG("SSB64: SSB64_SPGAME_FKIND override → fkind=%d\n", f);
+		}
+		/* Classic Co-op debug: inject a P2 handoff without going through
+		 * the CSS, for direct-boot testing of the co-op game side, e.g.
+		 *   SSB64_START_SCENE=52 SSB64_COOP_P2=1 SSB64_COOP_P2_FKIND=5 */
+		const char *coop_env = getenv("SSB64_COOP_P2");
+		if (coop_env != NULL)
+		{
+			const char *coop_fkind_env = getenv("SSB64_COOP_P2_FKIND");
+			gSCManagerSceneData.coop_player2 = (u8)atoi(coop_env);
+			gSCManagerSceneData.coop_fkind2 = (u8)((coop_fkind_env != NULL) ? atoi(coop_fkind_env) : 1);
+			gSCManagerSceneData.coop_costume2 = 0;
+			gSCManagerSceneData.coop_shade2 = 0;
+			port_log("SSB64: SSB64_COOP_P2 override → P2 port=%d fkind=%d\n",
+			         (int)gSCManagerSceneData.coop_player2, (int)gSCManagerSceneData.coop_fkind2);
 		}
 		syNetReplayInitDebugEnv();
 #if defined(SSB64_NETMENU)

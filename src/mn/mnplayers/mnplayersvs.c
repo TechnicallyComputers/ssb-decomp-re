@@ -11,6 +11,8 @@ extern void *func_800269C0_275C0(u16 id);
 extern void func_80026738_27338(void *arg0);
 extern void func_800266A0_272A0(void);
 #ifdef PORT
+extern char *getenv(const char *name);
+extern int atoi(const char *str);
 extern float port_widescreen_clip_x_scale(void);
 #endif
 
@@ -31,6 +33,11 @@ u32 dMNPlayersVSFileIDs[/* */] =
 	llMNPlayersGameModesFileID,
 	llMNPlayersPortraitsFileID,
 	llMNPlayersSpotlightFileID
+#ifdef PORT
+	/* [7] Classic Co-op: difficulty text sprites for the classic-context
+	 * selector (same file the 1P CSS loads as its slot 6). */
+	, llMNPlayersDifficultyFileID
+#endif
 };
 
 // 0x8013B3BC
@@ -1406,6 +1413,190 @@ void mnPlayersVSMakeWallpaper(void)
 	sobj->pos.y = 10.0F;
 }
 
+#ifdef PORT
+/* // // // // // // // // // // // // // // // // // // // // // // // //
+ * Classic Co-op — difficulty selector for the classic-context VS CSS.
+ * Mirrors mnPlayers1PGameMakeLevel / MakeLevelOption (mnplayers1pgame.c),
+ * relocated into the header row where the FFA/Team-Battle toggle normally
+ * sits (team battle is forced off in classic context). Text sprites come
+ * from dMNPlayersVSFileIDs[7]; arrows from the shared common file [0].
+ * // // // // // // // // // // // // // // // // // // // // // // // */
+
+static GObj *sMNPlayersVSClassicLevelGObj;
+static s32 sMNPlayersVSClassicLevelValue;
+
+void mnPlayersVSMakeClassicLevel(s32 level)
+{
+	GObj *gobj;
+	SObj *sobj;
+
+	intptr_t offsets[/* */] =
+	{
+		llMNPlayersDifficultyVeryEasyTextSprite,
+		llMNPlayersDifficultyEasyTextSprite,
+		llMNPlayersDifficultyNormalTextSprite,
+		llMNPlayersDifficultyHardTextSprite,
+		llMNPlayersDifficultyVeryHardTextSprite
+	};
+	/* Same per-glyph centering deltas as the 1P CSS table (x 204..219 around
+	 * arrows at 194/269), shifted to arrows at 47/122 in the header row. */
+	Vec2f pos[/* */] =
+	{
+		{ 57.0F, 24.0F },
+		{ 72.0F, 24.0F },
+		{ 62.0F, 24.0F },
+		{ 72.0F, 24.0F },
+		{ 58.0F, 24.0F }
+	};
+	SYColorRGB colors[/* */] =
+	{
+		{ 0x41, 0x6F, 0xE4 },
+		{ 0x8D, 0xBB, 0x5A },
+		{ 0xE4, 0xBE, 0x41 },
+		{ 0xE4, 0x78, 0x41 },
+		{ 0xE4, 0x41, 0x41 }
+	};
+
+	if (sMNPlayersVSClassicLevelGObj != NULL)
+	{
+		gcEjectGObj(sMNPlayersVSClassicLevelGObj);
+	}
+	sMNPlayersVSClassicLevelGObj = gobj = gcMakeGObjSPAfter(0, NULL, 25, GOBJ_PRIORITY_DEFAULT);
+	gcAddGObjDisplay(gobj, lbCommonDrawSObjAttr, 26, GOBJ_PRIORITY_DEFAULT, ~0);
+
+	sobj = lbCommonMakeSObjForGObj(gobj, lbRelocGetFileData(Sprite*, sMNPlayersVSFiles[7], offsets[level]));
+	sobj->sprite.attr &= ~SP_FASTCOPY;
+	sobj->sprite.attr |= SP_TRANSPARENT;
+	sobj->pos.x = pos[level].x;
+	sobj->pos.y = pos[level].y;
+	sobj->sprite.red = colors[level].r;
+	sobj->sprite.green = colors[level].g;
+	sobj->sprite.blue = colors[level].b;
+}
+
+void mnPlayersVSClassicLevelThreadUpdate(GObj *gobj)
+{
+	SObj *sobj;
+	s32 blink_wait = 10;
+
+	while (TRUE)
+	{
+		blink_wait--;
+
+		if (blink_wait == 0)
+		{
+			blink_wait = 10;
+			gobj->flags = (gobj->flags == GOBJ_FLAG_HIDDEN) ? GOBJ_FLAG_NONE : GOBJ_FLAG_HIDDEN;
+		}
+		if (sMNPlayersVSClassicLevelValue == nSC1PGameDifficultyVeryEasy)
+		{
+			sobj = mnPlayersVSGetArrowSObj(gobj, 0);
+
+			if (sobj != NULL)
+			{
+				gcEjectSObj(sobj);
+			}
+		}
+		else if (mnPlayersVSGetArrowSObj(gobj, 0) == NULL)
+		{
+			sobj = lbCommonMakeSObjForGObj(gobj, lbRelocGetFileData(Sprite*, sMNPlayersVSFiles[0], llMNPlayersCommonArrowLSprite));
+			sobj->pos.x = 47.0F;
+			sobj->pos.y = 23.0F;
+			sobj->sprite.attr &= ~SP_FASTCOPY;
+			sobj->sprite.attr |= SP_TRANSPARENT;
+			sobj->user_data.s = 0;
+		}
+		if (sMNPlayersVSClassicLevelValue == nSC1PGameDifficultyVeryHard)
+		{
+			sobj = mnPlayersVSGetArrowSObj(gobj, 1);
+
+			if (sobj != NULL)
+			{
+				gcEjectSObj(sobj);
+			}
+		}
+		else if (mnPlayersVSGetArrowSObj(gobj, 1) == NULL)
+		{
+			sobj = lbCommonMakeSObjForGObj(gobj, lbRelocGetFileData(Sprite*, sMNPlayersVSFiles[0], llMNPlayersCommonArrowRSprite));
+			sobj->pos.x = 122.0F;
+			sobj->pos.y = 23.0F;
+			sobj->sprite.attr &= ~SP_FASTCOPY;
+			sobj->sprite.attr |= SP_TRANSPARENT;
+			sobj->user_data.s = 1;
+		}
+		gcSleepCurrentGObjThread(1);
+	}
+}
+
+void mnPlayersVSMakeClassicLevelOption(void)
+{
+	GObj *gobj = gcMakeGObjSPAfter(0, NULL, 25, GOBJ_PRIORITY_DEFAULT);
+
+	gcAddGObjDisplay(gobj, lbCommonDrawSObjAttr, 26, GOBJ_PRIORITY_DEFAULT, ~0);
+	gcAddGObjProcess(gobj, mnPlayersVSClassicLevelThreadUpdate, nGCProcessKindThread, 1);
+	mnPlayersVSMakeClassicLevel(sMNPlayersVSClassicLevelValue);
+}
+
+/* Hit tests for the classic difficulty arrows, matching the cursor-range
+ * convention used by mnPlayersVSCheckTimeArrowL/RInRange (cursor hotspot is
+ * sobj->pos + (20, 3); arrow zones are 20px wide). */
+sb32 mnPlayersVSCheckClassicLevelArrowLInRange(GObj *gobj)
+{
+	SObj *sobj = SObjGetStruct(gobj);
+	f32 pos_y = sobj->pos.y + 3.0F;
+	f32 pos_x = sobj->pos.x + 20.0F;
+
+	if ((pos_y < 12.0F) || (pos_y > 35.0F))
+	{
+		return FALSE;
+	}
+	return ((pos_x >= 47.0F) && (pos_x <= 67.0F)) ? TRUE : FALSE;
+}
+
+sb32 mnPlayersVSCheckClassicLevelArrowRInRange(GObj *gobj)
+{
+	SObj *sobj = SObjGetStruct(gobj);
+	f32 pos_y = sobj->pos.y + 3.0F;
+	f32 pos_x = sobj->pos.x + 20.0F;
+
+	if ((pos_y < 12.0F) || (pos_y > 35.0F))
+	{
+		return FALSE;
+	}
+	return ((pos_x >= 122.0F) && (pos_x <= 142.0F)) ? TRUE : FALSE;
+}
+
+/* A-press handler for the difficulty arrows. Returns TRUE if consumed. */
+sb32 mnPlayersVSCheckClassicLevelArrowPress(GObj *gobj)
+{
+	extern int port_classic_coop_context(void);
+
+	if (!port_classic_coop_context())
+	{
+		return FALSE;
+	}
+	if (mnPlayersVSCheckClassicLevelArrowRInRange(gobj) != FALSE)
+	{
+		if (sMNPlayersVSClassicLevelValue < nSC1PGameDifficultyVeryHard)
+		{
+			func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+			mnPlayersVSMakeClassicLevel(++sMNPlayersVSClassicLevelValue);
+		}
+		return TRUE;
+	}
+	if (mnPlayersVSCheckClassicLevelArrowLInRange(gobj) != FALSE)
+	{
+		if (sMNPlayersVSClassicLevelValue > nSC1PGameDifficultyVeryEasy)
+		{
+			func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+			mnPlayersVSMakeClassicLevel(--sMNPlayersVSClassicLevelValue);
+		}
+		return TRUE;
+	}
+	return FALSE;
+}
+#endif /* PORT */
+
 // 0x801343B0
 void mnPlayersVSMakeLabels(void)
 {
@@ -1424,6 +1615,20 @@ void mnPlayersVSMakeLabels(void)
 		{ 0x61, 0xAD, 0x49 }
 	};
 
+#ifdef PORT
+	{
+		/* Classic Co-op context: the FFA/Team-Battle toggle is meaningless
+		 * (team battle forced off), so the difficulty selector takes its
+		 * header slot. sMNPlayersVSGameModeGObj stays NULL — the game-mode
+		 * hit zone is disabled in mnPlayersVSCursorProcUpdate. */
+		extern int port_classic_coop_context(void);
+		if (port_classic_coop_context())
+		{
+			mnPlayersVSMakeClassicLevelOption();
+			goto make_rule_selector;
+		}
+	}
+#endif
 	gobj = lbCommonMakeSpriteGObj
 	(
 		0,
@@ -1453,6 +1658,9 @@ void mnPlayersVSMakeLabels(void)
 	SObjGetStruct(gobj)->sprite.blue = colors[sMNPlayersVSIsTeamBattle].b;
 	sMNPlayersVSGameModeGObj = gobj;
 
+#ifdef PORT
+make_rule_selector:
+#endif
 	(sMNPlayersVSGameRule == SCBATTLE_GAMERULE_TIME) ? mnPlayersVSMakeTimeSelect(sMNPlayersVSTimeValue) : mnPlayersVSMakeStockSelect(sMNPlayersVSStockValue);
 
 	gobj = lbCommonMakeSpriteGObj
@@ -2228,6 +2436,18 @@ sb32 mnPlayersVSCheckPuckInRange(GObj *gobj, s32 cursor_player, s32 player)
 // 0x80135C84
 void mnPlayersVSUpdatePlayerKind(s32 player)
 {
+#ifdef PORT
+	{
+		/* Classic Co-op context: only two players exist in a classic run —
+		 * slots 3 and 4 are locked closed and their HMN/CPU/NOT button is
+		 * inert. */
+		extern int port_classic_coop_context(void);
+		if (port_classic_coop_context() && (player >= 2))
+		{
+			return;
+		}
+	}
+#endif
 	switch (sMNPlayersVSSlots[player].pkind)
 	{
 	case nFTPlayerKindMan:
@@ -3323,6 +3543,25 @@ void mnPlayersVSBackToVSMode(void)
 	gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
 	gSCManagerSceneData.scene_curr = nSCKindVSMode;
 
+#ifdef PORT
+	{
+		/* Classic Co-op context: B backs out to the 1P Mode menu, not VS
+		 * Mode. Skip mnPlayersVSSetSceneData — the transfer battle state is
+		 * VS staging and a classic entry has nothing to persist there. */
+		extern int port_classic_coop_context(void);
+		extern void port_classic_coop_set_context(int);
+		if (port_classic_coop_context())
+		{
+			port_classic_coop_set_context(0);
+			gSCManagerSceneData.scene_curr = nSCKind1PMode;
+
+			mnPlayersVSPauseSlotProcesses();
+			syAudioStopBGMAll();
+			syTaskmanSetLoadScene();
+			return;
+		}
+	}
+#endif
 	mnPlayersVSSetSceneData();
 	mnPlayersVSPauseSlotProcesses();
 	syAudioStopBGMAll();
@@ -3409,6 +3648,18 @@ void mnPlayersVSCursorProcUpdate(GObj *gobj)
 		(mnPlayersVSCheckCursorPuckGrab(gobj, player) == FALSE)
 	)
 	{
+#ifdef PORT
+		/* Classic Co-op context: the difficulty arrows live inside the
+		 * game-mode label's hit zone, so test them first; the stock counter
+		 * wraps at the 1P range (1-5) instead of VS's 99. */
+		{
+			extern int port_classic_coop_context(void);
+			if (port_classic_coop_context() && mnPlayersVSCheckClassicLevelArrowPress(gobj) != FALSE)
+			{
+				goto classic_arrows_consumed;
+			}
+		}
+#endif
 		if (mnPlayersVSCheckTimeArrowRInRange(gobj) != FALSE)
 		{
 			if (sMNPlayersVSGameRule == SCBATTLE_GAMERULE_TIME)
@@ -3418,7 +3669,17 @@ void mnPlayersVSCursorProcUpdate(GObj *gobj)
 			}
 			else
 			{
-				if ((sMNPlayersVSStockValue + 1) > 98)
+				s32 stock_max = 98;
+#ifdef PORT
+				{
+					extern int port_classic_coop_context(void);
+					if (port_classic_coop_context())
+					{
+						stock_max = 4;
+					}
+				}
+#endif
+				if ((sMNPlayersVSStockValue + 1) > stock_max)
 				{
 					sMNPlayersVSStockValue = 0;
 				}
@@ -3437,9 +3698,19 @@ void mnPlayersVSCursorProcUpdate(GObj *gobj)
 			}
 			else
 			{
+				s32 stock_max = 98;
+#ifdef PORT
+				{
+					extern int port_classic_coop_context(void);
+					if (port_classic_coop_context())
+					{
+						stock_max = 4;
+					}
+				}
+#endif
 				if ((sMNPlayersVSStockValue - 1) < 0)
 				{
-					sMNPlayersVSStockValue = 98;
+					sMNPlayersVSStockValue = stock_max;
 				}
 				else sMNPlayersVSStockValue--;
 
@@ -3449,6 +3720,11 @@ void mnPlayersVSCursorProcUpdate(GObj *gobj)
 		}
 		else if (mnPlayersVSCheckGameModeInRange(gobj))
 		{
+#ifdef PORT
+			/* Classic context: team battle stays forced off. */
+			extern int port_classic_coop_context(void);
+			if (!port_classic_coop_context())
+#endif
 			mnPlayersVSUpdateGameMode();
 		}
 		else if (mnPlayersVSCheckBackInRange(gobj) != FALSE)
@@ -3460,6 +3736,9 @@ void mnPlayersVSCursorProcUpdate(GObj *gobj)
 		{
 			mnPlayersVSCheckHandicapArrowInRangeAll(gobj, player);
 		}
+#ifdef PORT
+classic_arrows_consumed:;
+#endif
 	}
 	if (sMNPlayersVSIsTeamBattle == FALSE)
 	{
@@ -4463,6 +4742,36 @@ sb32 mnPlayersVSCheckReady(void)
 	sb32 unused;
 	sb32 is_ready = TRUE;
 
+#ifdef PORT
+	{
+		/* Classic Co-op context: one confirmed human is enough (a solo
+		 * classic run); count only human slots so a stray CPU toggle can't
+		 * satisfy the gate by itself. */
+		extern int port_classic_coop_context(void);
+		if (port_classic_coop_context())
+		{
+			s32 i;
+			s32 humans_ready = 0;
+
+			for (i = 0; i < ARRAY_COUNT(sMNPlayersVSSlots); i++)
+			{
+				if ((sMNPlayersVSSlots[i].pkind == nFTPlayerKindMan) && (sMNPlayersVSSlots[i].is_fighter_selected == TRUE))
+				{
+					humans_ready++;
+				}
+			}
+			if (humans_ready < 1)
+			{
+				is_ready = FALSE;
+			}
+			if ((is_ready != FALSE) && (mnPlayersVSCheckNoPuckOnPortraitAll() == FALSE))
+			{
+				is_ready = FALSE;
+			}
+			return is_ready;
+		}
+	}
+#endif
 	if (mnPlayersVSGetReadyPlayerCount() < 2)
 	{
 		is_ready = FALSE;
@@ -4548,6 +4857,56 @@ void mnPlayersVSSetSceneData(void)
 	}
 }
 
+#ifdef PORT
+/* Classic Co-op handoff: translate the VS CSS slots into what the 1P game
+ * manager reads, mirroring mnPlayers1PGameSetSceneData (mnplayers1pgame.c).
+ * The first confirmed human slot becomes P1 (gSCManagerSceneData.player/
+ * fkind/costume); the second becomes the co-op partner via the coop_*
+ * handoff fields; CPU slots and any 3rd/4th human are ignored. Slot index
+ * == controller port on the VS CSS, which is exactly what the 1P game
+ * expects in .player. */
+void mnPlayersVSSetSceneDataClassicCoop(void)
+{
+	s32 humans[2] = { -1, -1 };
+	s32 human_count = 0;
+	s32 i;
+
+	for (i = 0; i < ARRAY_COUNT(sMNPlayersVSSlots); i++)
+	{
+		if ((human_count < 2) && (sMNPlayersVSSlots[i].pkind == nFTPlayerKindMan) && (sMNPlayersVSSlots[i].is_fighter_selected != FALSE))
+		{
+			humans[human_count++] = i;
+		}
+	}
+	/* CheckReady guarantees at least one confirmed human in classic
+	 * context, so humans[0] is always valid here. */
+	gSCManagerSceneData.player = humans[0];
+	gSCManagerSceneData.fkind = sMNPlayersVSSlots[humans[0]].fkind;
+	gSCManagerSceneData.costume = sMNPlayersVSSlots[humans[0]].costume;
+	gSCManagerSceneData.spgame_stage = 0;
+	{
+		const char *stage_env = getenv("SSB64_SPGAME_STAGE");
+		if (stage_env != NULL)
+		{
+			gSCManagerSceneData.spgame_stage = (u8)atoi(stage_env);
+		}
+	}
+	if (humans[1] != -1)
+	{
+		gSCManagerSceneData.coop_player2 = humans[1];
+		gSCManagerSceneData.coop_fkind2 = sMNPlayersVSSlots[humans[1]].fkind;
+		gSCManagerSceneData.coop_costume2 = sMNPlayersVSSlots[humans[1]].costume;
+		gSCManagerSceneData.coop_shade2 = sMNPlayersVSSlots[humans[1]].shade;
+	}
+	else gSCManagerSceneData.coop_player2 = SCCOMMON_COOP_NO_PLAYER2;
+
+	gSCManagerBackupData.spgame_difficulty = sMNPlayersVSClassicLevelValue;
+	gSCManagerBackupData.spgame_stock_count = sMNPlayersVSStockValue;
+
+	lbBackupWrite();
+}
+#endif /* PORT */
+
 // 0x8013A8B8
 void mnPlayersVSPauseSlotProcesses(void)
 {
@@ -4618,6 +4977,14 @@ void mnPlayersVSFuncRun(GObj *gobj)
 		gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
 		gSCManagerSceneData.scene_curr = nSCKindTitle;
 
+#ifdef PORT
+		{
+			/* Classic Co-op context ends when the CSS idles back to the
+			 * title screen. */
+			extern void port_classic_coop_set_context(int);
+			port_classic_coop_set_context(0);
+		}
+#endif
 		mnPlayersVSSetSceneData();
 		syTaskmanSetLoadScene();
 
@@ -4635,6 +5002,23 @@ void mnPlayersVSFuncRun(GObj *gobj)
 		{
 			gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
 
+#ifdef PORT
+			{
+				/* Classic Co-op context: hand off straight to the 1P game —
+				 * no stage select, no VS battle staging. */
+				extern int port_classic_coop_context(void);
+				extern void port_classic_coop_set_context(int);
+				if (port_classic_coop_context())
+				{
+					gSCManagerSceneData.scene_curr = nSCKind1PGame;
+
+					mnPlayersVSSetSceneDataClassicCoop();
+					port_classic_coop_set_context(0);
+					syTaskmanSetLoadScene();
+					return;
+				}
+			}
+#endif
 			if (gSCManagerTransferBattleState.is_stage_select != FALSE)
 			{
 				gSCManagerSceneData.scene_curr = nSCKindMaps;
@@ -4878,6 +5262,24 @@ void mnPlayersVSInitVars(void)
 		}
 	}
 
+#ifdef PORT
+	{
+		/* Classic Co-op context: classic runs are always stock-rule and
+		 * never team battle. Seed the stock/difficulty selectors from the
+		 * 1P save settings, exactly like mnPlayers1PGameInitVars does (both
+		 * values are 0-based; the stock UI adds +1 for display). */
+		extern int port_classic_coop_context(void);
+		if (port_classic_coop_context())
+		{
+			sMNPlayersVSGameRule = SCBATTLE_GAMERULE_STOCK;
+			sMNPlayersVSIsTeamBattle = FALSE;
+			sMNPlayersVSStockValue = gSCManagerBackupData.spgame_stock_count;
+			sMNPlayersVSClassicLevelValue = gSCManagerBackupData.spgame_difficulty;
+			sMNPlayersVSClassicLevelGObj = NULL;
+		}
+	}
+#endif
+
 	sMNPlayersVSIsResetPlayers = gSCManagerTransferBattleState.is_reset_players;
 	sMNPlayersVSGameRuleGObj = NULL;
 	sMNPlayersVSGameModeGObj = NULL;
@@ -4893,6 +5295,26 @@ void mnPlayersVSInitVars(void)
 
 		sMNPlayersVSSlots[i].recall_end_tic = 0;
 	}
+#ifdef PORT
+	{
+		/* Classic Co-op context: a classic run has at most two players —
+		 * lock slots 3 and 4 closed (their kind button is also disabled in
+		 * mnPlayersVSUpdatePlayerKind). */
+		extern int port_classic_coop_context(void);
+		if (port_classic_coop_context())
+		{
+			for (i = 2; i < GMCOMMON_PLAYERS_MAX; i++)
+			{
+				sMNPlayersVSSlots[i].pkind = nFTPlayerKindNot;
+				sMNPlayersVSSlots[i].fkind = nFTKindNull;
+				sMNPlayersVSSlots[i].is_fighter_selected = FALSE;
+				sMNPlayersVSSlots[i].is_selected = FALSE;
+				sMNPlayersVSSlots[i].holder_player = GMCOMMON_PLAYERS_MAX;
+				sMNPlayersVSSlots[i].held_player = -1;
+			}
+		}
+	}
+#endif
 	sMNPlayersVSFighterMask = gSCManagerBackupData.fighter_mask;
 }
 

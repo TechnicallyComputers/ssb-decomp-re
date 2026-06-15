@@ -3366,6 +3366,9 @@ void mnPlayers1PGameSetSceneData(void)
 	gSCManagerBackupData.spgame_difficulty = sMNPlayers1PGameLevelValue;
 	gSCManagerSceneData.spgame_stage = 0;
 #ifdef PORT
+	/* The stock 1P CSS always starts a solo run — scrub any P2 left over
+	 * from an earlier Classic Co-op session this boot. */
+	gSCManagerSceneData.coop_player2 = SCCOMMON_COOP_NO_PLAYER2;
 	{
 		const char *stage_env = getenv("SSB64_SPGAME_STAGE");
 		if (stage_env != NULL)

@@ -446,8 +446,40 @@ void sc1PBonusStageInitVars(void)
 
 			gSCManagerBattleState->players[player].color = player;
 		}
+#ifdef PORT
+		/* Co-op: P2 joins the bonus stage too — in P1's character's map
+		 * (gkind above stays keyed to P1's fkind), playing their own
+		 * character. Targets/platforms are stage-global, so completion is
+		 * naturally shared. Only on the mid-run path (scene_prev ==
+		 * nSCKind1PGame); bonus-practice entries stay solo. */
+		else if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.scene_prev == nSCKind1PGame) && (player == gSCManagerSceneData.coop_player2))
+		{
+			gSCManagerBattleState->players[player].pkind = nFTPlayerKindMan;
+			gSCManagerBattleState->players[player].fkind = gSCManagerSceneData.coop_fkind2;
+			gSCManagerBattleState->players[player].costume = gSCManagerSceneData.coop_costume2;
+			gSCManagerBattleState->players[player].color = player;
+
+			gSCManagerBattleState->pl_count = 2;
+		}
+#endif
 		else gSCManagerBattleState->players[player].pkind = nFTPlayerKindNot;
 	}
+#ifdef PORT
+	/* Co-op: the default bonus battle state is free-for-all, which would
+	 * let the two players hit each other. Put both on team 0 with team
+	 * battle on so the friendly-fire setting governs here exactly like the
+	 * battle stages (is_not_teamshadows keeps the stock black shadows). */
+	if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.scene_prev == nSCKind1PGame))
+	{
+		extern int port_classic_coop_friendly_fire(void);
+
+		gSCManagerBattleState->is_team_battle = TRUE;
+		gSCManagerBattleState->is_not_teamshadows = TRUE;
+		gSCManagerBattleState->is_team_attack = port_classic_coop_friendly_fire() ? TRUE : FALSE;
+		gSCManagerBattleState->players[gSCManagerSceneData.player].team = 0;
+		gSCManagerBattleState->players[gSCManagerSceneData.coop_player2].team = 0;
+	}
+#endif
 }
 
 // 0x8018D330
@@ -1069,6 +1101,25 @@ void sc1PBonusStageMakeTimer(void)
 // 0x8018E5D8
 void sc1PBonusStageSetPlayerInterfacePositions(void)
 {
+#ifdef PORT
+	/* Co-op: stock data parks every slot's damage meter at x=55 because a
+	 * bonus stage only ever has one player. Spread the two humans apart.
+	 * (Written each entry, so a later solo run sees all-55 again.) */
+	if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.scene_prev == nSCKind1PGame))
+	{
+		dSC1PBonusStagePlayerInterfacePositions[gSCManagerSceneData.player] = 55;
+		dSC1PBonusStagePlayerInterfacePositions[gSCManagerSceneData.coop_player2] = 200;
+	}
+	else
+	{
+		s32 _p;
+
+		for (_p = 0; _p < GMCOMMON_PLAYERS_MAX; _p++)
+		{
+			dSC1PBonusStagePlayerInterfacePositions[_p] = 55;
+		}
+	}
+#endif
 	gIFCommonPlayerInterface.player_pos_x = dSC1PBonusStagePlayerInterfacePositions;
 	gIFCommonPlayerInterface.player_pos_y = 210;
 }
@@ -1114,6 +1165,14 @@ void sc1PBonusStageFuncStart(void)
 
 		sc1PBonusStageGetPlayerStartPosition(&desc.pos);
 
+#ifdef PORT
+		/* Co-op: bonus maps author exactly one player spawn point — nudge
+		 * P2 sideways off P1's spot so the fighters don't stack. */
+		if (sc1PManagerIsCoopActive() && (player == gSCManagerSceneData.coop_player2))
+		{
+			desc.pos.x += 30.0F;
+		}
+#endif
 		desc.lr = (desc.pos.x >= 0.0F) ? -1 : +1;
 
 		desc.team = 0;
@@ -1129,6 +1188,13 @@ void sc1PBonusStageFuncStart(void)
 
 		ftParamInitPlayerBattleStats(player, fighter_gobj);
 
+#ifdef PORT
+		/* Co-op: keep walking the slots so P2 spawns too. */
+		if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.scene_prev == nSCKind1PGame))
+		{
+			continue;
+		}
+#endif
 		break;
 	}
 

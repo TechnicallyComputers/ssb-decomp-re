@@ -481,6 +481,20 @@ struct SCCommonData
 	u8 vs_net_automatch_post_battle_scene;			// 0 = default results routing; else nSCKind* target (e.g. VS Net Automatch)
 	ub8 is_vs_automatch_battle;					    // Last VS entered from HTTPS automatch handshake
 #endif
+#ifdef PORT
+	/* Classic Co-op handoff, written by the VS CSS when it serves Classic
+	 * mode (mnPlayersVSSetSceneDataClassicCoop). coop_player2 == 0xFF means
+	 * no P2 — the run is a stock solo 1P game. Appended at the struct tail
+	 * so every original field keeps its offset. */
+	u8 coop_player2;								// P2's controller port (0-3), or SCCOMMON_COOP_NO_PLAYER2
+	u8 coop_fkind2;									// P2's character
+	u8 coop_costume2;								// P2's costume
+	u8 coop_shade2;									// P2's duplicate-costume shade
+#endif
 };
+
+#ifdef PORT
+#define SCCOMMON_COOP_NO_PLAYER2 0xFF
+#endif
 
 #endif

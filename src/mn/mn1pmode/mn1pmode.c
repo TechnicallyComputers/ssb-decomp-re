@@ -709,8 +709,16 @@ void mn1PModeInitVars(void)
     sMN1PModeTotalTimeTics = 0;
 
     sMN1PModeIsProceedScene = FALSE;
-    
+
     sMN1PModeReturnTic = sMN1PModeTotalTimeTics + I_MIN_TO_TICS(5);
+
+#ifdef PORT
+    /* Classic Co-op: entering the 1P Mode menu invalidates any P2 handoff
+     * from an earlier run, so training / bonus-practice / a later solo run
+     * can never see stale co-op state. The co-op CSS rewrites this on every
+     * confirm. */
+    gSCManagerSceneData.coop_player2 = SCCOMMON_COOP_NO_PLAYER2;
+#endif
 }
 
 // 0x801329A8
@@ -776,7 +784,30 @@ void mn1PModeFuncRun(GObj *gobj)
                 mn1PModeSetOptionSpriteColors(sMN1PModeOptionGObjs[nMN1PModeOption1PGame], nMNOptionTabStatusSelected, nMN1PModeOption1PGame);
 
                 gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
+#ifdef PORT
+                {
+                    /* Classic Co-op: serve Classic mode with the VS CSS so a
+                     * second player can join. The context flag tells the VS
+                     * CSS overlay which mode it is serving; is_reset_players
+                     * forces fresh slots (no characters carried over from a
+                     * prior VS session). */
+                    extern int port_enhancement_classic_coop(void);
+                    extern void port_classic_coop_set_context(int);
+                    if (port_enhancement_classic_coop())
+                    {
+                        gSCManagerTransferBattleState.is_reset_players = TRUE;
+                        gSCManagerSceneData.scene_curr = nSCKindPlayersVS;
+                        port_classic_coop_set_context(1);
+                    }
+                    else
+                    {
+                        port_classic_coop_set_context(0);
+                        gSCManagerSceneData.scene_curr = nSCKind1PGamePlayers;
+                    }
+                }
+#else
                 gSCManagerSceneData.scene_curr = nSCKind1PGamePlayers;
+#endif
                 gSCManagerSceneData.player = player - 1;
 
                 sMN1PModeIsProceedScene = TRUE;
