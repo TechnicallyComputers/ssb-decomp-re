@@ -205,11 +205,6 @@ void ftCommonDeadCheckRebirth(GObj *fighter_gobj)
             return;
         }
     }
-#if defined(PORT) && defined(SSB64_NETMENU)
-    syNetplayRebirthGateLogCheckRebirth(fighter_gobj, fp, "rebirth");
-  // testing including deadcleargate behind ssb64_netmenu for any issues.  TESTEDIT
-    ftCommonDeadClearGateWait(fp);
-#endif
 #ifdef PORT
     /* Classic Co-op bonus stage: a fallen player stays out for the rest of
      * the attempt (their slot was marked -1 in the defeat stats above);
@@ -224,6 +219,10 @@ void ftCommonDeadCheckRebirth(GObj *fighter_gobj)
         return;
     }
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayRebirthGateLogCheckRebirth(fighter_gobj, fp, "rebirth");
+#endif
+    ftCommonDeadClearGateWait(fp);
     ftCommonRebirthDownSetStatus(fighter_gobj);
 }
 
