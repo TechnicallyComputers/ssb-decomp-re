@@ -384,7 +384,18 @@ void sc1PManagerUpdateScene(void)
                 gSCManagerTransferBattleState.players[_p].fighter_gobj = NULL;
             }
 #endif
+#ifdef PORT
+            /* a synth fkind >= 32 makes this shift UB (wraps mod 32 on x86 and
+             * wrongly excludes a vanilla ally); a synth is never in the u16 mask */
+            this_mask = (gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER);
+
+            if (gSCManagerSceneData.fkind < GMCOMMON_FIGHTERS_PLAYABLE_NUM)
+            {
+                this_mask &= ~(1 << gSCManagerSceneData.fkind);
+            }
+#else
             this_mask = (gSCManagerBackupData.fighter_mask | LBBACKUP_CHARACTER_MASK_STARTER) & ~(1 << gSCManagerSceneData.fkind);
+#endif
 
             is_player_lose = FALSE;
 
@@ -649,6 +660,17 @@ skip_main_stages:
         sc1PChallengerStartScene();
 
         gSCManager1PGameBattleState.players[gSCManagerSceneData.player].stock_count = 0;
+#ifdef PORT
+        /* Co-op: the challenger duel is a single-life fight — P1 is reset to
+         * one stock above. P2 plays it too (2-player challenger duels), so it
+         * needs the identical reset; otherwise P2 keeps the run's full stock
+         * count and, with the single-stock-icon challenger HUD hiding the
+         * number, reads as "never loses a stock / infinite lives". */
+        if (sc1PManagerIsCoopActive())
+        {
+            gSCManager1PGameBattleState.players[gSCManagerSceneData.coop_player2].stock_count = 0;
+        }
+#endif
 
         syDmaLoadOverlay(&dSC1PManagerObjectsOverlay);
         syDmaLoadOverlay(&dSC1PManager1PGameOverlay);
@@ -668,7 +690,18 @@ skip_main_stages:
 
             return;
         }
+#ifdef PORT
+        /* Co-op: the duel is won (challenger unlocked) if EITHER human is
+         * still alive. The fight only ends on challenger-KO or both humans
+         * eliminated, so any survivor means the challenger fell — even if P2
+         * landed the KO while P1 was already out. The P1-only solo test below
+         * would mislabel that as a loss. */
+        if (((gSCManager1PGameBattleState.players[gSCManagerSceneData.player].stock_count != -1) ||
+             (sc1PManagerIsCoopActive() && (gSCManager1PGameBattleState.players[gSCManagerSceneData.coop_player2].stock_count != -1))) &&
+            (gSCManager1PGameBattleState.time_remain != 0))
+#else
         if ((gSCManager1PGameBattleState.players[gSCManagerSceneData.player].stock_count != -1) && (gSCManager1PGameBattleState.time_remain != 0))
+#endif
         {
             gSCManagerSceneData.challenger_level_drop = dSCManagerDefaultSceneData.challenger_level_drop;
             gSCManagerSceneData.unlock_messages[0] = dSC1PManagerUnlockNewcomerKinds[gSCManagerSceneData.spgame_stage - nSC1PGameStageChallengerStart];

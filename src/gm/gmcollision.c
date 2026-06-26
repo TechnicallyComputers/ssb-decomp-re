@@ -4,6 +4,7 @@
 #ifdef PORT
 #include <sc/scmanager.h>
 #include <sys/debug.h>
+#include <port_log.h>
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_sim_quantize.h>
@@ -1843,6 +1844,12 @@ sb32 gmCollisionCheckItemAttackFighterDamageCollide(ITAttackColl *attack_coll, s
     FTParts *parts;
     DObj *dobj;
 
+#ifdef PORT
+    port_log("SSB64: gmCollItemFighterDmg damage_coll=%p joint=%p joint_id=%d\n",
+        (void*)damage_coll,
+        damage_coll ? (void*)damage_coll->joint : NULL,
+        damage_coll ? (int)damage_coll->joint_id : -999);
+#endif
     dobj = damage_coll->joint;
     parts = ftGetParts(dobj);
 

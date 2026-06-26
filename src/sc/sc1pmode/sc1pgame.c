@@ -1112,20 +1112,26 @@ void sc1PGameSetupStageAll(void)
     }
 #ifdef PORT
     /* Co-op: the blanket clear above wiped P2's slot — re-activate it on
-     * every common stage and the Master Hand fight. Challenger duels
-     * (Luigi/Ness/Purin/Falcon) stay P1-solo, so there P2 remains Not.
-     * fkind/costume/etc. persist from sc1PManagerUpdateScene. P2 spawns
-     * from the same map point as P1 by default; stages with authored ally
-     * spawn points override this in the ally loop below. (Never point P2
-     * at an ally mapobj on a map without one — sc1PGameGetStartPosition
-     * hangs unless exactly one object of the kind exists.) */
-    if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.spgame_stage <= nSC1PGameStageCommonEnd))
+     * every stage P2 plays, which is now *all* of them: the common stages,
+     * the Master Hand fight, AND the challenger duels (Luigi/Ness/Jigglypuff/
+     * Falcon), which run 2-player rather than P1-solo. On a common stage P2
+     * shares P1's player spawn point; on a challenger duel it shares P1's
+     * challenger spawn point and single-stock-icon HUD — sc1PGameFuncStart
+     * offsets the second human off the shared point. fkind/costume/etc.
+     * persist from sc1PManagerUpdateScene. Stages with authored ally spawn
+     * points (Mario/Donkey) override P2's mapobj_kind in the ally loop below.
+     * (Never point P2 at an ally mapobj on a map without one —
+     * sc1PGameGetStartPosition hangs unless exactly one object of the kind
+     * exists; the player and challenger-player points are each authored
+     * exactly once on every stage, so sharing P1's is always safe.) */
+    if (sc1PManagerIsCoopActive())
     {
         s32 p2_slot = gSCManagerSceneData.coop_player2;
+        sb32 is_challenger = (gSCManagerSceneData.spgame_stage > nSC1PGameStageCommonEnd);
 
         gSCManagerBattleState->players[p2_slot].pkind = nFTPlayerKindMan;
-        gSCManagerBattleState->players[p2_slot].is_single_stockicon = FALSE;
-        sSC1PGamePlayerSetups[p2_slot].mapobj_kind = nMPMapObjKind1PGamePlayer;
+        gSCManagerBattleState->players[p2_slot].is_single_stockicon = is_challenger ? TRUE : FALSE;
+        sSC1PGamePlayerSetups[p2_slot].mapobj_kind = is_challenger ? nMPMapObjKind1PGameChallengerPlayer : nMPMapObjKind1PGamePlayer;
 
         /* Co-op revive: a partner eliminated on the previous stage rejoins
          * here on their last life. Within a stage, elimination still means
@@ -1165,8 +1171,9 @@ void sc1PGameSetupStageAll(void)
         break;
     }
 #ifdef PORT
-    /* Co-op: P2 enters the same way P1 does on every stage. */
-    if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.spgame_stage <= nSC1PGameStageCommonEnd))
+    /* Co-op: P2 enters the same way P1 does on every stage (challenger duels
+     * included — there P1's is_skip_entry is FALSE, so P2 matches). */
+    if (sc1PManagerIsCoopActive())
     {
         sSC1PGamePlayerSetups[gSCManagerSceneData.coop_player2].is_skip_entry = sSC1PGamePlayerSetups[gSCManagerSceneData.player].is_skip_entry;
     }
@@ -1792,6 +1799,29 @@ void sc1PGameWaitStageBossUpdate(void)
     player_fp->camera_mode = nFTCameraModeDefault;
     com_fp->camera_mode = nFTCameraModeDefault;
 
+#ifdef PORT
+    /* Co-op: the Master Hand intro locks every fighter's control
+     * (sc1PGameBossLockPlayerControl / the appear sequence), and this
+     * boss-only wait-update unlocks just P1 (gSCManagerSceneData.player) and
+     * the boss com_gobj — unlike the common/team wait-updates it never walks
+     * the active ports. Without unlocking P2 here the partner spawns with
+     * is_control_disable stuck TRUE: it can still pause (pause reads the pad
+     * directly) but its stick/buttons never reach the fighter — i.e. "can
+     * pause but can't move" on Master Hand only. Mirror P1: clear the lock
+     * and join the default camera framing so the boss cam frames both humans
+     * the way every common stage already does. */
+    if (sc1PManagerIsCoopActive())
+    {
+        GObj *p2_gobj = gSCManagerBattleState->players[gSCManagerSceneData.coop_player2].fighter_gobj;
+
+        if (p2_gobj != NULL)
+        {
+            ftParamUnlockPlayerControl(p2_gobj);
+            ftGetStruct(p2_gobj)->camera_mode = nFTCameraModeDefault;
+        }
+    }
+#endif
+
     gSCManagerBattleState->game_status = nSCBattleGameStatusGo;
 
     gIFCommonPlayerInterface.is_magnify_display = TRUE;
@@ -2317,9 +2347,11 @@ void sc1PGameFuncStart(void)
     FTData *plns;
     size_t largest_size;
     FTStruct *fp;
+#ifndef PORT
     sb32 (*func_sign)(void*);
     void *file;
     u8 signature[0x10];
+#endif
     s32 i;
     FTDesc desc;
     SYColorRGBA color;
@@ -2327,6 +2359,12 @@ void sc1PGameFuncStart(void)
     sc1PGameSetupStageAll();
     sc1PGameSetupFiles();
 
+#ifndef PORT
+    /* Vanilla anti-piracy: after 92 boots, validate a signature by loading a
+     * function out of a reloc file and CALLING it. That is N64 MIPS code -- the
+     * port can't execute it, so func_sign jumps to garbage and crashes. The check
+     * is meaningless on PC, so skip it. (The lower-boot checks, boot>21/42/68, only
+     * test gSYMainImem/DmemOK flags, which pass here, so they need no guard.) */
     if (!(gSCManagerBackupData.error_flags & LBBACKUP_ERROR_VSBATTLECASTLE) && (gSCManagerBackupData.boot > 92))
     {
         syDmaReadRom(0xF10, signature, ARRAY_COUNT(signature));
@@ -2342,6 +2380,7 @@ void sc1PGameFuncStart(void)
             gSCManagerBackupData.error_flags |= LBBACKUP_ERROR_VSBATTLECASTLE;
         }
     }
+#endif
     gcMakeDefaultCameraGObj(nGCCommonLinkIDCamera, GOBJ_PRIORITY_DEFAULT, 100, COBJ_FLAG_ZBUFFER, GPACK_RGBA8888(0x00, 0x00, 0x00, 0xFF));
     efParticleInitAll();
     ftParamInitGame();

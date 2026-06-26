@@ -1,8 +1,6 @@
 #include <ft/fighter.h>
 #include <reloc_data.h>
-#ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
-#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -201,7 +199,7 @@ void ftKirbySpecialNCatchProcUpdate(GObj *fighter_gobj)
             ftStatusVarsCaptureKirby(victim_fp)->is_kirby = TRUE;
         }
         else kirby_fp->status_vars.kirby.specialn.copy_id = copy[victim_fp->fkind].copy_id;
-        
+
         func_800269C0_275C0(nSYAudioFGMKirbySpecialNCopyEat);
 
         if (kirby_fp->ga == nMPKineticsGround)

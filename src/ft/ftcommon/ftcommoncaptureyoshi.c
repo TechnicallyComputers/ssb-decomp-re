@@ -6,6 +6,7 @@ extern void *func_800269C0_275C0(u16 id);
 #include <sys/netplay_sim_quantize.h>
 #include <sys/netrollbacksnapshot.h>
 #endif
+#include "fighter_registry.h"
 #endif
 
 // // // // // // // // // // // //
@@ -394,7 +395,11 @@ void ftCommonYoshiEggSetDamageCollCollisions(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     FTDamageColl *damage_coll = &fp->damage_colls[0];
+#ifdef PORT
+    ftCommonYoshiEggDesc *egg = (ftCommonYoshiEggDesc *)port_fighter_yoshi_egg_damage_coll(fp->fkind);
+#else
     ftCommonYoshiEggDesc *egg = &dFTCommonYoshiEggDamageCollDescs[fp->fkind];
+#endif
     s32 i;
 
     damage_coll->joint = fp->joints[nFTPartsJointTopN];

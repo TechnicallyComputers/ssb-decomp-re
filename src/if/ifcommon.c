@@ -2146,8 +2146,6 @@ void ifCommonItemArrowProcDisplay(GObj *interface_gobj)
     f32 y;
     Vec3f pos;
 #ifdef PORT
-    DObj *item_dobj;
-
     if (ip == NULL)
     {
         gcEjectGObj(interface_gobj);
@@ -2169,18 +2167,19 @@ void ifCommonItemArrowProcDisplay(GObj *interface_gobj)
     if ((ip->is_allow_pickup) && (ip->arrow_timer >= 15))
     {
         sobj = SObjGetStruct(interface_gobj);
+
 #ifdef PORT
-        item_dobj = DObjGetStruct(ip->item_gobj);
-        if (item_dobj == NULL)
-        {
-            ip->arrow_gobj = NULL;
-            gcEjectGObj(interface_gobj);
+        /* PORT: defensive null-check for orphaned arrow_gobj. If the
+         * parent item was destroyed but this arrow leaked (the LP64
+         * truncation skip-path in itMainDestroyItem can do that), the
+         * stale ip->item_gobj points at a recycled or empty GObj whose
+         * DObjGetStruct returns NULL. Just skip render for that tic so
+         * the game keeps running. */
+        if (ip->item_gobj == NULL || DObjGetStruct(ip->item_gobj) == NULL) {
             return;
         }
-        pos = item_dobj->translate.vec.f;
-#else
-        pos = DObjGetStruct(ip->item_gobj)->translate.vec.f;
 #endif
+        pos = DObjGetStruct(ip->item_gobj)->translate.vec.f;
 
         pos.y += ip->coll_data.map_coll.top + 100.0F;
 

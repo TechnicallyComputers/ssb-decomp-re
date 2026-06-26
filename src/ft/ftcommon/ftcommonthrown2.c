@@ -1,6 +1,10 @@
 #include <ft/fighter.h>
 #include <sc/scene.h>
 
+#ifdef PORT
+extern void port_log(const char *fmt, ...);
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //       INITIALIZED DATA        //
@@ -153,14 +157,35 @@ void ftCommonThrownProcStatus(GObj *fighter_gobj)
 // 0x8014AFD0
 void ftCommonThrownReleaseThrownUpdateStats(GObj *fighter_gobj, s32 lr, s32 script_id, sb32 is_proc_status)
 {
-    FTStruct *this_fp = ftGetStruct(fighter_gobj);
-    GObj *capture_gobj = this_fp->capture_gobj;
+    FTStruct *this_fp;
+    GObj *capture_gobj;
     FTStruct *capture_fp;
     FTThrowHitDesc *ft_throw;
     f32 knockback_final;
     s32 damage;
     f32 knockback_resist;
     f32 knockback_calc;
+#ifdef PORT
+    /* Defensive: callers can pass NULL when a thrown chain breaks
+     * (catch_gobj cleared before this fires). Bail so capture_fp deref
+     * below doesn't trip. */
+    if (fighter_gobj == NULL)
+    {
+        port_log("SSB64: ftCommonThrownReleaseThrownUpdateStats fighter_gobj=NULL - bail\n");
+        return;
+    }
+#endif
+    this_fp = ftGetStruct(fighter_gobj);
+    capture_gobj = this_fp->capture_gobj;
+#ifdef PORT
+    if (capture_gobj == NULL)
+    {
+        port_log("SSB64: ftCommonThrownReleaseThrownUpdateStats capture_gobj=NULL fkind=%d status_id=0x%x - bail\n",
+                 (int)this_fp->fkind, (int)this_fp->status_id);
+        return;
+    }
+#endif
+    capture_fp = ftGetStruct(capture_gobj);
 
 #ifdef PORT
     if (capture_gobj == NULL)
@@ -283,6 +308,15 @@ void ftCommonThrownSetStatusDamageRelease(GObj *fighter_gobj)
     s32 damage;
     f32 knockback_resist;
     f32 knockback_calc;
+#ifdef PORT
+    if (capture_gobj == NULL)
+    {
+        port_log("SSB64: ftCommonThrownSetStatusDamageRelease capture_gobj=NULL fkind=%d status_id=0x%x - bail\n",
+                 (int)this_fp->fkind, (int)this_fp->status_id);
+        return;
+    }
+#endif
+    capture_fp = ftGetStruct(capture_gobj);
 
 #ifdef PORT
     if (capture_gobj == NULL)
