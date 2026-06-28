@@ -1396,6 +1396,16 @@ GObj* grSectorMakeGround(void)
 }
 
 #if defined(PORT) && defined(SSB64_NETMENU)
+/*
+ * Hard cap on DObj-tree-walk iterations. The Arwing flight deck is ~18-32 nodes; this is a generous
+ * upper bound used purely as a watchdog so a malformed/cyclic child/sib_next/parent chain bails instead
+ * of wedging the game thread. Defensive only — the synctest emergency-restore hang originally suspected
+ * here turned out to be a u32 tick-window overflow elsewhere
+ * (docs/bugs/netrollback_emergency_restore_sparkle_window_overflow_2026-06-27.md); this cap stays as a
+ * cheap safety net for the unguarded rollback Arwing tree walks.
+ */
+#define GR_SECTOR_ARWING_TREE_WALK_MAX_NODES 512U
+
 static sb32 grSectorArwingDobjHasDrawableDllink(DObj *dobj)
 {
     if (dobj == NULL)
@@ -1405,10 +1415,15 @@ static sb32 grSectorArwingDobjHasDrawableDllink(DObj *dobj)
     return (portDObjDLLinkChainLooksValid(dobj->dv) != 0) ? TRUE : FALSE;
 }
 
-static void grSectorArwingCountTreeDObjs(DObj *dobj, s32 *drawable_out, u32 *nodes_out)
+static void grSectorArwingCountTreeDObjsBounded(DObj *dobj, s32 *drawable_out, u32 *nodes_out, u32 *budget)
 {
     while (dobj != NULL)
     {
+        if (*budget == 0U)
+        {
+            return; /* netplay: malformed/cyclic DObj tree — bail rather than wedge the game thread */
+        }
+        (*budget)--;
         if (nodes_out != NULL)
         {
             (*nodes_out)++;
@@ -1419,7 +1434,7 @@ static void grSectorArwingCountTreeDObjs(DObj *dobj, s32 *drawable_out, u32 *nod
         }
         if (dobj->child != NULL)
         {
-            grSectorArwingCountTreeDObjs(dobj->child, drawable_out, nodes_out);
+            grSectorArwingCountTreeDObjsBounded(dobj->child, drawable_out, nodes_out, budget);
         }
         if (dobj->sib_next != NULL)
         {
@@ -1429,6 +1444,11 @@ static void grSectorArwingCountTreeDObjs(DObj *dobj, s32 *drawable_out, u32 *nod
         {
             while (TRUE)
             {
+                if (*budget == 0U)
+                {
+                    return;
+                }
+                (*budget)--;
                 if (dobj->parent == DOBJ_PARENT_NULL)
                 {
                     return;
@@ -1442,6 +1462,13 @@ static void grSectorArwingCountTreeDObjs(DObj *dobj, s32 *drawable_out, u32 *nod
             }
         }
     }
+}
+
+static void grSectorArwingCountTreeDObjs(DObj *dobj, s32 *drawable_out, u32 *nodes_out)
+{
+    u32 budget = GR_SECTOR_ARWING_TREE_WALK_MAX_NODES;
+
+    grSectorArwingCountTreeDObjsBounded(dobj, drawable_out, nodes_out, &budget);
 }
 
 static sb32 grSectorArwingVisualTreeNeedsRebuild(GObj *map_gobj, DObj *root, DObj *d0)
@@ -1645,9 +1672,15 @@ void grSectorArwingReattachFlightAnims(s8 flight_pattern_idx)
 static void grSectorArwingApplyAnimTransformsWalk(DObj *dobj)
 {
     MObj *mobj;
+    u32 budget = GR_SECTOR_ARWING_TREE_WALK_MAX_NODES;
 
     while (dobj != NULL)
     {
+        if (budget == 0U)
+        {
+            return; /* netplay: malformed/cyclic DObj tree — bail rather than wedge the game thread */
+        }
+        budget--;
         if (dobj->anim_wait != AOBJ_ANIM_NULL)
         {
             gcPlayDObjAnimJoint(dobj);
@@ -1655,6 +1688,11 @@ static void grSectorArwingApplyAnimTransformsWalk(DObj *dobj)
         mobj = dobj->mobj;
         while (mobj != NULL)
         {
+            if (budget == 0U)
+            {
+                return;
+            }
+            budget--;
             if (mobj->anim_wait != AOBJ_ANIM_NULL)
             {
                 gcPlayMObjMatAnim(mobj);
@@ -1673,6 +1711,11 @@ static void grSectorArwingApplyAnimTransformsWalk(DObj *dobj)
         {
             while (TRUE)
             {
+                if (budget == 0U)
+                {
+                    return;
+                }
+                budget--;
                 if (dobj->parent == DOBJ_PARENT_NULL)
                 {
                     return;
