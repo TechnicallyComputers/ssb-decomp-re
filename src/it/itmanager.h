@@ -19,6 +19,14 @@ ITStruct* itManagerGetNextStructAlloc();
 // Roll back local and global item struct pointer by one unit
 void itManagerSetPrevStructAlloc(ITStruct* ip);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+// Assign a unique per-spawn instance id (rollback snapshot identity for items)
+u32 itManagerAssignInstanceId(void);
+
+// Reset the item instance-id counter (called at netplay session start)
+void itManagerResetInstanceIds(void);
+#endif
+
 // Unknown, something to do with setting up item models?
 void itManagerSetupItemDObjs(GObj* gobj, DObjDesc* dobjdesc, DObj** dobjs, u8 transform_kind);
 

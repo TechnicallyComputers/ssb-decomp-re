@@ -1262,6 +1262,22 @@ static void grSectorArwingCanonicalizeDobjTreeWalk(DObj *dobj)
     }
 }
 
+GObj *grSectorArwingWeaponLaser2DRespawnAt(const Vec3f *pos)
+{
+    Vec3f spawn_pos = *pos;
+
+    return wpManagerMakeWeapon(NULL, &dGRSectorArwingWeaponLaser2DWeaponDesc, &spawn_pos,
+                               WEAPON_FLAG_PARENT_GROUND);
+}
+
+GObj *grSectorArwingWeaponLaser3DRespawnAt(const Vec3f *pos)
+{
+    Vec3f spawn_pos = *pos;
+
+    return wpManagerMakeWeapon(NULL, &dGRSectorArwingWeaponLaser3DWeaponDesc, &spawn_pos,
+                               WEAPON_FLAG_PARENT_GROUND);
+}
+
 
 #endif
 

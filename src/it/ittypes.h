@@ -530,6 +530,10 @@ struct ITStruct 						// Common items, stage hazards, fighter items and Pokémon
 	sb32 (*proc_reflector)(GObj*);		// Runs when item is reflected
 	sb32 (*proc_damage)(GObj*);	   		// Runs when item takes damage
 	sb32 (*proc_dead)(GObj*);	   		// Runs when item is in a blast zone
+
+#ifdef PORT
+	u32 instance_id;					// Unique per spawn (rollback snapshot identity; GObj id is always nGCCommonKindItem)
+#endif
 };
 
 #endif

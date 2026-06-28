@@ -130,6 +130,10 @@ s32 gITManagerDisplayMode;
 // 0x8018D094 - points to next available item struct
 ITStruct *gITManagerStructsAllocFree;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+static u32 sITManagerInstanceID = 1U;
+#endif
+
 // 0x8018D098
 ITAppearActor gITManagerAppearActor;
 
@@ -211,6 +215,26 @@ void itManagerSetPrevStructAlloc(ITStruct *ip) // Set global Item user_data link
 
     gITManagerStructsAllocFree = ip;
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+// Per-spawn unique id mirroring wpManagerAssignInstanceId; gives the rollback snapshot
+// matcher an exact identity key for items (all items share GObj id nGCCommonKindItem).
+u32 itManagerAssignInstanceId(void)
+{
+    u32 instance_id = sITManagerInstanceID++;
+
+    if (sITManagerInstanceID == 0U)
+    {
+        sITManagerInstanceID++;
+    }
+    return instance_id;
+}
+
+void itManagerResetInstanceIds(void)
+{
+    sITManagerInstanceID = 1U;
+}
+#endif
 
 // 0x8016DFF4
 void itManagerSetupItemDObjs(GObj *gobj, DObjDesc *dobjdesc, DObj **dobjs, u8 transform_kind)
@@ -297,6 +321,10 @@ GObj* itManagerMakeItem(GObj *parent_gobj, ITDesc *item_desc, Vec3f *pos, Vec3f 
 
     ip->kind = item_desc->kind;
     ip->type = attr->type;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    ip->instance_id = itManagerAssignInstanceId();
+#endif
 
     ip->physics.vel_air = *vel;
     ip->physics.vel_ground = 0.0F;

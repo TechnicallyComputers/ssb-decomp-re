@@ -69,6 +69,14 @@ extern void grSectorRepairArwingPresentation(sb32 tree_was_reestablished, s8 fli
 #if defined(SSB64_NETMENU)
 extern void grSectorArwingCanonicalizeSimState(void);
 extern void grSectorArwingReconcileDeckYakumonoFromFlightTree(void);
+/*
+ * Netplay rollback respawn: recreate a single stage-owned Arwing laser (owner_gobj == NULL) at a
+ * captured position. The vanilla grSectorArwingWeaponLaser{2,3}DMakeWeapon spawn lasers in pairs at
+ * stage-derived positions, which is wrong for per-weapon resim; these helpers wrap wpManagerMakeWeapon
+ * so syNetRbSnapSpawnWeaponFromBlob can restore exactly one laser, then apply its blob.
+ */
+extern GObj *grSectorArwingWeaponLaser2DRespawnAt(const Vec3f *pos);
+extern GObj *grSectorArwingWeaponLaser3DRespawnAt(const Vec3f *pos);
 #endif
 #endif
 

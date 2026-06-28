@@ -1083,6 +1083,10 @@ void gcPlayDObjAnimJoint(DObj *dobj)
 #if defined(PORT) && defined(SSB64_NETMENU)
         /* Netplay rollback only: anim pose quantize (no-op offline). */
         syNetplayQuantizeDObjAnimPose(dobj);
+        /* Netplay rollback only: canonicalize the AObj interpolation node state on the same grid
+         * the rollback snapshot uses, so live joints match a snapshot-restored replay (no resim-boundary
+         * drift) and the cross-ISA anim hash stops forking. See docs/bugs/netplay_aobj_interp_quantize_resim_2026-06-26.md. */
+        syNetplayQuantizeDObjAObjChain(dobj);
 
 #endif
     }
