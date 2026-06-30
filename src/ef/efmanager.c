@@ -20,6 +20,7 @@ extern void port_log(const char *fmt, ...);
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <lb/lbparticle.h>
+#include <sys/objman.h>
 extern u32 syNetInputGetTick(void);
 
 static sb32 efManagerNetplaySnapshotEffectDiagEnabled(void)
@@ -1896,7 +1897,19 @@ EFStruct* efManagerGetNextStructAlloc(sb32 is_force_return)
 
     if (ep == NULL)
     {
-        return NULL;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (sEFManagerStructsFreeNum > 0)
+        {
+            if (efManagerNetAuditPool(TRUE, "get_next_struct_alloc") != FALSE)
+            {
+                ep = sEFManagerStructsAllocFree;
+            }
+        }
+#endif
+        if (ep == NULL)
+        {
+            return NULL;
+        }
     }
     sEFManagerStructsAllocFree = ep->next;
 
@@ -1921,6 +1934,253 @@ EFStruct* efManagerGetEffectForce(void)
 {
     return efManagerGetNextStructAlloc(TRUE);
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+s32 efManagerGetEffectStructFreeCount(void)
+{
+    return sEFManagerStructsFreeNum;
+}
+
+static sb32 efManagerNetDiagEnabled(void)
+{
+    const char *env;
+
+    env = getenv("SSB64_NETPLAY_REBIRTH_GATE_DIAG");
+    return ((env != NULL) && (env[0] != '\0') && (env[0] != '0')) ? TRUE : FALSE;
+}
+
+static sb32 efManagerNetEpPoolIndex(EFStruct *ep, s32 *index_out)
+{
+    EFStruct *base = sEFManagerNetPoolBase;
+    s32 index;
+
+    if ((base == NULL) || (ep == NULL) || (ep < base) || (ep >= &base[EFFECT_ALLOC_NUM]) ||
+        ((((u8 *)ep - (u8 *)base) % sizeof(EFStruct)) != 0))
+    {
+        return FALSE;
+    }
+    index = (s32)(ep - base);
+    if (index_out != NULL)
+    {
+        *index_out = index;
+    }
+    return TRUE;
+}
+
+static void efManagerNetMarkPoolInUseFromEffectLinks(sb32 *in_use, s32 *in_use_out, s32 *live_gobj_out)
+{
+    s32 pass;
+    s32 in_use_count = 0;
+    s32 live_gobj_count = 0;
+
+    if (in_use_out != NULL)
+    {
+        *in_use_out = 0;
+    }
+    if (live_gobj_out != NULL)
+    {
+        *live_gobj_out = 0;
+    }
+    for (pass = 0; pass < 2; pass++)
+    {
+        GObj *link_head = gGCCommonLinks[(pass == 0) ? nGCCommonLinkIDEffect : nGCCommonLinkIDSpecialEffect];
+        GObj *gobj;
+
+        for (gobj = link_head; gobj != NULL; gobj = gobj->link_next)
+        {
+            EFStruct *ep;
+            s32 index;
+
+            live_gobj_count++;
+            ep = efGetStruct(gobj);
+            if (efManagerNetEpPoolIndex(ep, &index) == FALSE)
+            {
+                continue;
+            }
+            if (in_use[index] == FALSE)
+            {
+                in_use[index] = TRUE;
+                in_use_count++;
+            }
+        }
+    }
+    if (in_use_out != NULL)
+    {
+        *in_use_out = in_use_count;
+    }
+    if (live_gobj_out != NULL)
+    {
+        *live_gobj_out = live_gobj_count;
+    }
+}
+
+static s32 efManagerNetCountFreeListNodes(void)
+{
+    EFStruct *cur = sEFManagerStructsAllocFree;
+    s32 list_len = 0;
+    s32 guard;
+
+    for (guard = 0; (cur != NULL) && (guard <= EFFECT_ALLOC_NUM); guard++)
+    {
+        list_len++;
+        cur = cur->next;
+    }
+    return list_len;
+}
+
+static sb32 efManagerNetRebuildFreeList(void)
+{
+    EFStruct *base = sEFManagerNetPoolBase;
+    sb32 in_use[EFFECT_ALLOC_NUM];
+    EFStruct *head = NULL;
+    s32 free_count = 0;
+    s32 i;
+
+    if (base == NULL)
+    {
+        return FALSE;
+    }
+    for (i = 0; i < EFFECT_ALLOC_NUM; i++)
+    {
+        in_use[i] = FALSE;
+    }
+    efManagerNetMarkPoolInUseFromEffectLinks(in_use, NULL, NULL);
+    for (i = EFFECT_ALLOC_NUM - 1; i >= 0; i--)
+    {
+        if (in_use[i] == FALSE)
+        {
+            base[i].fighter_gobj = NULL;
+            base[i].xf = NULL;
+            base[i].is_pause_effect = FALSE;
+            base[i].proc_update = NULL;
+            base[i].next = head;
+            head = &base[i];
+            free_count++;
+        }
+    }
+    sEFManagerStructsAllocFree = head;
+    sEFManagerStructsFreeNum = free_count;
+    return TRUE;
+}
+
+static sb32 efManagerNetPoolMismatch(sb32 *list_len_out, s32 *in_use_out, s32 *live_gobj_out)
+{
+    sb32 in_use[EFFECT_ALLOC_NUM];
+    s32 list_len;
+    s32 in_use_count = 0;
+    s32 live_gobj_count = 0;
+    s32 i;
+
+    for (i = 0; i < EFFECT_ALLOC_NUM; i++)
+    {
+        in_use[i] = FALSE;
+    }
+    list_len = efManagerNetCountFreeListNodes();
+    efManagerNetMarkPoolInUseFromEffectLinks(in_use, &in_use_count, &live_gobj_count);
+    if (list_len_out != NULL)
+    {
+        *list_len_out = list_len;
+    }
+    if (in_use_out != NULL)
+    {
+        *in_use_out = in_use_count;
+    }
+    if (live_gobj_out != NULL)
+    {
+        *live_gobj_out = live_gobj_count;
+    }
+    if (list_len != sEFManagerStructsFreeNum)
+    {
+        return TRUE;
+    }
+    if ((sEFManagerStructsFreeNum > 0) && (sEFManagerStructsAllocFree == NULL))
+    {
+        return TRUE;
+    }
+    if ((sEFManagerStructsFreeNum == 0) && (sEFManagerStructsAllocFree != NULL))
+    {
+        return TRUE;
+    }
+    if ((in_use_count + list_len) != EFFECT_ALLOC_NUM)
+    {
+        return TRUE;
+    }
+    return FALSE;
+}
+
+sb32 efManagerNetAuditPool(sb32 try_repair, const char *site)
+{
+    s32 list_len = 0;
+    s32 in_use_count = 0;
+    s32 live_gobj_count = 0;
+    sb32 mismatch;
+
+    if (sEFManagerNetPoolBase == NULL)
+    {
+        return TRUE;
+    }
+    mismatch = efManagerNetPoolMismatch(&list_len, &in_use_count, &live_gobj_count);
+    if ((mismatch != FALSE) && (try_repair != FALSE))
+    {
+        port_log(
+            "SSB64 EfManager: pool_audit mismatch site=%s free_num=%d list_len=%d alloc_free=%p in_use=%d live_eff_gobjs=%d -> repair\n",
+            (site != NULL) ? site : "?",
+            (int)sEFManagerStructsFreeNum,
+            (int)list_len,
+            (void *)sEFManagerStructsAllocFree,
+            (int)in_use_count,
+            (int)live_gobj_count);
+        efManagerNetRebuildFreeList();
+        mismatch = efManagerNetPoolMismatch(&list_len, &in_use_count, &live_gobj_count);
+        if (mismatch == FALSE)
+        {
+            port_log(
+                "SSB64 EfManager: pool_audit repaired site=%s free_num=%d list_len=%d alloc_free=%p in_use=%d live_eff_gobjs=%d\n",
+                (site != NULL) ? site : "?",
+                (int)sEFManagerStructsFreeNum,
+                (int)list_len,
+                (void *)sEFManagerStructsAllocFree,
+                (int)in_use_count,
+                (int)live_gobj_count);
+        }
+    }
+    else if ((mismatch != FALSE) && (efManagerNetDiagEnabled() != FALSE))
+    {
+        port_log(
+            "SSB64 EfManager: pool_audit mismatch site=%s free_num=%d list_len=%d alloc_free=%p in_use=%d live_eff_gobjs=%d\n",
+            (site != NULL) ? site : "?",
+            (int)sEFManagerStructsFreeNum,
+            (int)list_len,
+            (void *)sEFManagerStructsAllocFree,
+            (int)in_use_count,
+            (int)live_gobj_count);
+    }
+    return (mismatch == FALSE) ? TRUE : FALSE;
+}
+
+static void efManagerLogMakeEffectAllocFail(const char *step, const EFDesc *effect_desc, const void *caller)
+{
+    s32 list_len = 0;
+    s32 in_use_count = 0;
+    s32 live_gobj_count = 0;
+
+    if (efManagerNetDiagEnabled() == FALSE)
+    {
+        return;
+    }
+    (void)efManagerNetPoolMismatch(&list_len, &in_use_count, &live_gobj_count);
+    port_log(
+        "SSB64 EfManager: make_effect_fail step=%s free=%d list_len=%d alloc_free=%p in_use=%d live_eff_gobjs=%d desc=%p caller=%p\n",
+        (step != NULL) ? step : "?",
+        (int)sEFManagerStructsFreeNum,
+        (int)list_len,
+        (void *)sEFManagerStructsAllocFree,
+        (int)in_use_count,
+        (int)live_gobj_count,
+        (const void *)effect_desc,
+        caller);
+}
+#endif
 
 // 0x800FD4F8
 void efManagerSetPrevStructAlloc(EFStruct *ep)
@@ -2185,6 +2445,9 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
 
         if (ep == NULL)
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            efManagerLogMakeEffectAllocFail("ef_struct", effect_desc, __builtin_return_address(0));
+#endif
             return NULL;
         }
         ep->proc_update = effect_desc->proc_update;
@@ -2199,6 +2462,9 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
         {
             efManagerSetPrevStructAlloc(ep);
         }
+#if defined(PORT) && defined(SSB64_NETMENU)
+        efManagerLogMakeEffectAllocFail("gobj", effect_desc, __builtin_return_address(0));
+#endif
         return NULL;
     }
     effect_gobj->user_data.p = ep;

@@ -7,6 +7,7 @@
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_rebirth_gate.h>
 #include <sys/netplay_sim_quantize.h>
+#include <sys/netrollbacksnapshot.h>
 #endif
 
 // // // // // // // // // // // //
@@ -124,6 +125,9 @@ loop: // This makes no sense
 
     this_fp->camera_zoom_range = 0.6F;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetRbSnapReclaimStaleEffectShellsForRebirthHalo(NULL, NULL);
+#endif
     if (efManagerRebirthHaloMakeEffect(this_gobj, this_fp->attr->halo_size) != NULL)
     {
         this_fp->is_effect_attach = TRUE;
