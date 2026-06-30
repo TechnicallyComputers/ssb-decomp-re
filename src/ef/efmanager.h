@@ -10,6 +10,9 @@ extern EFStruct* efManagerGetNextStructAlloc(sb32 is_force_return);
 extern EFStruct* efManagerGetEffectNoForce(void);
 extern EFStruct* efManagerGetEffectForce(void);
 extern void efManagerSetPrevStructAlloc(EFStruct *ep);
+#if defined(PORT) && defined(SSB64_NETMENU)
+extern sb32 efManagerNetSafeFreeStruct(EFStruct *ep, GObj *effect_gobj, const char *site);
+#endif
 extern void efManagerNoStructProcUpdate(GObj *effect_gobj);
 extern void efManagerHaveStructProcUpdate(GObj *effect_gobj);
 extern void efManagerNoEjectProcUpdate(GObj *effect_gobj);

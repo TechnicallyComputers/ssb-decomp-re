@@ -1,6 +1,12 @@
 #include <sys/obj.h>
 #include <mp/map.h>
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <stdlib.h>
+#include <string.h>
+extern void port_log(const char *fmt, ...);
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //   GLOBAL / STATIC VARIABLES   //
@@ -406,7 +412,21 @@ sb32 mpProcessUpdateMain(MPCollData *coll_data, sb32 (*proc_coll)(MPCollData*, G
     f32 add_z;                                  // Position difference added to Z-Position on each iteration
     s32 i;                                      // Collision update iterator
     s32 update_count;                           // Up to 10 updates in a single tic
-    sb32 result;                                // Result of collision test
+    /*
+     * The loop below runs zero times when coll_data->is_coll_end is already TRUE at entry (a prior
+     * collision pass already concluded). On N64 the returned `result` then read a deterministic
+     * stack/register value; on LP64 that garbage differs cross-ISA, forking landing/project/pass
+     * verdicts between peers. Initialize deterministically to FALSE: a skipped pass processed no new
+     * collision, so "no collision detected this call" is the honest, deterministic answer.
+     *
+     * NOTE: the airborne carry-landing case that previously made FALSE look wrong (DK stuck after a
+     * cargo carry) was a latched is_coll_end, fixed at its source in mpCommonSetFighterAir — an
+     * airborne fighter now starts with is_coll_end FALSE so this loop actually runs and proc_coll
+     * sets a real verdict. A guessed floor-contact init here was the wrong layer (it returned stale
+     * mask_stat and broke walking off a ledge while carrying).
+     * See docs/bugs/netplay_grab_coupling_skip_anchor_masking_2026-06-29.md.
+     */
+    sb32 result = FALSE;                         // Result of collision test
 
     if (translate->x < pos_prev->x)
     {
@@ -2025,6 +2045,59 @@ sb32 mpProcessCheckTestFloorCollisionAdjNew(MPCollData *coll_data, sb32(*proc_ma
                                                                             :
 
     mpCollisionCheckFloorLineCollisionSame(&sp4C, &sp40, &coll_data->line_coll_dist, &coll_data->floor_line_id, &coll_data->floor_flags, &coll_data->floor_angle);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Netplay diagnostic only.
+     * Floor-landing verdict (var_v0) drives ground/air status transitions
+     * (e.g. ThrowFFall->ThrowFLanding). It is computed by Diff vs Same selected
+     * purely by (update_tic != gMPCollisionUpdateTic); if two peers (or a
+     * pre/post-rollback run) take different branches at the landing-contact
+     * frame the verdict forks with bit-identical geometry. This probe records
+     * the branch + result so a cross-peer DK cargo-carry desync can be confirmed
+     * as a Diff/Same divergence vs a residual cross-ISA float compare in Diff.
+     * Enable with SSB64_NETPLAY_LANDING_BRANCH_DIAG=1. */
+    {
+        static int s_landing_branch_diag = -1;
+
+        if (s_landing_branch_diag < 0)
+        {
+            const char *env = getenv("SSB64_NETPLAY_LANDING_BRANCH_DIAG");
+
+            s_landing_branch_diag = ((env != NULL) && (env[0] == '1')) ? 1 : 0;
+        }
+        if (s_landing_branch_diag != 0)
+        {
+            u32 tr_x_bits;
+            u32 tr_y_bits;
+            u32 pp_y_bits;
+            u32 fdist_bits;
+
+            memcpy(&tr_x_bits, &translate->x, sizeof(tr_x_bits));
+            memcpy(&tr_y_bits, &translate->y, sizeof(tr_y_bits));
+            memcpy(&pp_y_bits, &pos_prev->y, sizeof(pp_y_bits));
+            memcpy(&fdist_bits, &coll_data->floor_dist, sizeof(fdist_bits));
+
+            port_log("SSB64 MpLanding: landing_branch gut=%u upt=%u branch=%s vv0=%d "
+                     "fline=%d ignore=%d fflags=0x%08X mask_unk=0x%04X gated=%d "
+                     "fdist=0x%08X tr_x=0x%08X tr_y=0x%08X pp_y=0x%08X\n",
+                     (unsigned int)gMPCollisionUpdateTic,
+                     (unsigned int)coll_data->update_tic,
+                     (coll_data->update_tic != gMPCollisionUpdateTic) ? "diff" : "same",
+                     (int)var_v0,
+                     (int)coll_data->floor_line_id,
+                     (int)coll_data->ignore_line_id,
+                     (unsigned int)coll_data->floor_flags,
+                     (unsigned int)coll_data->mask_unk,
+                     (int)((var_v0 != 0) &&
+                           (!(coll_data->floor_flags & MAP_VERTEX_COLL_PASS) ||
+                            (coll_data->floor_line_id != coll_data->ignore_line_id))),
+                     (unsigned int)fdist_bits,
+                     (unsigned int)tr_x_bits,
+                     (unsigned int)tr_y_bits,
+                     (unsigned int)pp_y_bits);
+        }
+    }
+#endif
 
     if ((var_v0 != 0) && (!(coll_data->floor_flags & MAP_VERTEX_COLL_PASS) || (coll_data->floor_line_id != coll_data->ignore_line_id)) && ((proc_map == NULL) || (proc_map(gobj) != FALSE)))
     {

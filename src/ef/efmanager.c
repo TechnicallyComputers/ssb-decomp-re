@@ -1837,6 +1837,13 @@ s32 sEFManagerStructsFreeNum;
 // 0x801313C4
 s32 gEFManagerParticleBankID;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* SSB64_NETMENU: stripped from offline builds. Base of the EFStruct pool,
+ * captured at init so the netplay rollback free-guard can range-check pointers
+ * returned to the free list. See efManagerNetSafeFreeStruct. */
+static EFStruct *sEFManagerNetPoolBase;
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //           FUNCTIONS           //
@@ -1854,6 +1861,9 @@ void efManagerInitEffects(void)
 
     sEFManagerStructsAllocFree = ep = syTaskmanMalloc(sizeof(EFStruct) * EFFECT_ALLOC_NUM, 0x8);
     sEFManagerStructsFreeNum = EFFECT_ALLOC_NUM;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    sEFManagerNetPoolBase = ep;
+#endif
 
     for (i = 0; i < (EFFECT_ALLOC_NUM - 1); i++)
     {
@@ -1922,6 +1932,62 @@ void efManagerSetPrevStructAlloc(EFStruct *ep)
 
     sEFManagerStructsFreeNum++;
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* SSB64_NETMENU: stripped from offline builds. Netplay rollback only.
+ *
+ * Validate an EFStruct before returning it to the singly-linked free list.
+ * The rollback effect-reconcile path (port/net/sys/netrollbacksnapshot.c) can
+ * otherwise push a stale/aliased EFStruct (two GObjs sharing one user_data.p)
+ * or an out-of-pool pointer onto the free list; a later allocation then
+ * dereferences ->next off that bad head and SIGSEGVs (observed in
+ * efManagerQuakeMakeEffect during forward sim). Reject + log the offending
+ * eject site instead of corrupting the pool. Returns TRUE if the struct was
+ * actually returned to the pool. See
+ * docs/bugs/netplay_quake_effect_pool_free_2026-06-28.md.
+ *
+ * Does NOT touch the decomp allocator's matching semantics — offline builds
+ * (SSB64_NETMENU undefined) never compile this and free via the bare
+ * efManagerSetPrevStructAlloc as before. */
+sb32 efManagerNetSafeFreeStruct(EFStruct *ep, GObj *effect_gobj, const char *site)
+{
+    EFStruct *base = sEFManagerNetPoolBase;
+    EFStruct *cur;
+    s32 guard;
+    u32 gobj_id = (effect_gobj != NULL) ? effect_gobj->id : 0U;
+
+    if (ep == NULL)
+    {
+        return FALSE;
+    }
+    if (base != NULL)
+    {
+        if ((ep < base) || (ep >= &base[EFFECT_ALLOC_NUM]) ||
+            ((((u8 *)ep - (u8 *)base) % sizeof(EFStruct)) != 0))
+        {
+            port_log("SSB64: ef_pool_free_reject reason=out_of_range site=%s gobj=%p id=%u ep=%p base=%p\n",
+                     (site != NULL) ? site : "?", (void *)effect_gobj, gobj_id, (void *)ep, (void *)base);
+            return FALSE;
+        }
+    }
+    /* Walk the free list (bounded by pool size to survive a pre-existing cycle)
+     * to reject a double-free before it can corrupt the chain. */
+    cur = sEFManagerStructsAllocFree;
+    for (guard = 0; (cur != NULL) && (guard <= EFFECT_ALLOC_NUM); guard++)
+    {
+        if (cur == ep)
+        {
+            port_log("SSB64: ef_pool_free_reject reason=double_free site=%s gobj=%p id=%u ep=%p free_num=%d\n",
+                     (site != NULL) ? site : "?", (void *)effect_gobj, gobj_id, (void *)ep,
+                     sEFManagerStructsFreeNum);
+            return FALSE;
+        }
+        cur = cur->next;
+    }
+    efManagerSetPrevStructAlloc(ep);
+    return TRUE;
+}
+#endif
 
 // 0x800FD524
 void efManagerNoStructProcUpdate(GObj *effect_gobj)
@@ -2042,6 +2108,47 @@ void efManagerFuncRun(GObj *effect_gobj)
     effect_gobj->func_run = NULL;
 }
 
+#ifdef PORT
+/*
+ * Pointer-plausibility guard for effect descriptors and their resolved
+ * resource bases. A stale GObj or a mis-resolved effect descriptor can reach
+ * efManagerMakeEffect holding a pointer whose low 32 bits were stomped with a
+ * 0xFFFFFFFF sentinel (a 32-bit -1 written into a 64-bit pointer — benign on
+ * the N64's 32-bit address space, fatal on LP64). This was observed as a
+ * SIGSEGV inside efManagerMakeEffect during a Link bomb explosion
+ * (fault_addr low 32 bits = 0xFFFFFFFF). The existing *file_head==NULL guard
+ * below only catches the cleanly-NULLed case; this also rejects the stomped
+ * non-NULL variant. Cheap heuristic: a usable pointer is past the NULL page
+ * and does not carry an all-ones low word / all-ones value.
+ */
+static int syEfDescPtrPlausible(const void *p)
+{
+    uintptr_t v = (uintptr_t) p;
+
+    if (v < 0x1000) {
+        return 0; /* NULL / near-NULL page */
+    }
+    if ((v & 0xFFFFFFFFu) == 0xFFFFFFFFu) {
+        return 0; /* low 32 bits stomped with a -1 sentinel */
+    }
+    if (v == (uintptr_t) -1) {
+        return 0;
+    }
+    return 1;
+}
+
+static void efManagerLogImplausiblePtr(const char *what, const void *ptr, const void *caller)
+{
+    static int sWarnCount = 0;
+
+    if (sWarnCount < 32) {
+        sWarnCount++;
+        port_log("SSB64: efManagerMakeEffect bail — implausible %s=%p caller=%p\n",
+                 what, ptr, caller);
+    }
+}
+#endif
+
 // 0x800FD778
 GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
 {
@@ -2058,6 +2165,17 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
     uintptr_t o_mobjsub;
     uintptr_t o_anim_joint;
     uintptr_t o_matanim_joint;
+
+#ifdef PORT
+    /* Validate the descriptor itself before any dereference: effect_desc->flags
+     * on the next line is the first read and faults if effect_desc is garbage.
+     * Bail cleanly (nothing allocated yet) and log the caller so the next soak
+     * names the offending effect. See docs/bugs/. */
+    if (!syEfDescPtrPlausible(effect_desc)) {
+        efManagerLogImplausiblePtr("effect_desc", effect_desc, __builtin_return_address(0));
+        return NULL;
+    }
+#endif
 
     effect_flags = effect_desc->flags;
 
@@ -2094,7 +2212,6 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
     o_mobjsub = effect_desc->o_mobjsub;
     o_anim_joint = effect_desc->o_anim_joint;
     o_matanim_joint = effect_desc->o_matanim_joint;
-    addr = (uintptr_t) *effect_desc->file_head;
 #ifdef PORT
     /* Defensive guard: the per-fighter data file global (e.g.
      * gFTDataKirbySpecial2) is dereferenced via *effect_desc->file_head to
@@ -2106,13 +2223,25 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
      * trying to spawn the Cutter Draw effect after the Kirby Special2 file
      * was unloaded (Linux-only SIGSEGV; Win/Mac allocators happened to leave
      * compatible memory at the same address). Bail safely if the global is
-     * NULL so the caller's `!= NULL` check skips the effect cleanly. */
-    if (*effect_desc->file_head == NULL) {
-        static int sNullFileHeadWarnCount = 0;
-        if (sNullFileHeadWarnCount < 10) {
-            sNullFileHeadWarnCount++;
-            port_log("SSB64: efManagerMakeEffect bail — *file_head=NULL (effect_desc=%p)\n",
-                     effect_desc);
+     * NULL/garbage so the caller's `!= NULL` check skips the effect cleanly.
+     *
+     * The file_head pointer itself is validated *before* the deref below, and
+     * the resolved base (addr) is validated after, to also catch the LP64
+     * 0xFFFFFFFF-stomped variant seen during the Link bomb explosion. */
+    if (!syEfDescPtrPlausible(effect_desc->file_head)) {
+        efManagerLogImplausiblePtr("file_head", effect_desc->file_head, __builtin_return_address(0));
+        if (ep != NULL) {
+            efManagerSetPrevStructAlloc(ep);
+        }
+        gcEjectGObj(effect_gobj);
+        return NULL;
+    }
+    if (*effect_desc->file_head == NULL || !syEfDescPtrPlausible(*effect_desc->file_head)) {
+        static int sBadFileHeadWarnCount = 0;
+        if (sBadFileHeadWarnCount < 10) {
+            sBadFileHeadWarnCount++;
+            port_log("SSB64: efManagerMakeEffect bail — *file_head=%p (effect_desc=%p caller=%p)\n",
+                     *effect_desc->file_head, effect_desc, __builtin_return_address(0));
         }
         if (ep != NULL) {
             efManagerSetPrevStructAlloc(ep);
@@ -2121,6 +2250,7 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
         return NULL;
     }
 #endif
+    addr = (uintptr_t) *effect_desc->file_head;
 
     transform_types1 = &effect_desc->transform_types1;
 

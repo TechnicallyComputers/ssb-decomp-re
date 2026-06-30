@@ -901,6 +901,29 @@ void mpCommonSetFighterAir(FTStruct *fp)
     fp->physics.vel_air.z = fp->joints[nFTPartsJointTopN]->translate.vec.f.z = 0.0F;
 
     fp->jumps_used = 1;
+
+    /*
+     * Clear the collision-resolution latch on every ground->air transition.
+     *
+     * is_coll_end is only ever reset to FALSE by mpCommonRunFighterAllCollisions (grounded floor-
+     * found path) or mpCommonCopyCollDataStats (captive slaving). An airborne fighter's landing
+     * check (mpCommonRunFighterSpecialCollisions) has no such reset, so if a fighter goes airborne
+     * with is_coll_end already TRUE, mpProcessUpdateMain's loop is skipped every tick and proc_coll
+     * — the only code that could clear the flag — never runs. The flag latches TRUE for the whole
+     * airborne span and no real floor test is ever performed.
+     *
+     * This bites DK's cargo carry: walking off a ledge sets is_coll_end TRUE (no-floor path,
+     * mpCommonRunFighterAllCollisions line ~206) and then enters ThrowFFall airborne carrying that
+     * TRUE forward. Every landing check is then a no-op returning stale state, so DK either never
+     * lands (false negative) or "lands" the instant he leaves the ledge (false positive) — he can
+     * jump off but cannot walk off. A fighter that just became airborne has no in-progress collision
+     * to keep "ended", so FALSE is the correct, deterministic starting state, and it lets the loop
+     * run and produce a real per-tick floor verdict.
+     *
+     * No-op for the common case (grounded play leaves is_coll_end FALSE already); only the latched
+     * carry/edge case changes. See docs/bugs/netplay_grab_coupling_skip_anchor_masking_2026-06-29.md.
+     */
+    fp->coll_data.is_coll_end = FALSE;
 }
 
 // 0x800DEEF4
