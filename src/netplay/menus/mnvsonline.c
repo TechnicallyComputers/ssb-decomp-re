@@ -1093,7 +1093,18 @@ void mnVSOnlineMakeBackgroundViewport()
 // 0x801336AC
 void mnVSOnlineFuncStartVars()
 {
-    sMNVSOnlineCursorIndex = nMNVSModeOptionStart;
+    switch (gSCManagerSceneData.scene_prev)
+    {
+    case nSCKindVSNetLevelPrefs:
+        sMNVSOnlineCursorIndex = nMNVSModeOptionRule;
+        break;
+    case nSCKindVSNetAutomatch:
+        sMNVSOnlineCursorIndex = nMNVSModeOptionStart;
+        break;
+    default:
+        sMNVSOnlineCursorIndex = nMNVSModeOptionStart;
+        break;
+    }
 
     sMNVSOnlineChangeWait = 0;
 

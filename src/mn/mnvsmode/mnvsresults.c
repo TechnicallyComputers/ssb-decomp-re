@@ -3445,7 +3445,8 @@ void mnVSResultsFuncRun(GObj *gobj)
 #if defined(PORT) && defined(SSB64_NETMENU)
 			u8 automatch_scene;
 
-			automatch_scene = (u8)((gSCManagerSceneData.is_vs_automatch_battle != FALSE)
+			automatch_scene = (u8)((gSCManagerSceneData.is_vs_automatch_battle != FALSE ||
+			                        gSCManagerSceneData.is_vs_replay_playback != FALSE)
 			                           ? gSCManagerSceneData.vs_net_automatch_post_battle_scene
 			                           : (u8)(0));
 			if (automatch_scene != (u8)(0))
@@ -3453,6 +3454,7 @@ void mnVSResultsFuncRun(GObj *gobj)
 				gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
 				gSCManagerSceneData.scene_curr = automatch_scene;
 				gSCManagerSceneData.is_vs_automatch_battle = (ub8)(0);
+				gSCManagerSceneData.is_vs_replay_playback = (ub8)(0);
 				gSCManagerSceneData.vs_net_automatch_post_battle_scene = (u8)(0);
 			}
 			else

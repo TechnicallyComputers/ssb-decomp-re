@@ -480,6 +480,8 @@ struct SCCommonData
 	u16 vs_net_stage_ban_mask;						// User bans: bits 0-8 = SSS slots 0-8 (excl. Random)
 	u8 vs_net_automatch_post_battle_scene;			// 0 = default results routing; else nSCKind* target (e.g. VS Net Automatch)
 	ub8 is_vs_automatch_battle;					    // Last VS entered from HTTPS automatch handshake
+	ub8 vs_net_replay_save_enabled;					// Persisted replay auto-save toggle (ssb64_netplaysave.bin v2)
+	ub8 is_vs_replay_playback;						// VS entered from replay menu playback
 #endif
 #ifdef PORT
 	/* Classic Co-op handoff, written by the VS CSS when it serves Classic

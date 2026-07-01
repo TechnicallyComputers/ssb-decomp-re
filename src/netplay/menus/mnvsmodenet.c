@@ -1090,7 +1090,23 @@ void mnVSModeMakeBackgroundViewport()
 // 0x801336AC
 void mnVSModeFuncStartVars()
 {
-    sMNVSModeCursorIndex = nMNVSModeOptionStart;
+    switch (gSCManagerSceneData.scene_prev)
+    {
+    case nSCKindVSOfflineClassic:
+        sMNVSModeCursorIndex = nMNVSModeOptionStart;
+        break;
+    case nSCKindVSOnline:
+    case nSCKindVSNetAutomatch:
+    case nSCKindVSNetLevelPrefs:
+        sMNVSModeCursorIndex = nMNVSModeOptionRule;
+        break;
+    case nSCKindVSReplays:
+        sMNVSModeCursorIndex = nMNVSModeOptionTimeStock;
+        break;
+    default:
+        sMNVSModeCursorIndex = nMNVSModeOptionStart;
+        break;
+    }
 
     sMNVSModeChangeWait = 0;
 
@@ -1333,7 +1349,16 @@ void mnVSModeMain(GObj *gobj)
                     return;
 
                 case nMNVSModeOptionTimeStock:
-                    break;
+                    func_800269C0_275C0(nSYAudioFGMMenuSelect);
+                    mnVSModeUpdateButton(sMNVSModeButtonGObjTimeStock, nMNOptionTabStatusSelected);
+                    mnVSModeSaveSettings();
+
+                    sMNVSModeExitInterrupt = TRUE;
+
+                    gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
+                    gSCManagerSceneData.scene_curr = nSCKindVSReplays;
+
+                    return;
             }
         }
 

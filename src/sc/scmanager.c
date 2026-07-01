@@ -54,6 +54,7 @@ extern void mnVSModeOnlineStartScene(void);
 extern void mnVSNetAutomatchStartScene(void);
 extern void mnVSNetMatchStagingStartScene(void);
 extern void mnVSNetLevelPrefsStartScene(void);
+extern void mnVSReplaysStartScene(void);
 #endif
 
 // // // // // // // // // // // //
@@ -1220,6 +1221,16 @@ void scManagerRunLoop(sb32 arg)
 				syDmaLoadOverlay(&dSCManagerOverlays[1]);
 				syDmaLoadOverlay(&dSCManagerOverlays[30]);
 				mnVSNetLevelPrefsStartScene();
+				break;
+
+			case nSCKindVSReplays:
+				syDmaLoadOverlay(&dSCManagerOverlays[1]);
+				syDmaLoadOverlay(&dSCManagerOverlays[5]);
+				syDmaLoadOverlay(&dSCManagerOverlays[17]);
+				syDmaLoadOverlay(&dSCManagerOverlays[30]);
+				syDmaLoadOverlay(&dSCManagerOverlays[33]);
+				syDmaLoadOverlay(&dSCManagerOverlays[36]);
+				mnVSReplaysStartScene();
 				break;
 #endif /* SSB64_NETMENU */
 

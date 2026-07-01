@@ -202,7 +202,8 @@ typedef enum SCKind
 	nSCKindVSOnline,               	// Netmenu: online netplay features submenu
 	nSCKindVSNetAutomatch,         	// Netmenu: automatch (1P CSS fork) entry
 	nSCKindVSNetLevelPrefs,	       	// Netmenu: level-prefs stage-select fork
-	nSCKindVSNetMatchStaging       	// Netmenu: automatch P2P/barrier staging (between CSS and VS)
+	nSCKindVSNetMatchStaging,      	// Netmenu: automatch P2P/barrier staging (between CSS and VS)
+	nSCKindVSReplays               	// Netmenu: saved replay browser / playback entry
 #endif
 
 } SCKind;

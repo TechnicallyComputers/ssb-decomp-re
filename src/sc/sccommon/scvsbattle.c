@@ -10,6 +10,7 @@ extern void port_coroutine_yield(void);
 #include <sys/netinput.h>
 #include <sys/netpeer.h>
 #include <sys/netreplay.h>
+#include <sys/netplay_save.h>
 #include <sys/netrollback.h>
 #include <sys/netrollbacksnapshot.h>
 #include <sys/netsync.h>
@@ -17,6 +18,9 @@ extern void port_coroutine_yield(void);
 #include <sys/video.h>
 #include <reloc_data.h>
 #include <gm/gmcamera.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <menus/mnvsreplay_playback.h>
+#endif
 #include <it/itmanager.h>
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <it/item.h>
@@ -129,6 +133,16 @@ SYTaskmanSetup dSCVSBattleTaskmanSetup =
 // 0x8018D0C0
 void scVSBattleFuncUpdate(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if ((gSCManagerSceneData.is_vs_replay_playback != FALSE) && (syNetReplayIsPlaybackLoaded() != FALSE))
+	{
+		mnVSReplayPlaybackUpdateHalted();
+		if (syNetReplayIsUserPlaybackHalted() != FALSE)
+		{
+			return;
+		}
+	}
+#endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 	/* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
 	/* Unified tick-commit: FuncRead caches verdict; battle sim matches same admission as wire/exec gates. */
@@ -532,10 +546,26 @@ void scVSBattleStartBattle(void)
 #if defined(PORT) && defined(SSB64_NETMENU)
 	syNetPeerCommitStagedBootstrapMetadataForBattleStart();
 	syNetInputStartVSSession();
+	if ((syNetReplayIsPlaybackLoaded() == FALSE) && (gSCManagerSceneData.is_vs_automatch_battle != FALSE) &&
+	    (syNetplaySaveGetReplaySaveEnabled() != FALSE))
+	{
+		char filename[SYNETREPLAY_USER_FILENAME_MAX];
+		char path[SYNETREPLAY_USER_PATH_MAX];
+
+		if ((syNetReplayEnsureUserDir() != FALSE) &&
+		    (syNetReplayMakeTimestampFilename(filename, sizeof(filename)) != FALSE) &&
+		    (syNetReplayResolveUserFilePath(filename, path, sizeof(path)) != FALSE))
+		{
+			syNetReplayBeginUserAutomatchRecording(path);
+		}
+	}
 	syNetReplayStartVSSession(gSCManagerBattleState);
-	/* Idempotent when automatch staging already called syNetPeerStartVSSession. */
-	syNetPeerStartVSSession();
-	syNetPeerReapplySimSlotInputSources();
+	if (syNetReplayIsPlaybackLoaded() == FALSE)
+	{
+		/* Idempotent when automatch staging already called syNetPeerStartVSSession. */
+		syNetPeerStartVSSession();
+		syNetPeerReapplySimSlotInputSources();
+	}
 	syNetSyncResetNetplayBattleClock();
 #endif
 
@@ -647,6 +677,9 @@ void scVSBattleStartBattle(void)
 	color = dSCVSBattleCommonFadeColor;
 
 	lbFadeMakeActor(nGCCommonKindTransition, nGCCommonLinkIDTransition, 10, &color, 12, TRUE, NULL);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	mnVSReplayPlaybackInit();
+#endif
 }
 
 // 0x8018D5E0 - Sort time battle winners and check for sudden death
