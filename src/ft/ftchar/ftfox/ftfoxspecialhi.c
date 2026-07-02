@@ -1,4 +1,12 @@
 #include <ft/fighter.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_fox_firefox_gate.h>
+/*
+ * SSB64_NETMENU diag-only: Firefox travel-span tracer hooks (stripped from offline builds; no
+ * sim effect). Measures the reported "Firefox cuts off early" frame loss — see
+ * docs/bugs/netplay_fox_firefox_travel_truncation_diag_2026-07-01.md.
+ */
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -150,8 +158,15 @@ void ftFoxSpecialHiProcUpdate(GObj *fighter_gobj)
 
     fp->status_vars.fox.specialhi.anim_frames--;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxTravelSpanOnSimDecrement(fp);
+#endif
+
     if (fp->status_vars.fox.specialhi.anim_frames == 0)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetplayFoxFirefoxTravelSpanNoteEndPath(fp, FALSE);
+#endif
         if (fp->ga == nMPKineticsAir)
         {
             ftFoxSpecialAirHiEndSetStatus(fighter_gobj);
@@ -285,6 +300,10 @@ void ftFoxSpecialHiInitStatusVars(FTStruct *fp)
     fp->status_vars.fox.specialhi.anim_frames = FTFOX_FIREFOX_TRAVEL_TIME;
     fp->status_vars.fox.specialhi.decelerate_wait = 0;
     fp->status_vars.fox.specialhi.pass_timer = 0;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxTravelSpanOnInit(fp);
+#endif
 }
 
 // 0x8015C4DC
@@ -385,6 +404,10 @@ void ftFoxSpecialHiEndSetStatus(GObj *fighter_gobj)
 {
     FTStruct* fp = ftGetStruct(fighter_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxTravelSpanOnEnd(fp);
+#endif
+
     if (fp->ga == nMPKineticsAir)
     {
         mpCommonSetFighterGround(fp);
@@ -395,6 +418,10 @@ void ftFoxSpecialHiEndSetStatus(GObj *fighter_gobj)
 // 0x8015C88C
 void ftFoxSpecialAirHiEndSetStatus(GObj *fighter_gobj)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxTravelSpanOnEnd(ftGetStruct(fighter_gobj));
+#endif
+
     ftMainSetStatus(fighter_gobj, nFTFoxStatusSpecialAirHiEnd, 0.0F, 1.0F, FTSTATUS_PRESERVE_COLANIM);
 }
 

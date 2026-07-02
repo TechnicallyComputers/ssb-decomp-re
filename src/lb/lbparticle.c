@@ -14,6 +14,79 @@ extern float port_widescreen_clip_x_scale(void);
 #endif
 
 #if defined(PORT) && defined(SSB64_NETMENU)
+extern void port_log(const char *fmt, ...);
+
+static LBTransform **sLBParticleTransformPoolEntries;
+static u8 *sLBParticleTransformPoolFree;
+static s32 sLBParticleTransformPoolCapacity;
+static s32 sLBParticleTransformPoolCount;
+static s32 sLBParticleStructPoolCount;
+static s32 sLBParticleGeneratorPoolCount;
+static u32 sLBParticlePoolGuardLogBudget = 64U;
+
+static s32 lbParticlePoolGuardLimit(s32 count)
+{
+	return (count > 0) ? (count + 1) : 1024;
+}
+
+static void lbParticlePoolGuardLog(const char *tag, const void *node, s32 steps)
+{
+	if (sLBParticlePoolGuardLogBudget == 0U)
+	{
+		return;
+	}
+	sLBParticlePoolGuardLogBudget--;
+	port_log(
+	    "SSB64 LBParticle: pool_guard tag=%s frame=%u node=%p steps=%d xf_used=%u pc_used=%u gn_used=%u\n",
+	    tag,
+	    (unsigned int)dSYTaskmanFrameCount,
+	    node,
+	    (int)steps,
+	    (unsigned int)gLBParticleTransformsUsedNum,
+	    (unsigned int)gLBParticleStructsUsedNum,
+	    (unsigned int)gLBParticleGeneratorsUsedNum);
+}
+
+static s32 lbParticleTransformPoolFindIndex(const LBTransform *xf)
+{
+	s32 i;
+
+	if ((xf == NULL) || (sLBParticleTransformPoolEntries == NULL))
+	{
+		return -1;
+	}
+	for (i = 0; i < sLBParticleTransformPoolCount; i++)
+	{
+		if (sLBParticleTransformPoolEntries[i] == xf)
+		{
+			return i;
+		}
+	}
+	return -1;
+}
+
+static sb32 lbParticleTransformPoolGetFree(const LBTransform *xf, sb32 *out_is_free)
+{
+	s32 index = lbParticleTransformPoolFindIndex(xf);
+
+	if ((index < 0) || (sLBParticleTransformPoolFree == NULL))
+	{
+		return FALSE;
+	}
+	*out_is_free = (sLBParticleTransformPoolFree[index] != 0) ? TRUE : FALSE;
+	return TRUE;
+}
+
+static void lbParticleTransformPoolSetFree(const LBTransform *xf, sb32 is_free)
+{
+	s32 index = lbParticleTransformPoolFindIndex(xf);
+
+	if ((index >= 0) && (sLBParticleTransformPoolFree != NULL))
+	{
+		sLBParticleTransformPoolFree[index] = (is_free != FALSE) ? 1U : 0U;
+	}
+}
+
 static sb32 lbParticleWhispyRenderDiagEnabled(void)
 {
 	const char *e = getenv("SSB64_NETPLAY_WHISPY_REPAIR_DIAG");
@@ -202,6 +275,18 @@ s32 lbParticleAllocTransforms(s32 num, size_t size)
 	s32 i;
 
 	sLBParticleTransformsAllocFree = NULL;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	sLBParticleTransformPoolEntries = syTaskmanMalloc(sizeof(*sLBParticleTransformPoolEntries) * num, 0x4);
+	sLBParticleTransformPoolFree = syTaskmanMalloc(sizeof(*sLBParticleTransformPoolFree) * num, 0x4);
+	sLBParticleTransformPoolCapacity = num;
+	sLBParticleTransformPoolCount = 0;
+	if ((sLBParticleTransformPoolEntries == NULL) || (sLBParticleTransformPoolFree == NULL))
+	{
+		sLBParticleTransformPoolEntries = NULL;
+		sLBParticleTransformPoolFree = NULL;
+		sLBParticleTransformPoolCapacity = 0;
+	}
+#endif
 	
 	for (i = 0; i < num; i++)
 	{
@@ -213,6 +298,14 @@ s32 lbParticleAllocTransforms(s32 num, size_t size)
 		}
 		xf->next = sLBParticleTransformsAllocFree;
 		sLBParticleTransformsAllocFree = xf;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		sLBParticleTransformPoolCount = i + 1;
+		if ((sLBParticleTransformPoolEntries != NULL) && (i < sLBParticleTransformPoolCapacity))
+		{
+			sLBParticleTransformPoolEntries[i] = xf;
+			sLBParticleTransformPoolFree[i] = 1U;
+		}
+#endif
 	}
 	gLBParticleTransformsUsedNum = 0;
 	D_ovl0_800D6452 = 0;
@@ -224,10 +317,21 @@ s32 lbParticleAllocTransforms(s32 num, size_t size)
 LBTransform* lbParticleGetTransform(u8 status, u16 generator_id)
 {
 	LBTransform *xf = sLBParticleTransformsAllocFree;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	sb32 is_free;
+#endif
 
 	if (xf != NULL)
 	{
         sLBParticleTransformsAllocFree = xf->next;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		if ((lbParticleTransformPoolGetFree(xf, &is_free) != FALSE) && (is_free == FALSE))
+		{
+			lbParticlePoolGuardLog("alloc_live_transform", xf, 0);
+		}
+		lbParticleTransformPoolSetFree(xf, FALSE);
+		xf->next = NULL;
+#endif
         xf->users_num = 1;
         xf->transform_id = dLBParticleCurrentTransformID;
         xf->proc_dead = NULL;
@@ -256,6 +360,25 @@ LBTransform* lbParticleGetTransform(u8 status, u16 generator_id)
 // 0x800CE188
 void lbParticleEjectTransform(LBTransform *xf)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+	sb32 is_free;
+
+	if (xf == NULL)
+	{
+		return;
+	}
+	if ((lbParticleTransformPoolGetFree(xf, &is_free) != FALSE) && (is_free != FALSE))
+	{
+		lbParticlePoolGuardLog("double_free_transform", xf, 0);
+		return;
+	}
+	if ((lbParticleTransformPoolFindIndex(xf) < 0) && (lbParticleTransformIsOnFreeList(xf) != FALSE))
+	{
+		lbParticlePoolGuardLog("double_free_untracked_transform", xf, 0);
+		return;
+	}
+	lbParticleTransformPoolSetFree(xf, TRUE);
+#endif
 	if (xf->proc_dead != NULL)
 	{
 		xf->proc_dead(xf);
@@ -375,6 +498,9 @@ GObj* lbParticleAllocStructs(s32 num)
 	LBParticle *pc;
 
 	sLBParticleStructsAllocFree = NULL;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	sLBParticleStructPoolCount = 0;
+#endif
 
 	for (i = 0; i < ARRAY_COUNT(sLBParticleStructsAllocLinks); i++)
 	{
@@ -390,6 +516,9 @@ GObj* lbParticleAllocStructs(s32 num)
 		}
 		pc->next = sLBParticleStructsAllocFree;
 		sLBParticleStructsAllocFree = pc;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		sLBParticleStructPoolCount = num - i;
+#endif
 	}
 	gLBParticleStructsUsedNum = 0;
 	D_ovl0_800D644E = 0;
@@ -2425,6 +2554,9 @@ GObj* lbParticleAllocGenerators(s32 num)
 	s32 i;
 
 	sLBParticleGeneratorsAllocFree = sLBParticleGeneratorsQueued = NULL;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	sLBParticleGeneratorPoolCount = 0;
+#endif
 
 	for (i = num - 1; i >= 0; i--)
 	{
@@ -2437,6 +2569,9 @@ GObj* lbParticleAllocGenerators(s32 num)
 		gn->next = sLBParticleGeneratorsAllocFree;
 
 		sLBParticleGeneratorsAllocFree = gn;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		sLBParticleGeneratorPoolCount = num - i;
+#endif
 	}
 	gLBParticleGeneratorsUsedNum = 0;
 	D_ovl0_800D6450 = 0;
@@ -3494,17 +3629,30 @@ void lbParticleResumeAllID(u16 generator_id, s32 link_id)
 sb32 lbParticleTransformIsOnFreeList(const LBTransform *xf)
 {
 	LBTransform *free_xf;
+	s32 steps;
+	s32 limit;
+	sb32 is_free;
 
 	if (xf == NULL)
 	{
 		return FALSE;
 	}
-	for (free_xf = sLBParticleTransformsAllocFree; free_xf != NULL; free_xf = free_xf->next)
+	if (lbParticleTransformPoolGetFree(xf, &is_free) != FALSE)
+	{
+		return is_free;
+	}
+	limit = lbParticlePoolGuardLimit(sLBParticleTransformPoolCount);
+	for (steps = 0, free_xf = sLBParticleTransformsAllocFree; (free_xf != NULL) && (steps < limit);
+	     steps++, free_xf = free_xf->next)
 	{
 		if (free_xf == xf)
 		{
 			return TRUE;
 		}
+	}
+	if (free_xf != NULL)
+	{
+		lbParticlePoolGuardLog("free_list_cycle", free_xf, steps);
 	}
 	return FALSE;
 }
@@ -3512,6 +3660,8 @@ sb32 lbParticleTransformIsOnFreeList(const LBTransform *xf)
 sb32 lbParticleTransformIsAllocated(const LBTransform *xf)
 {
 	s32 link_id;
+	s32 steps;
+	s32 limit;
 	LBParticle *pc;
 	LBGenerator *gn;
 
@@ -3525,20 +3675,31 @@ sb32 lbParticleTransformIsAllocated(const LBTransform *xf)
 	}
 	for (link_id = 0; link_id < (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks); link_id++)
 	{
-		for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+		limit = lbParticlePoolGuardLimit(sLBParticleStructPoolCount);
+		for (steps = 0, pc = sLBParticleStructsAllocLinks[link_id]; (pc != NULL) && (steps < limit);
+		     steps++, pc = pc->next)
 		{
 			if (pc->xf == xf)
 			{
 				return TRUE;
 			}
 		}
+		if (pc != NULL)
+		{
+			lbParticlePoolGuardLog("struct_link_cycle", pc, steps);
+		}
 	}
-	for (gn = sLBParticleGeneratorsQueued; gn != NULL; gn = gn->next)
+	limit = lbParticlePoolGuardLimit(sLBParticleGeneratorPoolCount);
+	for (steps = 0, gn = sLBParticleGeneratorsQueued; (gn != NULL) && (steps < limit); steps++, gn = gn->next)
 	{
 		if (gn->xf == xf)
 		{
 			return TRUE;
 		}
+	}
+	if (gn != NULL)
+	{
+		lbParticlePoolGuardLog("generator_link_cycle", gn, steps);
 	}
 	return FALSE;
 }
@@ -3546,6 +3707,8 @@ sb32 lbParticleTransformIsAllocated(const LBTransform *xf)
 LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj)
 {
 	s32 link_id;
+	s32 steps;
+	s32 limit;
 	LBParticle *pc;
 
 	if (effect_gobj == NULL)
@@ -3554,12 +3717,18 @@ LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj)
 	}
 	for (link_id = 0; link_id < (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks); link_id++)
 	{
-		for (pc = sLBParticleStructsAllocLinks[link_id]; pc != NULL; pc = pc->next)
+		limit = lbParticlePoolGuardLimit(sLBParticleStructPoolCount);
+		for (steps = 0, pc = sLBParticleStructsAllocLinks[link_id]; (pc != NULL) && (steps < limit);
+		     steps++, pc = pc->next)
 		{
 			if ((pc->xf != NULL) && (pc->xf->effect_gobj == effect_gobj))
 			{
 				return pc;
 			}
+		}
+		if (pc != NULL)
+		{
+			lbParticlePoolGuardLog("find_struct_link_cycle", pc, steps);
 		}
 	}
 	return NULL;
