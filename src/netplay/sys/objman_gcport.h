@@ -12,6 +12,7 @@ struct GObj;
  */
 u32 gcPortHashGcRunAllTraversalFingerprint(void);
 void gcPortGcRunAllTraversalFingerprintEx(u32 *gch, u32 *ngobj, u32 *ngobj_run, u32 *nproc_run);
+void gcPortSnprintGcRunAllTraversalCycleDiag(char *buf, size_t bufsize);
 void gcPortSnprintGcRunAllTraversalHeadPairs(char *buf, size_t bufsize, int max_pairs);
 
 #define GCPORT_GOBJ_EJECT_RING_DEFAULT 32

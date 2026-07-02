@@ -6,6 +6,7 @@
  */
 extern u32 gcPortHashGcRunAllTraversalFingerprint(void);
 extern void gcPortGcRunAllTraversalFingerprintEx(u32 *gch, u32 *ngobj, u32 *ngobj_run, u32 *nproc_run);
+extern void gcPortSnprintGcRunAllTraversalCycleDiag(char *buf, size_t bufsize);
 extern void gcPortSnprintGcRunAllTraversalHeadPairs(char *buf, size_t bufsize, int max_pairs);
 extern void gcPortRecordGObjEject(const struct GObj *gobj);
 extern void gcPortDumpGObjEjectRing(const char *tag, u32 load_tick);

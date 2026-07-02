@@ -1026,7 +1026,23 @@ void ftMainPlayAnim(GObj *fighter_gobj)
 
     if (fp->anim_desc.flags.is_use_transn_joint)
     {
-        fp->anim_vel = fp->joints[nFTPartsJointTransN]->translate.vec.f;
+#ifdef PORT
+        /* Same NULL-TransN guard as ftPhysicsApplyGroundVelTransN: a fighter can
+         * have anim_desc.is_use_transn_joint set while joints[nFTPartsJointTransN]
+         * is NULL -- intro-scene fighters whose hidden-part joints were never
+         * populated, and (netmenu) rollback snapshot apply that ejects a hidden-part
+         * root joint via syNetRbSnapReconcileFighterJointPresenceFromBlob (see the
+         * intro_joint_presence action=eject log). Fox firefox + Castle-bumper knockback
+         * reached this at soak2 @1182615431 tick 2551, faulting at ftMainPlayAnim+0x18
+         * on both peers (deterministic, post-PASS): joints[TransN]==NULL ->
+         * ->translate.vec.f derefs 0x38. Skip the anim_vel latch when the joint is
+         * absent (leaving the prior value, matching the physics path falling through);
+         * both peers skip identically so the sim stays deterministic. */
+        if (fp->joints[nFTPartsJointTransN] != NULL)
+#endif
+        {
+            fp->anim_vel = fp->joints[nFTPartsJointTransN]->translate.vec.f;
+        }
     }
     ftParamUpdateAnimKeys(fighter_gobj);
     ftParamsUpdateFighterPartsTransform(fp->joints[nFTPartsJointTopN]);

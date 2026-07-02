@@ -2630,11 +2630,13 @@ void gcSetupObjman(GCSetup *setup)
 #include <sys/netpeer.h>
 #include <ft/fighter.h>
 #include <ft/ftdef.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define GCPORT_FNV_SEED 2166136261U
+#define GCPORT_TRAVERSAL_LINK_LIMIT 2048U
 
 typedef struct GCPortGObjEjectRecord
 {
@@ -2654,6 +2656,27 @@ static u32 gcPortFnvAccumulateU32(u32 hash, u32 value)
 	hash ^= value;
 	hash *= 16777619U;
 	return hash;
+}
+
+static void gcPortSnprintGcRunAllTraversalCycleDiagAppend(char *buf, size_t bufsize, const char *fmt, ...)
+{
+	size_t len;
+	va_list args;
+
+	if ((buf == NULL) || (bufsize == 0U))
+	{
+		return;
+	}
+	len = strlen(buf);
+	if (len >= (bufsize - 1U))
+	{
+		buf[bufsize - 1U] = '\0';
+		return;
+	}
+	va_start(args, fmt);
+	vsnprintf(buf + len, bufsize - len, fmt, args);
+	va_end(args);
+	buf[bufsize - 1U] = '\0';
 }
 
 static sb32 gcPortGObjEjectTraceEnabled(void)
@@ -2741,7 +2764,10 @@ void gcPortGcRunAllTraversalFingerprintEx(u32 *gch, u32 *ngobj, u32 *ngobj_run, 
 
 	for (i = 0; i < (s32)ARRAY_COUNT(gGCCommonLinks); i++)
 	{
-		for (gobj = gGCCommonLinks[i]; gobj != NULL; gobj = gobj->link_next)
+		u32 guard = 0U;
+
+		for (gobj = gGCCommonLinks[i]; (gobj != NULL) && (guard < GCPORT_TRAVERSAL_LINK_LIMIT);
+		     gobj = gobj->link_next, guard++)
 		{
 			u32 fold = GCPORT_FNV_SEED;
 			s32 player = -1;
@@ -2773,7 +2799,10 @@ void gcPortGcRunAllTraversalFingerprintEx(u32 *gch, u32 *ngobj, u32 *ngobj_run, 
 	}
 	for (i = (s32)ARRAY_COUNT(sGCProcessQueue) - 1; i >= 0; i--)
 	{
-		for (gobjproc = sGCProcessQueue[i]; gobjproc != NULL; gobjproc = gobjproc->priority_next)
+		u32 guard = 0U;
+
+		for (gobjproc = sGCProcessQueue[i]; (gobjproc != NULL) && (guard < GCPORT_TRAVERSAL_LINK_LIMIT);
+		     gobjproc = gobjproc->priority_next, guard++)
 		{
 			if (gobjproc->is_paused == FALSE)
 			{
@@ -2797,6 +2826,79 @@ void gcPortGcRunAllTraversalFingerprintEx(u32 *gch, u32 *ngobj, u32 *ngobj_run, 
 	{
 		*nproc_run = proc_run_count;
 	}
+}
+
+void gcPortSnprintGcRunAllTraversalCycleDiag(char *buf, size_t bufsize)
+{
+	s32 i;
+
+	if ((buf == NULL) || (bufsize == 0U))
+	{
+		return;
+	}
+	buf[0] = '\0';
+	for (i = 0; i < (s32)ARRAY_COUNT(gGCCommonLinks); i++)
+	{
+		GObj *slow = gGCCommonLinks[i];
+		GObj *fast = gGCCommonLinks[i];
+		u32 steps = 0U;
+
+		while ((fast != NULL) && (fast->link_next != NULL) && (steps < GCPORT_TRAVERSAL_LINK_LIMIT))
+		{
+			slow = slow->link_next;
+			fast = fast->link_next->link_next;
+			steps++;
+			if (slow == fast)
+			{
+				gcPortSnprintGcRunAllTraversalCycleDiagAppend(
+				    buf, bufsize, "common_cycle link=%d head=%p:g%u meet=%p:g%u steps=%u", (int)i,
+				    (void *)gGCCommonLinks[i], (gGCCommonLinks[i] != NULL) ? gGCCommonLinks[i]->id : 0U,
+				    (void *)slow, (slow != NULL) ? slow->id : 0U, steps);
+				return;
+			}
+		}
+		if (steps >= GCPORT_TRAVERSAL_LINK_LIMIT)
+		{
+			gcPortSnprintGcRunAllTraversalCycleDiagAppend(
+			    buf, bufsize, "common_limit link=%d head=%p:g%u limit=%u", (int)i, (void *)gGCCommonLinks[i],
+			    (gGCCommonLinks[i] != NULL) ? gGCCommonLinks[i]->id : 0U, GCPORT_TRAVERSAL_LINK_LIMIT);
+			return;
+		}
+	}
+	for (i = (s32)ARRAY_COUNT(sGCProcessQueue) - 1; i >= 0; i--)
+	{
+		GObjProcess *slow = sGCProcessQueue[i];
+		GObjProcess *fast = sGCProcessQueue[i];
+		u32 steps = 0U;
+
+		while ((fast != NULL) && (fast->priority_next != NULL) && (steps < GCPORT_TRAVERSAL_LINK_LIMIT))
+		{
+			slow = slow->priority_next;
+			fast = fast->priority_next->priority_next;
+			steps++;
+			if (slow == fast)
+			{
+				GObj *head_parent = (sGCProcessQueue[i] != NULL) ? sGCProcessQueue[i]->parent_gobj : NULL;
+				GObj *meet_parent = (slow != NULL) ? slow->parent_gobj : NULL;
+
+				gcPortSnprintGcRunAllTraversalCycleDiagAppend(
+				    buf, bufsize, "proc_cycle pri=%d head=%p:p%u meet=%p:p%u steps=%u", (int)i,
+				    (void *)sGCProcessQueue[i], (head_parent != NULL) ? head_parent->id : 0U, (void *)slow,
+				    (meet_parent != NULL) ? meet_parent->id : 0U, steps);
+				return;
+			}
+		}
+		if (steps >= GCPORT_TRAVERSAL_LINK_LIMIT)
+		{
+			GObj *head_parent = (sGCProcessQueue[i] != NULL) ? sGCProcessQueue[i]->parent_gobj : NULL;
+
+			gcPortSnprintGcRunAllTraversalCycleDiagAppend(
+			    buf, bufsize, "proc_limit pri=%d head=%p:p%u limit=%u", (int)i, (void *)sGCProcessQueue[i],
+			    (head_parent != NULL) ? head_parent->id : 0U, GCPORT_TRAVERSAL_LINK_LIMIT);
+			return;
+		}
+	}
+	gcPortSnprintGcRunAllTraversalCycleDiagAppend(buf, bufsize, "cycle=none");
 }
 
 u32 gcPortHashGcRunAllTraversalFingerprint(void)
