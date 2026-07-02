@@ -879,9 +879,18 @@ void lbCommonAddFighterPartsFigatree(DObj *root_dobj, void **figatree, f32 anim_
     s32 joints_walked = 0;
     s32 joints_bound  = 0;
     s32 figatree_fkind = -1;
+    s32 figatree_player = -1;
+    s32 figatree_motion_id = -1;
+    s32 figatree_status_id = -1;
     {
         FTStruct *fp = ftGetStruct(root_dobj->parent_gobj);
-        figatree_fkind = (fp != NULL) ? (s32)fp->fkind : -1;
+        if (fp != NULL)
+        {
+            figatree_fkind = (s32)fp->fkind;
+            figatree_player = (s32)fp->player;
+            figatree_motion_id = (s32)fp->motion_id;
+            figatree_status_id = (s32)fp->status_id;
+        }
     }
 #endif
 
@@ -942,13 +951,35 @@ void lbCommonAddFighterPartsFigatree(DObj *root_dobj, void **figatree, f32 anim_
      * vanilla characters bind == walked (figatree has data for every
      * joint). For synth characters whose figatree was extracted with the
      * wrong byte layout / wrong joint count, the numbers diverge. Also
-     * dumps the first 8 figatree words for byte-order sanity. */
+     * dumps the first 8 figatree words for byte-order sanity.
+     *
+     * table_ptr + table_digest additionally distinguish two different
+     * corruption classes when `bound` drops for a given `root` across
+     * calls: table_ptr changing means the caller handed us a different
+     * (mis-selected) figatree source view (e.g. a stale motion_id/status_id
+     * -> wrong shieldpose slice); table_ptr staying identical while
+     * table_digest changes means the bytes underneath that same shared
+     * pointer were mutated in place (real memory corruption of interned
+     * figatree data). See docs/bugs/netplay_kirby_shieldpose_figatree_token_corruption_2026-07-01.md. */
     {
         u32 *fw = (u32 *)figatree_start;
-        port_log("SSB64: figatree-bind fkind=%d walked=%d bound=%d root=%p"
-                 " frame=%.2f bytes[0..7]=%08X %08X %08X %08X %08X %08X %08X %08X\n",
-                 (int)figatree_fkind, (int)joints_walked, (int)joints_bound,
-                 (void *)root_dobj, (double)anim_frame,
+        u32 digest = 2166136261U;
+        s32 di;
+        s32 digest_words = joints_walked;
+        if (digest_words > 64)
+        {
+            digest_words = 64;
+        }
+        for (di = 0; di < digest_words; di++)
+        {
+            digest ^= fw[di];
+            digest *= 16777619U;
+        }
+        port_log("SSB64: figatree-bind fkind=%d player=%d motion=%d status=%d walked=%d bound=%d root=%p"
+                 " table_ptr=%p table_digest=0x%08X frame=%.2f bytes[0..7]=%08X %08X %08X %08X %08X %08X %08X %08X\n",
+                 (int)figatree_fkind, (int)figatree_player, (int)figatree_motion_id, (int)figatree_status_id,
+                 (int)joints_walked, (int)joints_bound,
+                 (void *)root_dobj, (void *)figatree_start, digest, (double)anim_frame,
                  fw[0], fw[1], fw[2], fw[3], fw[4], fw[5], fw[6], fw[7]);
     }
 #endif

@@ -20,8 +20,13 @@ extern void port_log(const char *fmt, ...);
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <lb/lbparticle.h>
+#include <sys/netinput.h>
 #include <sys/objman.h>
-extern u32 syNetInputGetTick(void);
+#include <sys/netrollback.h>
+/* Diagnostic only: joints[YRotN] local scale/translate/rotate dump for shielding fighters. See
+ * docs/bugs/netplay_guard_shield_attach_refresh_diag_2026-07-01.md. */
+extern void syNetRbSnapDiagLogGuardShieldJointPose(const char *tag);
+extern void syNetRbSnapRefreshGuardShieldYRotNDrawMatrix(GObj *fighter_gobj);
 
 static sb32 efManagerNetplaySnapshotEffectDiagEnabled(void)
 {
@@ -35,6 +40,70 @@ static sb32 efManagerNetplaySnapshotEffectDiagEnabled(void)
 	e = getenv("SSB64_NETPLAY_SNAPSHOT_EFFECT_DIAG");
 	s_env_cache = ((e != NULL) && (e[0] != '\0') && (e[0] != '0')) ? 1 : 0;
 	return (s_env_cache != 0) ? TRUE : FALSE;
+}
+
+static sb32 efManagerNetplayQuakeCameraDiagEnabled(void)
+{
+	static int s_env_cache = -999;
+	const char *e;
+
+	if (s_env_cache != -999)
+	{
+		return (s_env_cache != 0) ? TRUE : FALSE;
+	}
+	e = getenv("SSB64_NETPLAY_QUAKE_CAMERA_DIAG");
+	s_env_cache = ((e != NULL) && (e[0] != '\0') && (e[0] != '0')) ? 1 : 0;
+	return (s_env_cache != 0) ? TRUE : FALSE;
+}
+
+static sb32 efManagerNetplayShouldSuppressQuakeCameraImpulse(void)
+{
+	u32 tick;
+
+	if (syNetRollbackIsResimulating() != FALSE)
+	{
+		return TRUE;
+	}
+	tick = syNetInputGetTick();
+	return (syNetInputSimTickUsedPredictedRemote(tick) != FALSE) ? TRUE : FALSE;
+}
+
+static u32 efManagerNetplayF32Bits(f32 value)
+{
+	union
+	{
+		f32 f;
+		u32 u;
+	} bits;
+
+	bits.f = value;
+	return bits.u;
+}
+
+static void efManagerNetplayMaybeLogQuakeCameraSuppressed(GObj *effect_gobj, const Vec3f *pos)
+{
+	static u32 s_log_budget = 64U;
+	u32 tick;
+
+	if ((s_log_budget == 0U) && (efManagerNetplayQuakeCameraDiagEnabled() == FALSE))
+	{
+		return;
+	}
+	if (s_log_budget > 0U)
+	{
+		s_log_budget--;
+	}
+	tick = syNetInputGetTick();
+	port_log(
+	    "SSB64 Netplay: quake_camera_impulse_suppressed tick=%u effect_gobj_id=%u resim=%d predicted=%d "
+	    "vel=(0x%08X,0x%08X,0x%08X)\n",
+	    (unsigned int)tick,
+	    (unsigned int)((effect_gobj != NULL) ? effect_gobj->id : 0U),
+	    (int)(syNetRollbackIsResimulating() != FALSE),
+	    (int)(syNetInputSimTickUsedPredictedRemote(tick) != FALSE),
+	    (unsigned int)((pos != NULL) ? efManagerNetplayF32Bits(pos->x) : 0U),
+	    (unsigned int)((pos != NULL) ? efManagerNetplayF32Bits(pos->y) : 0U),
+	    (unsigned int)((pos != NULL) ? efManagerNetplayF32Bits(pos->z) : 0U));
 }
 
 static sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, const char **out_reason)
@@ -3874,6 +3943,44 @@ LBParticle* efManagerDustDashMakeEffect(Vec3f *pos, s32 lr, f32 scale)
 }
 
 // 0x800FF8C0
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerDamageFlyOrbsProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *ep;
+	DObj *dobj;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	dobj = DObjGetStruct(effect_gobj);
+	if ((ep == NULL) || (dobj == NULL))
+	{
+		/* See docs/bugs/netplay_kirby_vulcanjab_efstruct_null_2026-07-01.md: generic per-hit
+		 * damage-particle effects share the same rollback-prune exposure as Vulcan Jab. */
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+
+	gcPlayAnimAll(effect_gobj);
+
+	ep->effect_vars.damage_fly_orbs.lifetime--;
+
+	if (ep->effect_vars.damage_fly_orbs.lifetime < 0)
+	{
+		efManagerSetPrevStructAlloc(ep);
+		gcEjectGObj(effect_gobj);
+	}
+	else
+	{
+		dobj->translate.vec.f.x += ep->effect_vars.damage_fly_orbs.vel.x;
+		dobj->translate.vec.f.y += ep->effect_vars.damage_fly_orbs.vel.y;
+
+		ep->effect_vars.damage_fly_orbs.vel.y -= EFCOMMON_DAMAGEFLYORBS_VEL_SUB;
+	}
+}
+#else
 void efManagerDamageFlyOrbsProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -3896,8 +4003,61 @@ void efManagerDamageFlyOrbsProcUpdate(GObj *effect_gobj)
         ep->effect_vars.damage_fly_orbs.vel.y -= EFCOMMON_DAMAGEFLYORBS_VEL_SUB;
     }
 }
+#endif
 
 // 0x800FF95C
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerDamageSpawnOrbsProcUpdate(GObj *this_gobj)
+{
+	GObj *new_gobj;
+	DObj *dobj;
+	EFStruct *this_ep;
+	EFStruct *new_ep;
+	f32 vel;
+	f32 angle;
+
+	if (this_gobj == NULL)
+	{
+		return;
+	}
+	this_ep = efGetStruct(this_gobj);
+	if (this_ep == NULL)
+	{
+		gcEjectGObj(this_gobj);
+		return;
+	}
+
+	if (!(this_ep->effect_vars.damage_spawn_orbs.lifetime % EFCOMMON_DAMAGESPAWNORBS_LIFETIME_RANDOM_MOD))
+	{
+		new_gobj = efManagerMakeEffectNoForce(&dEFManagerDamageFlyOrbsEffectDesc);
+
+		if (new_gobj != NULL)
+		{
+			dobj = DObjGetStruct(new_gobj);
+			new_ep = efGetStruct(new_gobj);
+
+			dobj->translate.vec.f = this_ep->effect_vars.damage_spawn_orbs.pos;
+
+			dobj->scale.vec.f.x = dobj->scale.vec.f.y = (syUtilsRandFloat() * EFCOMMON_DAMAGESPAWNORBS_SCALE_BASE) + EFCOMMON_DAMAGESPAWNORBS_SCALE_ADD;
+
+			vel = (syUtilsRandFloat() * EFCOMMON_DAMAGESPAWNORBS_VEL_BASE) + EFCOMMON_DAMAGESPAWNORBS_VEL_ADD;
+
+			angle = (syUtilsRandFloat() * EFCOMMON_DAMAGESPAWNORBS_ANGLE_BASE) + EFCOMMON_DAMAGESPAWNORBS_ANGLE_ADD1 + EFCOMMON_DAMAGESPAWNORBS_ANGLE_ADD2;
+
+			new_ep->effect_vars.damage_fly_orbs.vel.x = __cosf(angle) * vel;
+			new_ep->effect_vars.damage_fly_orbs.vel.y = __sinf(angle) * vel;
+			new_ep->effect_vars.damage_fly_orbs.lifetime = syUtilsRandIntRange(EFCOMMON_DAMAGESPAWNORBS_LIFETIME_RANDOM_MOD) + EFCOMMON_DAMAGESPAWNORBS_LIFETIME_ADD;
+		}
+	}
+	this_ep->effect_vars.damage_spawn_orbs.lifetime--;
+
+	if (this_ep->effect_vars.damage_spawn_orbs.lifetime < 0)
+	{
+		efManagerSetPrevStructAlloc(this_ep);
+		gcEjectGObj(this_gobj);
+	}
+}
+#else
 void efManagerDamageSpawnOrbsProcUpdate(GObj *this_gobj)
 {
     GObj *new_gobj;
@@ -3939,6 +4099,7 @@ void efManagerDamageSpawnOrbsProcUpdate(GObj *this_gobj)
         gcEjectGObj(this_gobj);
     }
 }
+#endif
 
 // 0x800FFAB8
 GObj* efManagerDamageSpawnOrbsMakeEffect(Vec3f *pos)
@@ -3993,31 +4154,70 @@ void efManagerImpactWaveProcDisplay(GObj *effect_gobj)
 }
 
 // 0x800FFCA4
+#if defined(PORT) && defined(SSB64_NETMENU)
 void efManagerImpactWaveProcUpdate(GObj *effect_gobj)
 {
-    EFStruct *ep = efGetStruct(effect_gobj);
+	EFStruct *ep;
 
-    gcPlayAnimAll(effect_gobj);
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	if (ep == NULL)
+	{
+		gcEjectGObj(effect_gobj);
+		return;
+	}
 
-    if (effect_gobj->anim_frame <= 0.0F)
-    {
-        efManagerSetPrevStructAlloc(efGetStruct(effect_gobj));
-        gcEjectGObj(effect_gobj);
-    }
-    else
-    {
-        ep->effect_vars.impact_wave.alpha -= ep->effect_vars.impact_wave.decay;
+	gcPlayAnimAll(effect_gobj);
 
-        if (ep->effect_vars.impact_wave.alpha > 0xFF)
-        {
-            ep->effect_vars.impact_wave.alpha = 0xFF;
-        }
-        else if (ep->effect_vars.impact_wave.alpha < 0x00)
-        {
-            ep->effect_vars.impact_wave.alpha = 0x00;
-        }
-    }
+	if (effect_gobj->anim_frame <= 0.0F)
+	{
+		efManagerSetPrevStructAlloc(ep);
+		gcEjectGObj(effect_gobj);
+	}
+	else
+	{
+		ep->effect_vars.impact_wave.alpha -= ep->effect_vars.impact_wave.decay;
+
+		if (ep->effect_vars.impact_wave.alpha > 0xFF)
+		{
+			ep->effect_vars.impact_wave.alpha = 0xFF;
+		}
+		else if (ep->effect_vars.impact_wave.alpha < 0x00)
+		{
+			ep->effect_vars.impact_wave.alpha = 0x00;
+		}
+	}
 }
+#else
+void efManagerImpactWaveProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *ep = efGetStruct(effect_gobj);
+
+	gcPlayAnimAll(effect_gobj);
+
+	if (effect_gobj->anim_frame <= 0.0F)
+	{
+		efManagerSetPrevStructAlloc(efGetStruct(effect_gobj));
+		gcEjectGObj(effect_gobj);
+	}
+	else
+	{
+		ep->effect_vars.impact_wave.alpha -= ep->effect_vars.impact_wave.decay;
+
+		if (ep->effect_vars.impact_wave.alpha > 0xFF)
+		{
+			ep->effect_vars.impact_wave.alpha = 0xFF;
+		}
+		else if (ep->effect_vars.impact_wave.alpha < 0x00)
+		{
+			ep->effect_vars.impact_wave.alpha = 0x00;
+		}
+	}
+}
+#endif
 
 // 0x800FFD58
 GObj* efManagerImpactWaveMakeEffect(Vec3f *pos, s32 index, f32 rotate)
@@ -4051,6 +4251,43 @@ GObj* efManagerImpactAirWaveMakeEffect(Vec3f *pos, s32 index)
 }
 
 // 0x800FFE08
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerStarRodSparkProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *ep;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	if (ep == NULL)
+	{
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+
+	gcPlayAnimAll(effect_gobj);
+
+	if (effect_gobj->anim_frame <= 0.0F)
+	{
+		efManagerSetPrevStructAlloc(ep);
+		gcEjectGObj(effect_gobj);
+
+		return;
+	}
+	else
+	{
+		if (ep->effect_vars.star_rod_spark.add_timer != 0)
+		{
+			ep->effect_vars.star_rod_spark.add_timer--;
+
+			ep->effect_vars.star_rod_spark.vel.x += ep->effect_vars.star_rod_spark.add.x;
+		}
+		DObjGetStruct(effect_gobj)->translate.vec.f.x += ep->effect_vars.star_rod_spark.vel.x;
+	}
+}
+#else
 void efManagerStarRodSparkProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -4075,6 +4312,7 @@ void efManagerStarRodSparkProcUpdate(GObj *effect_gobj)
         DObjGetStruct(effect_gobj)->translate.vec.f.x += ep->effect_vars.star_rod_spark.vel.x;
     }
 }
+#endif
 
 // 0x800FFEA4
 GObj* efManagerStarRodSparkMakeEffect(Vec3f *pos, s32 lr)
@@ -4105,6 +4343,46 @@ GObj* efManagerStarRodSparkMakeEffect(Vec3f *pos, s32 lr)
 }
 
 // 0x800FFF74
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerDamageFlySparksProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *ep;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	if (ep == NULL)
+	{
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+
+	gcPlayAnimAll(effect_gobj);
+
+	if (effect_gobj->anim_frame <= 0.0F)
+	{
+		efManagerSetPrevStructAlloc(ep);
+		gcEjectGObj(effect_gobj);
+	}
+	else
+	{
+		DObj *dobj = DObjGetStruct(effect_gobj);
+
+		dobj->translate.vec.f.x += ep->effect_vars.damage_fly_sparks.vel.x;
+		dobj->translate.vec.f.y += ep->effect_vars.damage_fly_sparks.vel.y;
+
+		if (ep->effect_vars.damage_fly_sparks.add_timer != 0)
+		{
+			ep->effect_vars.damage_fly_sparks.add_timer--;
+
+			ep->effect_vars.damage_fly_sparks.vel.x += ep->effect_vars.damage_fly_sparks.add.x;
+			ep->effect_vars.damage_fly_sparks.vel.y += ep->effect_vars.damage_fly_sparks.add.y;
+		}
+	}
+}
+#else
 void efManagerDamageFlySparksProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -4132,8 +4410,68 @@ void efManagerDamageFlySparksProcUpdate(GObj *effect_gobj)
         }
     }
 }
+#endif
 
 // 0x80100030
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerDamageSpawnSparksProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *this_ep;
+	DObj *dobj;
+	EFStruct *new_ep;
+	GObj *new_gobj;
+	s32 lifetime;
+	f32 angle;
+	f32 var;
+	f32 unused;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	this_ep = efGetStruct(effect_gobj);
+	if (this_ep == NULL)
+	{
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+	lifetime = this_ep->effect_vars.damage_spawn_sparks.lifetime;
+
+	if (!(lifetime % EFCOMMON_DAMAGESPAWNSPARK_LIFETIME_MOD))
+	{
+		new_gobj = efManagerMakeEffectNoForce(&dEFManagerDamageFlySparksEffectDesc);
+
+		if (new_gobj != NULL)
+		{
+			dobj = DObjGetStruct(new_gobj);
+			new_ep = efGetStruct(new_gobj);
+
+			dobj->translate.vec.f = this_ep->effect_vars.damage_spawn_sparks.pos;
+
+			dobj->rotate.vec.f.z = syUtilsRandFloat() * F_CLC_DTOR32(360.0F);
+
+			var = dEFManagerDamageSpawnSparksAngles[ -(lifetime / EFCOMMON_DAMAGESPAWNSPARK_LIFETIME_MOD) + (EFCOMMON_DAMAGESPAWNSPARK_LIFETIME_MOD / 2) ];
+
+			angle = F_CLC_DTOR32(var);
+
+			new_ep->effect_vars.damage_fly_sparks.vel.x = __cosf(angle) * EFCOMMON_DAMAGESPAWNSPARK_VEL_BASE * this_ep->effect_vars.damage_spawn_sparks.lr;
+			new_ep->effect_vars.damage_fly_sparks.vel.y = __sinf(angle) * EFCOMMON_DAMAGESPAWNSPARK_VEL_BASE;
+
+			new_ep->effect_vars.damage_fly_sparks.add.x = -new_ep->effect_vars.damage_fly_sparks.vel.x * EFCOMMON_DAMAGESPAWNSPARK_VEL_ADD;
+			new_ep->effect_vars.damage_fly_sparks.add.y = -new_ep->effect_vars.damage_fly_sparks.vel.y * EFCOMMON_DAMAGESPAWNSPARK_VEL_ADD;
+
+			new_ep->effect_vars.damage_fly_sparks.add_timer = EFCOMMON_DAMAGESPAWNSPARK_ADD_TIMER;
+		}
+	}
+	this_ep->effect_vars.damage_spawn_sparks.lifetime--;
+
+	if (this_ep->effect_vars.damage_spawn_sparks.lifetime < 0)
+	{
+		efManagerSetPrevStructAlloc(this_ep);
+		gcEjectGObj(effect_gobj);
+	}
+}
+#else
 void efManagerDamageSpawnSparksProcUpdate(GObj *effect_gobj)
 {
     EFStruct *this_ep;
@@ -4182,6 +4520,7 @@ void efManagerDamageSpawnSparksProcUpdate(GObj *effect_gobj)
         gcEjectGObj(effect_gobj);
     }
 }
+#endif
 
 // 0x801001A8
 GObj* efManagerDamageSpawnSparksMakeEffect(Vec3f *pos, s32 lr)
@@ -4215,6 +4554,65 @@ GObj* efManagerDamageSpawnSparksRandgcMakeEffect(Vec3f *pos, s32 lr)
 }
 
 // 0x80100258
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerDamageSpawnMDustProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *this_ep;
+	DObj *dobj;
+	EFStruct *new_ep;
+	GObj *new_gobj;
+	s32 lifetime;
+	f32 angle;
+	f32 var;
+	f32 unused;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	this_ep = efGetStruct(effect_gobj);
+	if (this_ep == NULL)
+	{
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+	lifetime = this_ep->effect_vars.damage_spawn_mdust.lifetime;
+
+	if (!(lifetime % EFCOMMON_DAMAGESPAWNMDUST_LIFETIME_MOD))
+	{
+		new_gobj = efManagerMakeEffectNoForce(&dEFManagerDamageFlyMDustEffectDesc);
+
+		if (new_gobj != NULL)
+		{
+			dobj = DObjGetStruct(new_gobj);
+			new_ep = efGetStruct(new_gobj);
+
+			dobj->translate.vec.f = this_ep->effect_vars.damage_spawn_mdust.pos;
+
+			dobj->rotate.vec.f.z = syUtilsRandFloat() * F_CLC_DTOR32(360.0F);
+
+			var = dEFManagerDamageSpawnMDustAngles[ -(lifetime / EFCOMMON_DAMAGESPAWNMDUST_LIFETIME_MOD) + (EFCOMMON_DAMAGESPAWNMDUST_LIFETIME_MOD / 2) ];
+
+			angle = F_CLC_DTOR32(var);
+
+			new_ep->effect_vars.damage_fly_mdust.vel.x = __cosf(angle) * EFCOMMON_DAMAGESPAWNMDUSTVEL_BASE * this_ep->effect_vars.damage_spawn_mdust.lr;
+			new_ep->effect_vars.damage_fly_mdust.vel.y = __sinf(angle) * EFCOMMON_DAMAGESPAWNMDUSTVEL_BASE;
+
+			new_ep->effect_vars.damage_fly_mdust.add.x = -new_ep->effect_vars.damage_fly_mdust.vel.x * EFCOMMON_DAMAGESPAWNMDUSTVEL_ADD;
+			new_ep->effect_vars.damage_fly_mdust.add.y = -new_ep->effect_vars.damage_fly_mdust.vel.y * EFCOMMON_DAMAGESPAWNMDUSTVEL_ADD;
+
+			new_ep->effect_vars.damage_fly_mdust.add_timer = EFCOMMON_DAMAGESPAWNMDUST_ADD_TIMER;
+		}
+	}
+	this_ep->effect_vars.damage_spawn_mdust.lifetime--;
+
+	if (this_ep->effect_vars.damage_spawn_mdust.lifetime < 0)
+	{
+		efManagerSetPrevStructAlloc(this_ep);
+		gcEjectGObj(effect_gobj);
+	}
+}
+#else
 void efManagerDamageSpawnMDustProcUpdate(GObj *effect_gobj)
 {
     EFStruct *this_ep;
@@ -4263,6 +4661,7 @@ void efManagerDamageSpawnMDustProcUpdate(GObj *effect_gobj)
         gcEjectGObj(effect_gobj);
     }
 }
+#endif
 
 // 0x801003D0
 GObj* efManagerDamageSpawnMDustMakeEffect(Vec3f *pos, s32 lr)
@@ -4506,6 +4905,16 @@ void efManagerQuakeProcUpdate(GObj *effect_gobj)
         }
         pos.z = 0.0F;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: stripped from offline builds. Runtime: speculative netplay frames only.
+         * Quake state still advances, but predicted/resim ticks do not inject camera velocity that
+         * will be visually undone by the corrected snapshot. */
+        if (efManagerNetplayShouldSuppressQuakeCameraImpulse() != FALSE)
+        {
+            efManagerNetplayMaybeLogQuakeCameraSuppressed(effect_gobj, &pos);
+            return;
+        }
+#endif
         gmCameraSetVelAt(&pos);
     }
 }
@@ -4804,6 +5213,31 @@ GObj* efManagerFoxReflectorMakeEffect(GObj *fighter_gobj)
 }
 
 // 0x80101008
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerShieldProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *ep;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	if (ep == NULL)
+	{
+		/* See docs/bugs/netplay_kirby_vulcanjab_efstruct_null_2026-07-01.md: guard shield GObj
+		 * can outlive its EFStruct by one proc-update tick after a rollback-triggered
+		 * guard_shield_prune eject (observed shield-spam SIGSEGV, fault_addr=0xe0). */
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+
+	if (ep->effect_vars.shield.is_damage_shield != FALSE)
+	{
+		ep->effect_vars.shield.is_damage_shield = FALSE;
+	}
+}
+#else
 void efManagerShieldProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -4813,8 +5247,45 @@ void efManagerShieldProcUpdate(GObj *effect_gobj)
         ep->effect_vars.shield.is_damage_shield = FALSE;
     }
 }
+#endif
 
 // 0x80101024
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerShieldProcDisplay(GObj *effect_gobj)
+{
+	EFStruct *ep;
+	s32 id;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	if (ep == NULL)
+	{
+		/* Same rollback-prune exposure as efManagerShieldProcUpdate above; skip drawing this
+		 * tick rather than dereference the freed EFStruct. */
+		return;
+	}
+	/* Rebuild YRotN draw matrix before display (rollback figatree repair can leave mtx_translate stale).
+	 * Presentation-only; animlock-safe — see syNetRbSnapRefreshGuardShieldYRotNDrawMatrix. */
+	if (ep->fighter_gobj != NULL)
+	{
+		syNetRbSnapRefreshGuardShieldYRotNDrawMatrix(ep->fighter_gobj);
+	}
+	/* Diagnostic only: ground-truth of what is about to be rendered this frame — see
+	 * syNetRbSnapDiagLogGuardShieldJointPose for why the shield's apparent size/depth lives on
+	 * joints[YRotN], not this GObj's own DObj. Gated by SSB64_NETPLAY_GUARD_SHIELD_JOINT_POSE_DIAG=1. */
+	syNetRbSnapDiagLogGuardShieldJointPose("shield_draw");
+	id = (ep->effect_vars.shield.is_damage_shield != FALSE) ? 4 : ep->effect_vars.shield.player;
+
+	gDPPipeSync(gSYTaskmanDLHeads[1]++);
+	gDPSetPrimColor(gSYTaskmanDLHeads[1]++, 0, 0, dEFManagerShieldColors[id].prim.r, dEFManagerShieldColors[id].prim.g, dEFManagerShieldColors[id].prim.b, 0xC0);
+	gDPSetEnvColor(gSYTaskmanDLHeads[1]++, dEFManagerShieldColors[id].env.r, dEFManagerShieldColors[id].env.g, dEFManagerShieldColors[id].env.b, 0xC0);
+
+	gcDrawDObjTreeDLLinksForGObj(effect_gobj);
+}
+#else
 void efManagerShieldProcDisplay(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -4826,6 +5297,7 @@ void efManagerShieldProcDisplay(GObj *effect_gobj)
 
     gcDrawDObjTreeDLLinksForGObj(effect_gobj);
 }
+#endif
 
 // 0x80101108
 GObj* efManagerShieldMakeEffect(GObj *fighter_gobj)
@@ -4857,6 +5329,48 @@ GObj* efManagerShieldMakeEffect(GObj *fighter_gobj)
 }
 
 // 0x80101180
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerYoshiShieldProcDisplay(GObj *effect_gobj)
+{
+	EFStruct *ep;
+	FTStruct *fp;
+	f32 blend;
+	u8 color[3];
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	if ((ep == NULL) || (ep->fighter_gobj == NULL))
+	{
+		/* Same rollback-prune exposure as efManagerShieldProcUpdate; skip drawing this tick
+		 * rather than dereference the freed EFStruct/stale fighter_gobj link. */
+		return;
+	}
+	fp = ftGetStruct(ep->fighter_gobj);
+	if (fp == NULL)
+	{
+		return;
+	}
+	blend = 1.0F - (fp->shield_health / 55.0F);
+
+	if (blend < 0.0F)
+	{
+		blend = 0.0F;
+	}
+	color[0] = 0xAE * blend;
+	color[1] = 0xD6 * blend;
+	color[2] = 0xD6 * blend;
+
+	gDPPipeSync(gSYTaskmanDLHeads[1]++);
+	gDPSetEnvColor(gSYTaskmanDLHeads[1]++, color[0], color[1], color[2], 0x00);
+
+	gcDrawDObjDLHead1(effect_gobj);
+
+	efDisplayCLDProcDisplay(effect_gobj);
+}
+#else
 void efManagerYoshiShieldProcDisplay(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -4879,6 +5393,7 @@ void efManagerYoshiShieldProcDisplay(GObj *effect_gobj)
 
     efDisplayCLDProcDisplay(effect_gobj);
 }
+#endif
 
 // 0x80101374
 GObj* efManagerYoshiShieldMakeEffect(GObj *fighter_gobj)
@@ -5261,6 +5776,50 @@ GObj* efManagerPikachuThunderJoltMakeEffect(Vec3f *pos, f32 rotate)
 }
 
 // 0x80101CA0
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerKirbyVulcanJabProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *ep;
+	DObj *dobj;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	dobj = DObjGetStruct(effect_gobj);
+	if ((ep == NULL) || (dobj == NULL))
+	{
+		/*
+		 * Netplay rollback can prune/reconcile transient per-hit attack effects (e.g. the generic
+		 * slot_effect_enforce ejection pass) between this GObj being linked into the update chain
+		 * and its next proc-update tick, leaving ep/dobj NULL. Observed as a SIGSEGV inside this
+		 * function (fault deref at a small EFStruct offset off a NULL ep) when Kirby's rapid jab
+		 * (Vulcan Jab) hit-effect GObjs outlive a guard-hit reconciliation pass on the same tick.
+		 * Same defect shape as efManagerImpactWaveProcUpdate (Fox Firefox charge quake VFX). See
+		 * docs/bugs/netplay_kirby_vulcanjab_efstruct_null_2026-07-01.md.
+		 */
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+
+	if (ep->effect_vars.vulcan_jab.lifetime != 0)
+	{
+		ep->effect_vars.vulcan_jab.vel.x += ep->effect_vars.vulcan_jab.add.x;
+		dobj->translate.vec.f.x += ep->effect_vars.vulcan_jab.vel.x;
+
+		ep->effect_vars.vulcan_jab.vel.y += ep->effect_vars.vulcan_jab.add.y;
+		dobj->translate.vec.f.y += ep->effect_vars.vulcan_jab.vel.y;
+
+		ep->effect_vars.vulcan_jab.lifetime--;
+	}
+	else
+	{
+		efManagerSetPrevStructAlloc(ep);
+		gcEjectGObj(effect_gobj);
+	}
+}
+#else
 void efManagerKirbyVulcanJabProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -5282,6 +5841,7 @@ void efManagerKirbyVulcanJabProcUpdate(GObj *effect_gobj)
         gcEjectGObj(effect_gobj);
     }
 }
+#endif
 
 // 0x80101D34
 GObj* efManagerKirbyVulcanJabMakeEffect(Vec3f *pos, s32 lr, f32 rotate, f32 vel, f32 add)

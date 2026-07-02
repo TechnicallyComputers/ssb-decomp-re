@@ -11,8 +11,29 @@ extern void *func_800269C0_275C0(u16 id);
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 extern sb32 syNetplayRollbackSemanticsActive(void);
+extern u32 syNetInputGetTick(void);
+extern void port_log(const char *fmt, ...);
+extern char *getenv(const char *name);
+extern int atoi(const char *s);
 #include <sys/netplay_sim_quantize.h>
+#include <mp/map.h>
 #include <mp/mpcollision.h>
+
+/* Env-gated: SSB64_NETPLAY_SECTOR_ARWING_CARRY_DIAG=1. See
+ * docs/bugs/netplay_sector_z_arwing_carry_speed_fork_2026-07-01.md. */
+static sb32 grSectorArwingCarryDiagEnabled(void)
+{
+	static int s_env_cache = -999;
+	const char *e;
+
+	if (s_env_cache != -999)
+	{
+		return (s_env_cache != 0) ? TRUE : FALSE;
+	}
+	e = getenv("SSB64_NETPLAY_SECTOR_ARWING_CARRY_DIAG");
+	s_env_cache = ((e != NULL) && (e[0] != '\0') && (atoi(e) != 0)) ? 1 : 0;
+	return (s_env_cache != 0) ? TRUE : FALSE;
+}
 #endif
 
 // // // // // // // // // // // //
@@ -1101,6 +1122,59 @@ void grSectorArwingReconcileDeckYakumonoFromFlightTree(void)
     if ((sec->is_arwing_line_active == FALSE) || (sec->is_arwing_z_near == FALSE))
     {
         mpCollisionSetYakumonoPosID(1, &pos);
+    }
+    else if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        /*
+         * Rollback load skips deck-derived mp_yaku[1] restore; yakumono translate can still be the
+         * pre-load live value. UpdateCollisions would derive gMPCollisionSpeeds[1] from that stale
+         * anchor and grounded fighters slide hundreds of units during resim (Sector Z soak: Fox
+         * SpecialN on line 1). Snap translate to the flight-tree pos with zero speed when the gap
+         * exceeds one frame of patrol motion (~45 u); normal per-frame carry stays below that.
+         */
+        DObj *yakumono_dobj;
+        f32 dx;
+        f32 dy;
+        f32 dist_sq;
+        sb32 diag_on = grSectorArwingCarryDiagEnabled();
+
+        if ((gMPCollisionYakumonoDObjs != NULL) && (gMPCollisionSpeeds != NULL))
+        {
+            yakumono_dobj = gMPCollisionYakumonoDObjs->dobjs[1];
+            if (yakumono_dobj != NULL)
+            {
+                dx = pos.x - yakumono_dobj->translate.vec.f.x;
+                dy = pos.y - yakumono_dobj->translate.vec.f.y;
+                dist_sq = (dx * dx) + (dy * dy);
+                if (dist_sq > (45.0F * 45.0F))
+                {
+                    if (diag_on != FALSE)
+                    {
+                        port_log("SSB64 GRSector: arwing_carry_snap tick=%u fired=1 dist_sq=%.6f "
+                                 "old_translate=(%.6f,%.6f,%.6f) new_pos=(%.6f,%.6f,%.6f) "
+                                 "old_speed=(%.6f,%.6f,%.6f)\n",
+                                 syNetInputGetTick(), (double)dist_sq,
+                                 (double)yakumono_dobj->translate.vec.f.x,
+                                 (double)yakumono_dobj->translate.vec.f.y,
+                                 (double)yakumono_dobj->translate.vec.f.z,
+                                 (double)pos.x, (double)pos.y, (double)pos.z,
+                                 (double)gMPCollisionSpeeds[1].x, (double)gMPCollisionSpeeds[1].y,
+                                 (double)gMPCollisionSpeeds[1].z);
+                    }
+                    yakumono_dobj->translate.vec.f.x = pos.x;
+                    yakumono_dobj->translate.vec.f.y = pos.y;
+                    yakumono_dobj->translate.vec.f.z = pos.z;
+                    gMPCollisionSpeeds[1].x = 0.0F;
+                    gMPCollisionSpeeds[1].y = 0.0F;
+                    gMPCollisionSpeeds[1].z = 0.0F;
+                }
+                else if (diag_on != FALSE)
+                {
+                    port_log("SSB64 GRSector: arwing_carry_snap tick=%u fired=0 dist_sq=%.6f\n",
+                             syNetInputGetTick(), (double)dist_sq);
+                }
+            }
+        }
     }
 }
 #endif

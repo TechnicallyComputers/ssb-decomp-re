@@ -56,6 +56,7 @@ typedef enum FTStatusVarsOverlay
     nFTStatusVarsOverlayAttackLw3,
     nFTStatusVarsOverlayAttack4,
     nFTStatusVarsOverlayAttackAir,
+    nFTStatusVarsOverlayFoxSpecialHi,
     nFTStatusVarsOverlayCount
 
 } FTStatusVarsOverlay;
@@ -340,6 +341,12 @@ static inline ftCommonAttackAirStatusVars *ftStatusVarsAttackAir(const FTStruct 
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayAttackAir);
     return &((FTStruct *)(void *)fp)->status_vars.common.attackair;
+}
+
+static inline ftFoxSpecialHiStatusVars *ftStatusVarsFoxSpecialHi(const FTStruct *fp)
+{
+    ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayFoxSpecialHi);
+    return &((FTStruct *)(void *)fp)->status_vars.fox.specialhi;
 }
 
 #endif /* _FTSTATUSVARS_INLINE_DONE_ */

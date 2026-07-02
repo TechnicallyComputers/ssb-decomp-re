@@ -179,8 +179,15 @@ void ftFoxSpecialHiProcUpdate(GObj *fighter_gobj)
 void ftFoxSpecialHiProcPhysics(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    s32 decelerate_wait_before = fp->status_vars.fox.specialhi.decelerate_wait;
+#endif
 
     fp->status_vars.fox.specialhi.decelerate_wait++;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxGateLogFieldDecrement(fighter_gobj, fp, "decelerate_wait_ground", decelerate_wait_before, fp->status_vars.fox.specialhi.decelerate_wait);
+#endif
 
     if (fp->status_vars.fox.specialhi.decelerate_wait >= FTFOX_FIREFOX_DECELERATE_DELAY)
     {
@@ -193,8 +200,15 @@ void ftFoxSpecialHiProcPhysics(GObj *fighter_gobj)
 void ftFoxSpecialAirHiProcPhysics(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    s32 decelerate_wait_before = fp->status_vars.fox.specialhi.decelerate_wait;
+#endif
 
     fp->status_vars.fox.specialhi.decelerate_wait++;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxGateLogFieldDecrement(fighter_gobj, fp, "decelerate_wait_air", decelerate_wait_before, fp->status_vars.fox.specialhi.decelerate_wait);
+#endif
 
     if (fp->status_vars.fox.specialhi.decelerate_wait >= FTFOX_FIREFOX_DECELERATE_DELAY)
     {

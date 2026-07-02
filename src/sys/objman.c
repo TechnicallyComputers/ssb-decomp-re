@@ -9,6 +9,10 @@
 
 extern void port_log(const char *fmt, ...);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_resim_replay_hang_diag.h>
+#endif
+
 #ifdef PORT
 /* PORT diag: log GObj allocations for the kinds known to leak stale
  * DObj.dl_link across scene boundaries (Ground=1010, Effect=1011).
@@ -2278,6 +2282,10 @@ GObj* gcRunGObj(GObj *gobj)
 	dGCCurrentStatus = nGCStatusRunning;
 	gGCCurrentCommon = gobj;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+	syNetplayResimReplayHangDiagNoteGcRunGObj(gobj);
+#endif
+
 	gobj->func_run(gobj);
 
 	next_gobj = gobj->link_next;
@@ -2311,6 +2319,10 @@ GObjProcess* gcRunGObjProcess(GObjProcess *gobjproc)
 	gGCCurrentCommon = gobjproc->parent_gobj;
 	gGCCurrentProcess = gobjproc;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+	syNetplayResimReplayHangDiagNoteGcRunGObjProcessBegin(gobjproc);
+#endif
+
 	switch (gobjproc->kind)
 	{
 	case nGCProcessKindThread:
@@ -2324,6 +2336,9 @@ GObjProcess* gcRunGObjProcess(GObjProcess *gobjproc)
 			break;
 		}
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+		syNetplayResimReplayHangDiagNoteGcRunGObjProcessThreadRecvWait(gobjproc, gGCMesgQueue.validCount);
+#endif
 		osRecvMesg(&gGCMesgQueue, NULL, OS_MESG_BLOCK);
 		break;
 
@@ -2331,6 +2346,9 @@ GObjProcess* gcRunGObjProcess(GObjProcess *gobjproc)
 		gobjproc->exec.func(gobjproc->parent_gobj);
 		break;
 	}
+#if defined(PORT) && defined(SSB64_NETMENU)
+	syNetplayResimReplayHangDiagNoteGcRunGObjProcessEnd();
+#endif
 	next_gobjproc = gobjproc->priority_next;
 
 	gGCCurrentCommon = NULL;

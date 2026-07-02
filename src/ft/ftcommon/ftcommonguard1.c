@@ -3,6 +3,7 @@
 #include <ft/ftcommon/ftcommonfunctions.h>
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_guard_grab_diag.h>
+#include <sys/netrollbacksnapshot.h>
 #endif
 extern void *func_800269C0_275C0(u16 id);
 
@@ -287,6 +288,12 @@ void ftCommonGuardUpdateJoints(GObj *fighter_gobj)
 
         ftCommonGuardUpdateShieldCollision(fp);
         ftParamsUpdateFighterPartsTransformAll(fp->joints[nFTPartsJointYRotN]);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Diagnostic only: authoritative forward-sim baseline for the shield joint pose, to diff
+         * against the synctest probe/emergency-restore checkpoints logged by
+         * syNetRbSnapDiagLogGuardShieldJointPose elsewhere. */
+        syNetRbSnapDiagLogGuardShieldJointPose("guard_update_joints_forward");
+#endif
     }
 }
 

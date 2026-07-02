@@ -13,6 +13,7 @@ extern void port_coroutine_yield(void);
 #include <sys/netplay_save.h>
 #include <sys/netrollback.h>
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_resim_replay_hang_diag.h>
 #include <sys/netsync.h>
 #endif
 #include <sys/video.h>
@@ -291,6 +292,14 @@ void scVSBattleFuncUpdate(void)
 	if (syNetInputStrictContractSkippedPublishThisPass() == FALSE)
 	{
 		syNetRollbackAfterBattleUpdate();
+		/*
+		 * Sim-state/fighter-slot-hash diagnostic trace: must run after syNetRollbackAfterBattleUpdate()
+		 * (post-quantize) and before syNetInputAdvanceAuthoritativeSimTick() so syNetInputGetTick()
+		 * still names the tick that just finished, and the logged hash matches the canonicalized state
+		 * syNetFrameCommitBuildToken compares — not the raw pre-quantize live state. See
+		 * docs/bugs/netplay_sim_state_trace_pre_quantize_diag_2026-07-01.md.
+		 */
+		syNetPeerMaybeLogSimStateTickTrace();
 		syNetInputAdvanceAuthoritativeSimTick();
 		syNetPeerFrameCommitAfterCompletedSimStep();
 	}
@@ -304,6 +313,7 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 	{
 		return;
 	}
+	syNetplayResimReplayHangDiagNoteBattleSimOnlyBegin("battle_sim_only");
 	syNetRbSnapshotPreSimUnhalfswapIntroAppearAnim();
 	syNetRbSnapshotPreSimUnhalfswapGameplayResimAnim();
 	ifCommonBattleUpdateInterfaceAll();
@@ -321,6 +331,7 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 	}
 	syNetRollbackAfterBattleUpdate();
 	syNetInputAdvanceAuthoritativeSimTick();
+	syNetplayResimReplayHangDiagNoteBattleSimOnlyEnd();
 }
 
 /*
