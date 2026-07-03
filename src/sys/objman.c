@@ -2343,6 +2343,69 @@ GObjProcess* gcRunGObjProcess(GObjProcess *gobjproc)
 		break;
 
 	case nGCProcessKindFunc:
+#if defined(PORT) && defined(SSB64_NETMENU)
+		if (gobjproc->parent_gobj == NULL)
+		{
+			GObjProcess *free_gobjproc;
+			u32 free_guard;
+			sb32 is_on_free_list;
+
+			next_gobjproc = gobjproc->priority_next;
+#if defined(SSB64_NETMENU)
+			port_log("SSB64: gcRunGObjProcess ZOMBIE_FUNC_PROC proc=%p priority=%u kind=%u - unlinking\n",
+			         (void *)gobjproc,
+			         (unsigned int)gobjproc->priority,
+			         (unsigned int)gobjproc->kind);
+#endif
+			is_on_free_list = FALSE;
+			for (free_gobjproc = sGCProcessHead, free_guard = 0U;
+			     (free_gobjproc != NULL) && (free_guard < 4096U);
+			     free_gobjproc = free_gobjproc->link_next, free_guard++)
+			{
+				if (free_gobjproc == gobjproc)
+				{
+					is_on_free_list = TRUE;
+					break;
+				}
+			}
+			func_80007784(gobjproc);
+			if (is_on_free_list == FALSE)
+			{
+				if (gobjproc->link_prev != NULL)
+				{
+					gobjproc->link_prev->link_next = gobjproc->link_next;
+				}
+				if (gobjproc->link_next != NULL)
+				{
+					gobjproc->link_next->link_prev = gobjproc->link_prev;
+				}
+				gobjproc->link_prev = NULL;
+				gobjproc->link_next = NULL;
+				if ((free_gobjproc != NULL) && (free_guard >= 4096U))
+				{
+					port_log("SSB64: gcRunGObjProcess ZOMBIE_FUNC_PROC proc=%p free-list walk capped - not pushing\n",
+					         (void *)gobjproc);
+				}
+				else
+				{
+					gcSetGObjProcessPrevAlloc(gobjproc);
+				}
+			}
+			else
+			{
+				port_log("SSB64: gcRunGObjProcess ZOMBIE_FUNC_PROC proc=%p already on free list - not pushing\n",
+				         (void *)gobjproc);
+			}
+#if defined(PORT) && defined(SSB64_NETMENU)
+			syNetplayResimReplayHangDiagNoteGcRunGObjProcessEnd();
+#endif
+			gGCCurrentCommon = NULL;
+			gGCCurrentProcess = NULL;
+			dGCCurrentStatus = nGCStatusSystem;
+			sGCRunStatus = nGCRunStatusDefault;
+			return next_gobjproc;
+		}
+#endif
 		gobjproc->exec.func(gobjproc->parent_gobj);
 		break;
 	}
