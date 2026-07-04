@@ -216,6 +216,9 @@ void ftFoxSpecialAirHiProcPhysics(GObj *fighter_gobj)
         fp->physics.vel_air.y -= (FTFOX_FIREFOX_DECELERATE_VEL * __sinf(fp->status_vars.fox.specialhi.angle));
     }
     ftFoxSpecialHiUpdateModelPitch(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxTraceState("physics_air", fp, 0U, -1);
+#endif
 }
 
 // 0x8015C1F4
@@ -249,6 +252,9 @@ void ftFoxSpecialAirHiProcMap(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
     u16 mask;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxTraceState("map_enter", fp, 0U, -1);
+#endif
     fp->status_vars.fox.specialhi.pass_timer++;
 
     if (mpCommonCheckFighterPass(fighter_gobj, ftFoxSpecialHiProcPass) != FALSE)
@@ -257,6 +263,9 @@ void ftFoxSpecialAirHiProcMap(GObj *fighter_gobj)
 
         if (!(mask & MAP_FLAG_FLOOR) || (lbCommonCheckAdjustSim2D(&fp->physics.vel_air, &fp->coll_data.floor_angle, FTFOX_FIREFOX_BOUND_ANGLE) == FALSE))
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            syNetplayFoxFirefoxTraceState("map_floor_end", fp, mask, FALSE);
+#endif
             if (syVectorAngleDiff3D(&fp->coll_data.floor_angle, &fp->physics.vel_air) > F_CST_DTOR32(110.0F)) // 1.9198622F
             {
                 ftFoxSpecialAirHiBoundSetStatus(fighter_gobj);
@@ -293,6 +302,9 @@ void ftFoxSpecialAirHiProcMap(GObj *fighter_gobj)
         fp->status_vars.fox.specialhi.angle = syUtilsArcTan2(fp->physics.vel_air.y, fp->physics.vel_air.x * fp->lr);
 
         ftFoxSpecialHiUpdateModelPitch(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetplayFoxFirefoxTraceState("map_coll_adjust", fp, mask, TRUE);
+#endif
     }
 }
 
@@ -380,6 +392,9 @@ void ftFoxSpecialAirHiSetStatusFromGround(GObj *fighter_gobj)
     fp->physics.vel_air.y = (__sinf(fp->status_vars.fox.specialhi.angle) * FTFOX_FIREFOX_VEL);
 
     ftFoxSpecialHiUpdateModelPitch(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    syNetplayFoxFirefoxTraceState("launch_air", fp, 0U, TRUE);
+#endif
 
     fp->jumps_used = attr->jumps_max;
 }

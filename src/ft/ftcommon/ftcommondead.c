@@ -215,6 +215,7 @@ void ftCommonDeadCheckRebirth(GObj *fighter_gobj)
              (gSCManagerBattleState->players[fp->player].pkind == nFTPlayerKindMan) &&
              (gSCManagerBattleState->players[fp->player].stock_count == -1))
     {
+        ftCommonDeadClearGateWait(fp);
         ftCommonSleepSetStatus(fighter_gobj);
         return;
     }

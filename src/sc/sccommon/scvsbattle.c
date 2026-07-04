@@ -13,6 +13,7 @@ extern void port_coroutine_yield(void);
 #include <sys/netplay_save.h>
 #include <sys/netrollback.h>
 #include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
 #include <sys/netplay_resim_replay_hang_diag.h>
 #include <sys/netsync.h>
 #endif
@@ -247,6 +248,18 @@ void scVSBattleFuncUpdate(void)
 	}
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
+	if ((syNetPeerIsVSSessionActive() != FALSE) && (syNetRollbackIsResimulating() == FALSE) &&
+	    (syNetplayRollbackLiveForwardSimEligible() != FALSE))
+	{
+		/*
+		 * Pass-platform Squat→Pass uses MPColl pos_prev integration; stale pos_prev vs TopN forks
+		 * cross-ISA translate on the diff branch (soak2 @570 Fox Pass, FC @600). Re-anchor before
+		 * gcRunAll so Pass entry reads the same integration base on both peers.
+		 */
+		syNetplayHardenPassPlatformCollBeforeSim();
+	}
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
 	if (syNetRollbackShouldDeferInterfaceDuringResimWait() == FALSE)
 	{
 		/*
@@ -300,8 +313,13 @@ void scVSBattleFuncUpdate(void)
 		 * docs/bugs/netplay_sim_state_trace_pre_quantize_diag_2026-07-01.md.
 		 */
 		syNetPeerMaybeLogSimStateTickTrace();
-		syNetInputAdvanceAuthoritativeSimTick();
+		/*
+		 * Frame-commit must run against the completed tick's snapshot before advancing the
+		 * authoritative sim counter — otherwise the client can gcRunAll the next tick first
+		 * (soak2 Android FC @600: live Kirby +1-tic artifact, Fox snap already forked @570).
+		 */
 		syNetPeerFrameCommitAfterCompletedSimStep();
+		syNetInputAdvanceAuthoritativeSimTick();
 	}
 #endif
 }
@@ -316,6 +334,7 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 	syNetplayResimReplayHangDiagNoteBattleSimOnlyBegin("battle_sim_only");
 	syNetRbSnapshotPreSimUnhalfswapIntroAppearAnim();
 	syNetRbSnapshotPreSimUnhalfswapGameplayResimAnim();
+	syNetplayHardenPassPlatformCollBeforeSim();
 	ifCommonBattleUpdateInterfaceAll();
 	syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
 	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&

@@ -85,6 +85,136 @@ GObjProcess *sGCProcessHead;
 GObjProcess *sGCProcessQueue[6];
 u32 sGCProcessesActive;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+#define GCPORT_PROCESS_QUEUE_REPAIR_LIMIT 2048U
+
+static void gcPortClearGObjProcessPriorityLinks(GObjProcess *gobjproc)
+{
+	if (gobjproc == NULL)
+	{
+		return;
+	}
+	gobjproc->priority_next = NULL;
+	gobjproc->priority_prev = NULL;
+}
+
+static sb32 gcPortGObjProcessIsOnFreeList(GObjProcess *gobjproc)
+{
+	GObjProcess *cur;
+	u32 guard;
+
+	if (gobjproc == NULL)
+	{
+		return FALSE;
+	}
+	for (cur = sGCProcessHead, guard = 0U; (cur != NULL) && (guard < GCPORT_PROCESS_QUEUE_REPAIR_LIMIT);
+	     cur = cur->link_next, guard++)
+	{
+		if (cur == gobjproc)
+		{
+			return TRUE;
+		}
+	}
+	if (guard >= GCPORT_PROCESS_QUEUE_REPAIR_LIMIT)
+	{
+		port_log("SSB64: gobjproc_free_list_scan_capped proc=%p head=%p\n",
+		         (void *)gobjproc,
+		         (void *)sGCProcessHead);
+	}
+	return FALSE;
+}
+
+static sb32 gcPortTryUnlinkGObjProcessFromPriorityQueue(GObjProcess *gobjproc, const char *site)
+{
+	GObjProcess *prev;
+	GObjProcess *cur;
+	u32 guard;
+	s32 priority;
+	s32 queue_idx;
+
+	if (gobjproc == NULL)
+	{
+		return FALSE;
+	}
+	priority = gobjproc->priority;
+	if ((priority < 0) || (priority >= (s32)ARRAY_COUNT(sGCProcessQueue)))
+	{
+		if ((gobjproc->priority_next != NULL) || (gobjproc->priority_prev != NULL))
+		{
+			port_log("SSB64: gobjproc_priority_invalid site=%s proc=%p priority=%d next=%p prev=%p\n",
+			         (site != NULL) ? site : "?",
+			         (void *)gobjproc,
+			         (int)priority,
+			         (void *)gobjproc->priority_next,
+			         (void *)gobjproc->priority_prev);
+		}
+	}
+	for (queue_idx = 0; queue_idx < (s32)ARRAY_COUNT(sGCProcessQueue); queue_idx++)
+	{
+		prev = NULL;
+		cur = sGCProcessQueue[queue_idx];
+		for (guard = 0U; (cur != NULL) && (guard < GCPORT_PROCESS_QUEUE_REPAIR_LIMIT);
+		     guard++, prev = cur, cur = cur->priority_next)
+		{
+			if (cur == gobjproc)
+			{
+				if (prev != NULL)
+				{
+					prev->priority_next = cur->priority_next;
+				}
+				else
+				{
+					sGCProcessQueue[queue_idx] = cur->priority_next;
+				}
+				if (cur->priority_next != NULL)
+				{
+					cur->priority_next->priority_prev = prev;
+				}
+				if ((cur->priority_prev != prev) || (queue_idx != priority))
+				{
+					GObj *parent = cur->parent_gobj;
+
+					port_log("SSB64: gobjproc_priority_unlink_repaired site=%s proc=%p parent_id=%u priority=%d queue=%d stale_prev=%p scan_prev=%p next=%p\n",
+					         (site != NULL) ? site : "?",
+					         (void *)cur,
+					         (parent != NULL) ? parent->id : 0U,
+					         (int)priority,
+					         (int)queue_idx,
+					         (void *)cur->priority_prev,
+					         (void *)prev,
+					         (void *)cur->priority_next);
+				}
+				gcPortClearGObjProcessPriorityLinks(cur);
+				return TRUE;
+			}
+		}
+		if (guard >= GCPORT_PROCESS_QUEUE_REPAIR_LIMIT)
+		{
+			port_log("SSB64: gobjproc_priority_unlink_scan_capped site=%s proc=%p priority=%d queue=%d head=%p\n",
+			         (site != NULL) ? site : "?",
+			         (void *)gobjproc,
+			         (int)priority,
+			         (int)queue_idx,
+			         (void *)sGCProcessQueue[queue_idx]);
+		}
+	}
+	if ((gobjproc->priority_next != NULL) || (gobjproc->priority_prev != NULL))
+	{
+		GObj *parent = gobjproc->parent_gobj;
+
+		port_log("SSB64: gobjproc_priority_stale_links_cleared site=%s proc=%p parent_id=%u priority=%d next=%p prev=%p\n",
+		         (site != NULL) ? site : "?",
+		         (void *)gobjproc,
+		         (parent != NULL) ? parent->id : 0U,
+		         (int)priority,
+		         (void *)gobjproc->priority_next,
+		         (void *)gobjproc->priority_prev);
+		gcPortClearGObjProcessPriorityLinks(gobjproc);
+	}
+	return FALSE;
+}
+#endif
+
 GObj *gGCCommonLinks[GC_COMMON_MAX_LINKS];
 s32 D_80046774_40794;
 GObj *sGCCommonLinks[GC_COMMON_MAX_LINKS];
@@ -287,6 +417,11 @@ GObjProcess* gcGetGObjProcess(void)
 	{
 		sGCProcessHead = syTaskmanMalloc(sizeof(GObjProcess), 4);
 		sGCProcessHead->link_next = NULL;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		sGCProcessHead->priority_next = NULL;
+		sGCProcessHead->priority_prev = NULL;
+		sGCProcessHead->priority = 0;
+#endif
 	}
 
 	if (sGCProcessHead == NULL)
@@ -297,6 +432,10 @@ GObjProcess* gcGetGObjProcess(void)
 
 	gobjproc = sGCProcessHead;
 	sGCProcessHead = sGCProcessHead->link_next;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	(void)gcPortTryUnlinkGObjProcessFromPriorityQueue(gobjproc, "alloc");
+	gcPortClearGObjProcessPriorityLinks(gobjproc);
+#endif
 	sGCProcessesActive++;
 
 	return gobjproc;
@@ -309,6 +448,13 @@ void gcLinkGObjProcess(GObjProcess *gobjproc)
 	s32 link_id = gobjproc->parent_gobj->link_id;
 	GObj *prev_gobj = gobjproc->parent_gobj;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+	/*
+	 * Netplay effect/rebirth repair can expose stale process free-list nodes after a same-frame
+	 * eject/re-mint. Never insert a process whose old priority links still point into a live queue.
+	 */
+	(void)gcPortTryUnlinkGObjProcessFromPriorityQueue(gobjproc, "link_pre");
+#endif
 	while (TRUE)
 	{
 		while (prev_gobj != NULL)
@@ -360,7 +506,26 @@ loop_break:
 // 0x80007758
 void gcSetGObjProcessPrevAlloc(GObjProcess *gobjproc)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+	/*
+	 * The free-list link reuses link_next; priority_next/prev must not keep stale queue pointers.
+	 * A later allocation can otherwise be inserted a second time and form sGCProcessQueue cycles.
+	 */
+	(void)gcPortTryUnlinkGObjProcessFromPriorityQueue(gobjproc, "free");
+	if (gcPortGObjProcessIsOnFreeList(gobjproc) != FALSE)
+	{
+		port_log("SSB64: gobjproc_free_reject reason=double_free proc=%p parent=%p priority=%d\n",
+		         (void *)gobjproc,
+		         (void *)gobjproc->parent_gobj,
+		         (int)gobjproc->priority);
+		gcPortClearGObjProcessPriorityLinks(gobjproc);
+		return;
+	}
+#endif
 	gobjproc->link_next = sGCProcessHead;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	gcPortClearGObjProcessPriorityLinks(gobjproc);
+#endif
 	sGCProcessHead = gobjproc;
 	sGCProcessesActive--;
 }
@@ -368,6 +533,14 @@ void gcSetGObjProcessPrevAlloc(GObjProcess *gobjproc)
 // 0x80007784
 void func_80007784(GObjProcess *gobjproc)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+	/*
+	 * Unlink by scanning from the queue head instead of trusting priority_prev/next. Those fields are
+	 * stale after double-end/free-list corruption, and blind splicing is what creates priority cycles.
+	 */
+	(void)gcPortTryUnlinkGObjProcessFromPriorityQueue(gobjproc, "unlink");
+	return;
+#else
 	if (gobjproc->priority_prev != NULL)
 	{
 		gobjproc->priority_prev->priority_next = gobjproc->priority_next;
@@ -378,6 +551,7 @@ void func_80007784(GObjProcess *gobjproc)
 	{
 		gobjproc->priority_next->priority_prev = gobjproc->priority_prev;
 	}
+#endif
 }
 
 // 0x800077D0
