@@ -97,6 +97,7 @@ extern void lbParticleResumeAllID(u16 generator_id, s32 link_id);
 extern sb32 lbParticleTransformIsOnFreeList(const LBTransform *xf);
 extern sb32 lbParticleTransformIsAllocated(const LBTransform *xf);
 extern LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj);
+extern void lbParticleClearStaleEffectGobjCoupling(GObj *effect_gobj);
 extern f32 lbParticleGetMaxDrawSizeForGeneratorID(u16 generator_id, s32 link_id);
 extern s32 lbParticleCountDrawableForGeneratorID(u16 generator_id, s32 link_id);
 extern s32 lbParticleCountStructsForGeneratorID(u16 generator_id, s32 link_id);

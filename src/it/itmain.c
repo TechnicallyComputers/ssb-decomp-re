@@ -8,6 +8,9 @@
 #include <config.h>
 extern void portFixupStructU16(void *base, unsigned int byte_offset, unsigned int num_words);
 extern void port_log(const char *fmt, ...);
+#if defined(SSB64_NETMENU)
+extern void syNetRbSnapshotHardenLinkBombAtThrowRelease(GObj *item_gobj);
+#endif
 /* The project's shadow <stdlib.h> doesn't expose host getenv/atoi
  * (it's the decomp's slim stdlib). Forward-declare locally for the
  * SSB64_FORCE_ITEM_KIND test hook. Real prototypes per POSIX/C99. */
@@ -460,6 +463,12 @@ void itMainSetFighterRelease(GObj *item_gobj, Vec3f *vel, f32 throw_mul, u16 sta
 
     ftParamSetHammerParams(fighter_gobj);
     itMainRefreshAttackColl(item_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (ip->kind == nITKindLinkBomb)
+    {
+        syNetRbSnapshotHardenLinkBombAtThrowRelease(item_gobj);
+    }
+#endif
 }
 
 // 0x80172AEC

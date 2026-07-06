@@ -106,7 +106,7 @@ static void efManagerNetplayMaybeLogQuakeCameraSuppressed(GObj *effect_gobj, con
 	    (unsigned int)((pos != NULL) ? efManagerNetplayF32Bits(pos->z) : 0U));
 }
 
-static sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, const char **out_reason)
+sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, const char **out_reason)
 {
 	LBParticle *pc;
 
@@ -157,6 +157,41 @@ static sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, c
 		return FALSE;
 	}
 	return TRUE;
+}
+
+/*
+ * Forward sim: bare gcEjectGObj on effect shells (jump ripple tick 419, inhale-wind recycle) can
+ * leave xf->effect_gobj on live or free-list transforms. Scrub before eject completes and before
+ * a recycled address is wired (soak2 empty inhale @441). See
+ * docs/bugs/netplay_kirby_inhale_wind_synctest_verify_sigsegv_2026-07-04.md (round 4).
+ */
+void efManagerNetplayTeardownParticleCouplingBeforeForwardEject(GObj *effect_gobj)
+{
+	LBParticle *pc;
+	LBTransform *xf;
+	EFStruct *ep;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	pc = lbParticleFindStructForEffectGobj(effect_gobj);
+	if (pc != NULL)
+	{
+		xf = pc->xf;
+		if (xf != NULL)
+		{
+			xf->proc_dead = NULL;
+			xf->effect_gobj = NULL;
+		}
+		lbParticleEjectStruct(pc);
+	}
+	lbParticleClearStaleEffectGobjCoupling(effect_gobj);
+	ep = efGetStruct(effect_gobj);
+	if (ep != NULL)
+	{
+		ep->xf = NULL;
+	}
 }
 
 static void efManagerNetplayEjectStaleXfEffect(
@@ -2698,6 +2733,15 @@ LBParticle* efManagerDestroyParticleGObj(LBParticle *pc, GObj *effect_gobj)
 // 0x800FDB88
 void efManagerDefaultProcDead(LBTransform *xf)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: stale-coupling scrub can clear xf->effect_gobj while proc_dead remains
+     * wired (Round 3 pool scrub). lbParticleEjectTransform then SIGSEGV at user_data.p (fault_addr=0xe0).
+     * See docs/bugs/netplay_kirby_inhale_wind_synctest_verify_sigsegv_2026-07-04.md (round 6). */
+    if ((xf == NULL) || (xf->effect_gobj == NULL))
+    {
+        return;
+    }
+#endif
     if (efGetStruct(xf->effect_gobj) != NULL)
     {
         EFStruct *ep = efGetStruct(xf->effect_gobj);
@@ -7468,6 +7512,12 @@ LBParticle* efManagerKirbyInhaleWindMakeEffect(GObj *fighter_gobj)
 
         return NULL;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: copy-eject / landing FX can leave stale xf->effect_gobj on recycled
+     * gobj_id=1011 before the first sustained inhale-loop wind spawn. See
+     * docs/bugs/netplay_kirby_inhale_wind_synctest_verify_sigsegv_2026-07-04.md (round 3). */
+    lbParticleClearStaleEffectGobjCoupling(effect_gobj);
+#endif
     effect_gobj->user_data.p = ep;
 
     pc = lbParticleMakeScriptID(gFTDataKirbyParticleBankID | LBPARTICLE_MASK_GENLINK(0), 0xC);
@@ -7478,6 +7528,9 @@ LBParticle* efManagerKirbyInhaleWindMakeEffect(GObj *fighter_gobj)
 
         if (xf != NULL)
         {
+            xf->effect_gobj = effect_gobj;
+            xf->proc_dead = efManagerDefaultProcDead;
+
             LBParticleProcessStruct(pc);
 
             if (xf->users_num == 0)

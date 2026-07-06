@@ -2069,6 +2069,8 @@ GObj* gcMakeGObjBefore(u32 id, void (*func_run)(GObj*), GObj *link_gobj)
 #include <sys/netinput.h>
 #include <sys/netpeer.h>
 
+extern void efManagerNetplayTeardownParticleCouplingBeforeForwardEject(GObj *effect_gobj);
+
 static sb32 gcPortGObjEjectTraceEnabled(void);
 #endif
 void gcEjectGObj(GObj *gobj)
@@ -2094,6 +2096,13 @@ void gcEjectGObj(GObj *gobj)
 #endif
 		return;
 	}
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+	if ((gobj->link_id == nGCCommonLinkIDEffect) || (gobj->link_id == nGCCommonLinkIDSpecialEffect))
+	{
+		efManagerNetplayTeardownParticleCouplingBeforeForwardEject(gobj);
+	}
+#endif
 
 	/* PORT crash-diag: log eject so we can correlate with a later crash. */
 #if defined(PORT) && defined(SSB64_NETMENU)

@@ -32,6 +32,7 @@ extern GObj* ftManagerMakeFighter(FTDesc *desc);
 #ifdef PORT
 extern void ftManagerInitFighter(GObj *fighter_gobj, FTDesc *desc);
 extern sb32 gFTManagerInitFighterSkipFloorProject;
+extern void ftManagerEnsureCopyWeaponFilesLoaded(s32 copy_id);
 #endif
 
 #endif

@@ -2,6 +2,9 @@
 #include <ft/fighter.h>
 #include <reloc_data.h>
 #ifdef PORT
+#include <ft/ftmanager.h>
+#include <ft/ftchar/ftmario/ftmario.h>
+#include <ft/ftchar/ftluigi/ftluigi.h>
 extern void *func_800269C0_275C0(u16 id);
 #endif
 
@@ -181,6 +184,14 @@ GObj* wpMarioFireballMakeWeapon(GObj *fighter_gobj, Vec3f *pos, s32 index)
 
     dWPMarioFireballWeaponDesc.p_weapon = dWPMarioFireballWeaponAttributes[index].p_weapon;
     dWPMarioFireballWeaponDesc.o_attributes = dWPMarioFireballWeaponAttributes[index].offset;
+
+#ifdef PORT
+    ftManagerEnsureCopyWeaponFilesLoaded((index == 0) ? nFTKindMario : nFTKindLuigi);
+    if (((index == 0) && (gFTMarioFileSpecial1 == NULL)) || ((index != 0) && (gFTDataLuigiSpecial1 == NULL)))
+    {
+        return NULL;
+    }
+#endif
 
     weapon_gobj = wpManagerMakeWeapon(fighter_gobj, &dWPMarioFireballWeaponDesc, pos, (WEAPON_FLAG_COLLPROJECT | WEAPON_FLAG_PARENT_FIGHTER));
 

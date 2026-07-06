@@ -3721,7 +3721,16 @@ LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj)
 		for (steps = 0, pc = sLBParticleStructsAllocLinks[link_id]; (pc != NULL) && (steps < limit);
 		     steps++, pc = pc->next)
 		{
+#if defined(PORT) && defined(SSB64_NETMENU)
+			/*
+			 * Rollback verify/eject can walk the pool while unrelated shells still carry stale xf
+			 * pointers (recycled gobj_id=1011 inhale/shield churn). Deref only pool-live transforms.
+			 */
+			if ((pc->xf != NULL) && (lbParticleTransformIsAllocated(pc->xf) != FALSE) &&
+			    (pc->xf->effect_gobj == effect_gobj))
+#else
 			if ((pc->xf != NULL) && (pc->xf->effect_gobj == effect_gobj))
+#endif
 			{
 				return pc;
 			}
@@ -3733,6 +3742,64 @@ LBParticle *lbParticleFindStructForEffectGobj(GObj *effect_gobj)
 	}
 	return NULL;
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+static void lbParticleClearEffectGobjCouplingOnTransform(LBTransform *xf, GObj *effect_gobj)
+{
+	if ((xf != NULL) && (xf->effect_gobj == effect_gobj))
+	{
+		xf->effect_gobj = NULL;
+		xf->proc_dead = NULL;
+	}
+}
+
+/*
+ * Recycled effect GObj addresses can still be referenced by unrelated particles after bare
+ * forward gcEjectGObj (jump FX tick 419 / eject tick 435) or rollback churn. Clear every pool
+ * reference to the address before wiring a new shell or completing eject.
+ */
+void lbParticleClearStaleEffectGobjCoupling(GObj *effect_gobj)
+{
+	s32 link_id;
+	s32 steps;
+	s32 limit;
+	LBParticle *pc;
+	LBTransform *free_xf;
+	LBGenerator *gn;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	for (link_id = 0; link_id < (s32)ARRAY_COUNT(sLBParticleStructsAllocLinks); link_id++)
+	{
+		limit = lbParticlePoolGuardLimit(sLBParticleStructPoolCount);
+		for (steps = 0, pc = sLBParticleStructsAllocLinks[link_id]; (pc != NULL) && (steps < limit);
+		     steps++, pc = pc->next)
+		{
+			lbParticleClearEffectGobjCouplingOnTransform(pc->xf, effect_gobj);
+		}
+		if (pc != NULL)
+		{
+			lbParticlePoolGuardLog("clear_coupling_link_cycle", pc, steps);
+		}
+	}
+	limit = lbParticlePoolGuardLimit(sLBParticleTransformPoolCount);
+	for (steps = 0, free_xf = sLBParticleTransformsAllocFree; (free_xf != NULL) && (steps < limit);
+	     steps++, free_xf = free_xf->next)
+	{
+		lbParticleClearEffectGobjCouplingOnTransform(free_xf, effect_gobj);
+	}
+	if (free_xf != NULL)
+	{
+		lbParticlePoolGuardLog("clear_coupling_free_cycle", free_xf, steps);
+	}
+	for (gn = sLBParticleGeneratorsQueued; gn != NULL; gn = gn->next)
+	{
+		lbParticleClearEffectGobjCouplingOnTransform(gn->xf, effect_gobj);
+	}
+}
+#endif
 
 f32 lbParticleGetMaxDrawSizeForGeneratorID(u16 generator_id, s32 link_id)
 {

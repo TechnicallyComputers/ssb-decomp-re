@@ -136,8 +136,20 @@ GObj* wpManagerMakeWeapon(GObj *parent_gobj, WPDesc *wp_desc, Vec3f *spawn_pos, 
         wpManagerSetPrevStructAlloc(wp);
         return NULL;
     }
+#ifdef PORT
+    if ((wp_desc == NULL) || (wp_desc->p_weapon == NULL) || (*wp_desc->p_weapon == NULL))
+    {
+        wpManagerSetPrevStructAlloc(wp);
+        return NULL;
+    }
+#endif
     attr = lbRelocGetFileData(WPAttributes*, *wp_desc->p_weapon, wp_desc->o_attributes); // I hope this is correct?
 #ifdef PORT
+    if (attr == NULL)
+    {
+        wpManagerSetPrevStructAlloc(wp);
+        return NULL;
+    }
     portFixupStructU16(attr, 0x10, 6); // Rotate16 u16 fields: Vec3h[2] + s16[4] + u16 + pad
 #endif
     weapon_gobj->user_data.p = wp;

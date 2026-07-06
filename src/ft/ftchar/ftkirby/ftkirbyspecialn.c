@@ -2,6 +2,80 @@
 #include <reloc_data.h>
 extern void *func_800269C0_275C0(u16 id);
 
+#ifdef PORT
+#define FTKIRBY_COPY_TABLE_COUNT 27
+
+static FTKirbyCopy *ftKirbySpecialNGetCopyTable(const FTStruct *fp)
+{
+    if (fp == NULL)
+    {
+        return NULL;
+    }
+    if (fp->fkind == nFTKindNKirby)
+    {
+        return lbRelocGetFileData(FTKirbyCopy*, gFTDataNKirbySubMotion, llKirbyMainMotionSpecialNFTKirbyCopy);
+    }
+    return lbRelocGetFileData(FTKirbyCopy*, gFTDataKirbyMainMotion, llKirbyMainMotionSpecialNFTKirbyCopy);
+}
+
+static s16 ftKirbySpecialNResolveInhaledCopyId(const FTStruct *kirby_fp, const FTStruct *victim_fp, FTKirbyCopy *copy)
+{
+    if ((kirby_fp == NULL) || (victim_fp == NULL))
+    {
+        return nFTKindKirby;
+    }
+    if ((victim_fp->fkind == nFTKindKirby) || (victim_fp->fkind == nFTKindNKirby))
+    {
+        return (s16)victim_fp->passive_vars.kirby.copy_id;
+    }
+    if ((victim_fp->fkind >= 0) && (victim_fp->fkind < FTKIRBY_COPY_TABLE_COUNT))
+    {
+        /* Dispatch table index matches victim fkind for vanilla roster entries. */
+        return (s16)victim_fp->fkind;
+    }
+    if ((copy != NULL) && (victim_fp->fkind >= 0) && (victim_fp->fkind < FTKIRBY_COPY_TABLE_COUNT))
+    {
+        return copy[victim_fp->fkind].copy_id;
+    }
+    return nFTKindKirby;
+}
+
+#if defined(SSB64_NETMENU)
+#include <stdlib.h>
+
+extern void port_log(const char *fmt, ...);
+
+static sb32 ftKirbySpecialNInhaleCopyTraceEnabled(void)
+{
+    static sb32 cached = -1;
+    const char *env;
+
+    if (cached >= 0)
+    {
+        return cached;
+    }
+    env = getenv("SSB64_NETPLAY_KIRBY_INHALE_COPY_TRACE");
+    cached = ((env != NULL) && (env[0] != '\0') && (env[0] != '0')) ? TRUE : FALSE;
+    return cached;
+}
+
+static void ftKirbySpecialNLogInhaleCopyTrace(const FTStruct *kirby_fp, const char *phase, s16 status_copy_id,
+                                               s16 passive_copy_id, s16 resolved_copy_id, const FTStruct *victim_fp)
+{
+    if ((kirby_fp == NULL) || (ftKirbySpecialNInhaleCopyTraceEnabled() == FALSE))
+    {
+        return;
+    }
+    port_log(
+        "SSB64 KirbyInhaleCopy: %s player=%d status=%d passive=%d status_copy=%d resolved=%d victim_fkind=%d "
+        "victim_passive=%d\n",
+        phase, (int)kirby_fp->player, (int)kirby_fp->status_id, (int)passive_copy_id, (int)status_copy_id,
+        (int)resolved_copy_id, (victim_fp != NULL) ? (int)victim_fp->fkind : -1,
+        (victim_fp != NULL) ? (int)victim_fp->passive_vars.kirby.copy_id : -1);
+}
+#endif
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //             MACROS            //
@@ -110,15 +184,36 @@ void ftKirbySpecialNInitPassiveVars(FTStruct *fp)
 void ftKirbySpecialNCopyInitCopyVars(GObj *fighter_gobj)
 {
     s16 copy_id;
+    s32 modelpart_id;
     FTStruct *fp = ftGetStruct(fighter_gobj);
 #ifdef PORT
-    FTKirbyCopy *copy = lbRelocGetFileData(FTKirbyCopy*, gFTDataKirbyMainMotion, llKirbyMainMotionSpecialNFTKirbyCopy);
+    FTKirbyCopy *copy = ftKirbySpecialNGetCopyTable(fp);
 #else
     FTKirbyCopy *copy = lbRelocGetFileData(FTKirbyCopy*, gFTDataKirbyMainMotion, &llKirbyMainMotionSpecialNFTKirbyCopy);
 #endif
 
     if (fp->motion_vars.flags.flag1 != 0)
     {
+#if defined(PORT)
+        {
+            FTStruct *victim_fp = NULL;
+            s16 resolved_copy_id;
+
+            if (fp->catch_gobj != NULL)
+            {
+                victim_fp = ftGetStruct(fp->catch_gobj);
+            }
+            resolved_copy_id = ftKirbySpecialNResolveInhaledCopyId(fp, victim_fp, copy);
+            if (fp->status_vars.kirby.specialn.copy_id != resolved_copy_id)
+            {
+                fp->status_vars.kirby.specialn.copy_id = resolved_copy_id;
+            }
+#if defined(SSB64_NETMENU)
+            ftKirbySpecialNLogInhaleCopyTrace(fp, "copy_init", fp->status_vars.kirby.specialn.copy_id,
+                                              fp->passive_vars.kirby.copy_id, resolved_copy_id, victim_fp);
+#endif
+        }
+#endif
         if (fp->passive_vars.kirby.copy_id == fp->status_vars.kirby.specialn.copy_id)
         {
             func_800269C0_275C0(nSYAudioFGMKirbySpecialNCopyUnk); // SFX?
@@ -130,7 +225,16 @@ void ftKirbySpecialNCopyInitCopyVars(GObj *fighter_gobj)
             copy_id = fp->status_vars.kirby.specialn.copy_id;
             fp->passive_vars.kirby.copy_id = copy_id;
 
-            ftParamSetModelPartDefaultID(fighter_gobj, FTKIRBY_COPY_MODELPARTS_JOINT, copy[copy_id].copy_modelpart_id);
+            modelpart_id = 0;
+#ifdef PORT
+            if ((copy != NULL) && (copy_id >= 0) && (copy_id < FTKIRBY_COPY_TABLE_COUNT))
+#else
+            if (copy_id >= 0)
+#endif
+            {
+                modelpart_id = copy[copy_id].copy_modelpart_id;
+            }
+            ftParamSetModelPartDefaultID(fighter_gobj, FTKIRBY_COPY_MODELPARTS_JOINT, modelpart_id);
             ftParamResetModelPartAll(fighter_gobj);
             ftKirbySpecialNInitPassiveVars(fp);
         }
@@ -175,13 +279,14 @@ void ftKirbySpecialNCatchProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *kirby_fp = ftGetStruct(fighter_gobj);
 #ifdef PORT
-    FTKirbyCopy *copy = lbRelocGetFileData(FTKirbyCopy*, gFTDataKirbyMainMotion, llKirbyMainMotionSpecialNFTKirbyCopy);
+    FTKirbyCopy *copy = ftKirbySpecialNGetCopyTable(kirby_fp);
 #else
     FTKirbyCopy *copy = lbRelocGetFileData(FTKirbyCopy*, gFTDataKirbyMainMotion, &llKirbyMainMotionSpecialNFTKirbyCopy);
 #endif
     FTStruct *victim_fp;
     Vec3f kirby_pos;
     f32 dist;
+    s16 resolved_copy_id;
 
     ftKirbySpecialNAddCaptureDistance(kirby_fp, fighter_gobj, &kirby_pos);
 
@@ -195,10 +300,22 @@ void ftKirbySpecialNCatchProcUpdate(GObj *fighter_gobj)
 
         if ((victim_fp->fkind == nFTKindKirby) || (victim_fp->fkind == nFTKindNKirby))
         {
-            kirby_fp->status_vars.kirby.specialn.copy_id = victim_fp->passive_vars.kirby.copy_id;
             ftStatusVarsCaptureKirby(victim_fp)->is_kirby = TRUE;
         }
+#ifdef PORT
+        resolved_copy_id = ftKirbySpecialNResolveInhaledCopyId(kirby_fp, victim_fp, copy);
+        kirby_fp->status_vars.kirby.specialn.copy_id = resolved_copy_id;
+#if defined(SSB64_NETMENU)
+        ftKirbySpecialNLogInhaleCopyTrace(kirby_fp, "catch", kirby_fp->status_vars.kirby.specialn.copy_id,
+                                          kirby_fp->passive_vars.kirby.copy_id, resolved_copy_id, victim_fp);
+#endif
+#else
+        if ((victim_fp->fkind == nFTKindKirby) || (victim_fp->fkind == nFTKindNKirby))
+        {
+            kirby_fp->status_vars.kirby.specialn.copy_id = victim_fp->passive_vars.kirby.copy_id;
+        }
         else kirby_fp->status_vars.kirby.specialn.copy_id = copy[victim_fp->fkind].copy_id;
+#endif
 
         func_800269C0_275C0(nSYAudioFGMKirbySpecialNCopyEat);
 

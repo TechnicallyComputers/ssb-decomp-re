@@ -252,11 +252,13 @@ void scVSBattleFuncUpdate(void)
 	    (syNetplayRollbackLiveForwardSimEligible() != FALSE))
 	{
 		/*
-		 * Pass-platform Squat→Pass uses MPColl pos_prev integration; stale pos_prev vs TopN forks
-		 * cross-ISA translate on the diff branch (soak2 @570 Fox Pass, FC @600). Re-anchor before
-		 * gcRunAll so Pass entry reads the same integration base on both peers.
+		 * Pass-platform grounded fighters use MPColl pos_prev integration; stale pos_prev vs TopN forks
+		 * cross-ISA translate on pass floors (soak2 Fox Squat→Pass @570; Link/Kirby Wait/Turn @481+).
+		 * Re-anchor before gcRunAll so both peers share the same integration base.
 		 */
 		syNetplayHardenPassPlatformCollBeforeSim();
+		syNetplayHardenAirborneDamageKnockbackCollBeforeSim();
+		syNetRbSnapshotPreSimLinkBombAirborneMPCollHardening();
 	}
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
@@ -335,6 +337,8 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 	syNetRbSnapshotPreSimUnhalfswapIntroAppearAnim();
 	syNetRbSnapshotPreSimUnhalfswapGameplayResimAnim();
 	syNetplayHardenPassPlatformCollBeforeSim();
+	syNetplayHardenAirborneDamageKnockbackCollBeforeSim();
+	syNetRbSnapshotPreSimLinkBombAirborneMPCollHardening();
 	ifCommonBattleUpdateInterfaceAll();
 	syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
 	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&

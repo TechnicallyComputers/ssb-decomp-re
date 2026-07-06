@@ -401,6 +401,39 @@ void ftManagerSetupFilesAllKind(s32 fkind)
     }
 }
 
+#ifdef PORT
+#include <ft/ftchar/ftmario/ftmario.h>
+#include <ft/ftchar/ftluigi/ftluigi.h>
+
+void ftManagerEnsureCopyWeaponFilesLoaded(s32 copy_id)
+{
+    /* Kirby copy fireballs index Mario/Luigi weapon files that are only loaded
+     * when that fighter is in the match. Lazy-load before wpManagerMakeWeapon. */
+    switch (copy_id)
+    {
+    case nFTKindMario:
+    case nFTKindMMario:
+    case nFTKindNMario:
+        if (gFTMarioFileSpecial1 == NULL)
+        {
+            ftManagerSetupFilesAllKind(nFTKindMario);
+        }
+        break;
+
+    case nFTKindLuigi:
+    case nFTKindNLuigi:
+        if (gFTDataLuigiSpecial1 == NULL)
+        {
+            ftManagerSetupFilesAllKind(nFTKindLuigi);
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+#endif
+
 // 0x800D78B4
 void* ftManagerAllocFigatreeHeapKind(s32 fkind)
 {
