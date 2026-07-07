@@ -3,6 +3,10 @@
 #include <ft/fighter.h>
 #include <sc/scene.h>
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+extern sb32 syNetRbSnapDeferWeaponSimDuringLoadVerify(void);
+#endif
+
 // // // // // // // // // // // //
 //                               //
 //           FUNCTIONS           //
@@ -121,6 +125,17 @@ void wpProcessUpdateAttackRecords(GObj *weapon_gobj) // Set hitbox victim array
 void wpProcessProcWeaponMain(GObj *weapon_gobj) // Run item logic pass 1 (animation, physics, collision, despawn check)
 {
     WPStruct *wp = wpGetStruct(weapon_gobj);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * Snapshot load+verify can run while syNetInputGetTick() is slot+1. YoshiStar lifetime decay in
+     * wpYoshiStarProcUpdate destroys the tongue weapon before load-hash verify (soak2 @749).
+     */
+    if (syNetRbSnapDeferWeaponSimDuringLoadVerify() != FALSE)
+    {
+        return;
+    }
+#endif
 
     if (!(wp->is_hitlag_weapon))
     {

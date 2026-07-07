@@ -2098,7 +2098,9 @@ void gcEjectGObj(GObj *gobj)
 	}
 
 #if defined(PORT) && defined(SSB64_NETMENU)
-	if ((gobj->link_id == nGCCommonLinkIDEffect) || (gobj->link_id == nGCCommonLinkIDSpecialEffect))
+	/* Menu overlays (id=0) reuse link_id 6/8 as a draw layer; only nGCCommonKindEffect
+	 * shells participate in the particle coupling teardown path. */
+	if (gobj->id == nGCCommonKindEffect)
 	{
 		efManagerNetplayTeardownParticleCouplingBeforeForwardEject(gobj);
 	}

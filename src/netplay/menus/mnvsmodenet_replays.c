@@ -20,6 +20,9 @@ extern void *func_800269C0_275C0(u16 id);
 #define mnVSReplaysCheckGetOptionStickInputUD(stick_range, min, b) \
 	mnCommonCheckGetOptionStickInputUD(sMNVSReplaysChangeWait, stick_range, min, b)
 
+#define mnVSReplaysCheckGetOptionStickInputLR(stick_range, min, b) \
+	mnCommonCheckGetOptionStickInputLR(sMNVSReplaysChangeWait, stick_range, min, b)
+
 #define mnVSReplaysSetOptionChangeWaitP(is_button, stick_range, div) \
 	mnCommonSetOptionChangeWaitP(sMNVSReplaysChangeWait, is_button, stick_range, div)
 
@@ -43,10 +46,25 @@ extern void *func_800269C0_275C0(u16 id);
 #define MN_VSREPLAYS_ACTIONS_TEXT_X 232.0F
 #define MN_VSREPLAYS_ACTIONS_OPTION0_Y 168.0F
 #define MN_VSREPLAYS_ACTIONS_OPTION1_Y 192.0F
+#define MN_VSREPLAYS_DELETE_ALL_TEXT_X 152.0F
+#define MN_VSREPLAYS_DELETE_ALL_HIGHLIGHT_X0 150
+#define MN_VSREPLAYS_DELETE_ALL_HIGHLIGHT_Y0 24
+#define MN_VSREPLAYS_DELETE_ALL_HIGHLIGHT_X1 305
+#define MN_VSREPLAYS_DELETE_ALL_HIGHLIGHT_Y1 40
+#define MN_VSREPLAYS_CONFIRM_PANEL_X0 158
+#define MN_VSREPLAYS_CONFIRM_PANEL_Y0 8
+#define MN_VSREPLAYS_CONFIRM_PANEL_X1 305
+#define MN_VSREPLAYS_CONFIRM_PANEL_Y1 78
+#define MN_VSREPLAYS_CONFIRM_TITLE_X 165.0F
+#define MN_VSREPLAYS_CONFIRM_TITLE_Y 14.0F
+#define MN_VSREPLAYS_CONFIRM_NO_X 168.0F
+#define MN_VSREPLAYS_CONFIRM_YES_X 248.0F
+#define MN_VSREPLAYS_CONFIRM_OPTION_Y 52.0F
 
 typedef enum MNVSReplaysFocusKind
 {
 	nMNVSReplaysFocusToggle,
+	nMNVSReplaysFocusDeleteAll,
 	nMNVSReplaysFocusList,
 	nMNVSReplaysFocusActions
 
@@ -84,9 +102,12 @@ GObj *sMNVSReplaysListGObj;
 GObj *sMNVSReplaysMetaGObj;
 GObj *sMNVSReplaysToggleGObj;
 GObj *sMNVSReplaysActionsGObj;
+GObj *sMNVSReplaysConfirmGObj;
 s32 sMNVSReplaysFocus;
 s32 sMNVSReplaysActionChoice;
 sb32 sMNVSReplaysListEntered;
+sb32 sMNVSReplaysConfirmActive;
+sb32 sMNVSReplaysConfirmYesOrNo;
 s32 sMNVSReplaysCursorIndex;
 s32 sMNVSReplaysScrollOffset;
 s32 sMNVSReplaysFileCount;
@@ -99,6 +120,13 @@ sb32 sMNVSReplaysHighlightValid;
 
 static sb32 mnVSReplaysRefreshHighlight(void);
 static void mnVSReplaysMakeActions(void);
+static void mnVSReplaysRefreshListUi(void);
+static void mnVSReplaysMakeTopRow(void);
+static void mnVSReplaysMakeConfirm(void);
+static void mnVSReplaysEjectConfirm(void);
+static void mnVSReplaysDismissConfirm(void);
+static void mnVSReplaysUpdateConfirmMenu(void);
+static sb32 mnVSReplaysIsTopRowFocus(void);
 
 static size_t mnVSReplaysStrLen(const char *s)
 {
@@ -448,7 +476,15 @@ void mnVSReplaysMakeList(void)
 	}
 }
 
-void mnVSReplaysRenderToggle(GObj *gobj)
+static sb32 mnVSReplaysIsTopRowFocus(void)
+{
+	return ((sMNVSReplaysFocus == nMNVSReplaysFocusToggle) ||
+	        (sMNVSReplaysFocus == nMNVSReplaysFocusDeleteAll)) ?
+	           TRUE :
+	           FALSE;
+}
+
+void mnVSReplaysRenderTopRow(GObj *gobj)
 {
 	if (sMNVSReplaysFocus == nMNVSReplaysFocusToggle)
 	{
@@ -463,11 +499,26 @@ void mnVSReplaysRenderToggle(GObj *gobj)
 		gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
 		gDPSetCycleType(gSYTaskmanDLHeads[0]++, G_CYC_1CYCLE);
 	}
+	else if (sMNVSReplaysFocus == nMNVSReplaysFocusDeleteAll)
+	{
+		gDPPipeSync(gSYTaskmanDLHeads[0]++);
+		gDPSetCycleType(gSYTaskmanDLHeads[0]++, G_CYC_1CYCLE);
+		gDPSetPrimColor(gSYTaskmanDLHeads[0]++, 0, 0, 0xFF, 0xFF, 0xFF, 0x80);
+		gDPSetCombineLERP(gSYTaskmanDLHeads[0]++, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0,
+		                  0, PRIMITIVE);
+		gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_XLU_SURF, G_RM_AA_XLU_SURF2);
+		gDPFillRectangle(gSYTaskmanDLHeads[0]++, MN_VSREPLAYS_DELETE_ALL_HIGHLIGHT_X0,
+		                 MN_VSREPLAYS_DELETE_ALL_HIGHLIGHT_Y0, MN_VSREPLAYS_DELETE_ALL_HIGHLIGHT_X1,
+		                 MN_VSREPLAYS_DELETE_ALL_HIGHLIGHT_Y1);
+		gDPPipeSync(gSYTaskmanDLHeads[0]++);
+		gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
+		gDPSetCycleType(gSYTaskmanDLHeads[0]++, G_CYC_1CYCLE);
+	}
 	lbCommonClearExternSpriteParams();
 	lbCommonDrawSObjAttr(gobj);
 }
 
-void mnVSReplaysMakeToggle(void)
+void mnVSReplaysMakeTopRow(void)
 {
 	GObj *gobj;
 	u32 color[3];
@@ -479,12 +530,148 @@ void mnVSReplaysMakeToggle(void)
 		sMNVSReplaysToggleGObj = NULL;
 	}
 	sMNVSReplaysToggleGObj = gobj = gcMakeGObjSPAfter(0, NULL, 4, GOBJ_PRIORITY_DEFAULT);
-	gcAddGObjDisplay(gobj, mnVSReplaysRenderToggle, 2, GOBJ_PRIORITY_DEFAULT, ~0);
+	gcAddGObjDisplay(gobj, mnVSReplaysRenderTopRow, 2, GOBJ_PRIORITY_DEFAULT, ~0);
 	color[0] = 0x00;
 	color[1] = 0x00;
 	color[2] = 0x00;
 	label = (sMNVSReplaysSaveEnabled != FALSE) ? "SAVE REPLAYS ON" : "SAVE REPLAYS OFF";
 	mnVSReplaysMakeText(gobj, label, MN_VSREPLAYS_LIST_TEXT_X, 28.0F, color, FALSE);
+	mnVSReplaysMakeText(gobj, "DELETE ALL REPLAYS", MN_VSREPLAYS_DELETE_ALL_TEXT_X, 28.0F, color, FALSE);
+}
+
+void mnVSReplaysRenderConfirm(GObj *gobj)
+{
+	s32 highlight_x0;
+	s32 highlight_x1;
+
+	gDPPipeSync(gSYTaskmanDLHeads[0]++);
+	gDPSetCycleType(gSYTaskmanDLHeads[0]++, G_CYC_1CYCLE);
+	gDPSetPrimColor(gSYTaskmanDLHeads[0]++, 0, 0, 0xA0, 0x78, 0x14, 0xE6);
+	gDPSetCombineLERP(gSYTaskmanDLHeads[0]++, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0, 0, PRIMITIVE, 0, 0,
+	                  0, PRIMITIVE);
+	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_XLU_SURF, G_RM_AA_XLU_SURF2);
+	gDPFillRectangle(gSYTaskmanDLHeads[0]++, MN_VSREPLAYS_CONFIRM_PANEL_X0, MN_VSREPLAYS_CONFIRM_PANEL_Y0,
+	                 MN_VSREPLAYS_CONFIRM_PANEL_X1, MN_VSREPLAYS_CONFIRM_PANEL_Y1);
+	if (sMNVSReplaysConfirmYesOrNo == 0)
+	{
+		highlight_x0 = (s32)MN_VSREPLAYS_CONFIRM_YES_X - 2;
+		highlight_x1 = highlight_x0 + 36;
+	}
+	else
+	{
+		highlight_x0 = (s32)MN_VSREPLAYS_CONFIRM_NO_X - 2;
+		highlight_x1 = highlight_x0 + 24;
+	}
+	gDPSetPrimColor(gSYTaskmanDLHeads[0]++, 0, 0, 0xFF, 0xFF, 0xFF, 0x80);
+	gDPFillRectangle(gSYTaskmanDLHeads[0]++, highlight_x0, (s32)MN_VSREPLAYS_CONFIRM_OPTION_Y - 2, highlight_x1,
+	                 (s32)MN_VSREPLAYS_CONFIRM_OPTION_Y + 12);
+	gDPPipeSync(gSYTaskmanDLHeads[0]++);
+	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
+	gDPSetCycleType(gSYTaskmanDLHeads[0]++, G_CYC_1CYCLE);
+	lbCommonClearExternSpriteParams();
+	lbCommonDrawSObjAttr(gobj);
+}
+
+static void mnVSReplaysEjectConfirm(void)
+{
+	if (sMNVSReplaysConfirmGObj != NULL)
+	{
+		gcEjectGObj(sMNVSReplaysConfirmGObj);
+		sMNVSReplaysConfirmGObj = NULL;
+	}
+}
+
+static void mnVSReplaysDismissConfirm(void)
+{
+	sMNVSReplaysConfirmActive = FALSE;
+	mnVSReplaysEjectConfirm();
+}
+
+static void mnVSReplaysMakeConfirm(void)
+{
+	GObj *gobj;
+	u32 color[3];
+
+	mnVSReplaysEjectConfirm();
+	sMNVSReplaysConfirmGObj = gobj = gcMakeGObjSPAfter(0, NULL, nGCCommonLinkIDPauseMenu, GOBJ_PRIORITY_DEFAULT);
+	gcAddGObjDisplay(gobj, mnVSReplaysRenderConfirm, 2, GOBJ_PRIORITY_DEFAULT, ~0);
+	color[0] = 0x00;
+	color[1] = 0x00;
+	color[2] = 0x00;
+	mnVSReplaysMakeText(gobj, "ARE YOU SURE?", MN_VSREPLAYS_CONFIRM_TITLE_X, MN_VSREPLAYS_CONFIRM_TITLE_Y, color,
+	                    FALSE);
+	mnVSReplaysMakeText(gobj, "NO", MN_VSREPLAYS_CONFIRM_NO_X, MN_VSREPLAYS_CONFIRM_OPTION_Y, color, FALSE);
+	mnVSReplaysMakeText(gobj, "YES", MN_VSREPLAYS_CONFIRM_YES_X, MN_VSREPLAYS_CONFIRM_OPTION_Y, color, FALSE);
+}
+
+static void mnVSReplaysDeleteAllReplays(void)
+{
+	(void)syNetReplayDeleteAllUserFiles();
+	mnVSReplaysReloadFileList();
+	sMNVSReplaysCursorIndex = 0;
+	sMNVSReplaysScrollOffset = 0;
+	sMNVSReplaysListEntered = FALSE;
+	sMNVSReplaysHighlightValid = FALSE;
+}
+
+static void mnVSReplaysUpdateConfirmMenu(void)
+{
+	s32 stick_range;
+	sb32 is_button;
+
+	if (scSubsysControllerGetPlayerTapButtons(A_BUTTON | START_BUTTON) != FALSE)
+	{
+		func_800269C0_275C0(nSYAudioFGMMenuSelect);
+		if (sMNVSReplaysConfirmYesOrNo == 0)
+		{
+			mnVSReplaysDeleteAllReplays();
+			mnVSReplaysDismissConfirm();
+			sMNVSReplaysFocus = nMNVSReplaysFocusDeleteAll;
+			mnVSReplaysMakeTopRow();
+			mnVSReplaysRefreshListUi();
+		}
+		else
+		{
+			mnVSReplaysDismissConfirm();
+			sMNVSReplaysFocus = nMNVSReplaysFocusDeleteAll;
+			mnVSReplaysMakeTopRow();
+		}
+		return;
+	}
+	if (scSubsysControllerGetPlayerTapButtons(B_BUTTON) != FALSE)
+	{
+		func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+		mnVSReplaysDismissConfirm();
+		sMNVSReplaysFocus = nMNVSReplaysFocusDeleteAll;
+		mnVSReplaysMakeTopRow();
+		return;
+	}
+	if (sMNVSReplaysChangeWait != 0)
+	{
+		sMNVSReplaysChangeWait--;
+		return;
+	}
+	if (mnVSReplaysCheckGetOptionButtonInput(is_button, R_JPAD | R_CBUTTONS) ||
+	    mnVSReplaysCheckGetOptionStickInputLR(stick_range, 20, 1))
+	{
+		sMNVSReplaysChangeWait = ((is_button != FALSE) ? 12 : mnCommonGetOptionChangeWaitN(stick_range, 7));
+		if (sMNVSReplaysConfirmYesOrNo == 1)
+		{
+			func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+			sMNVSReplaysConfirmYesOrNo = 0;
+		}
+		return;
+	}
+	if (mnVSReplaysCheckGetOptionButtonInput(is_button, L_JPAD | L_CBUTTONS) ||
+	    mnVSReplaysCheckGetOptionStickInputLR(stick_range, -20, 0))
+	{
+		sMNVSReplaysChangeWait = ((is_button != FALSE) ? 12 : mnCommonGetOptionChangeWaitP(stick_range, 7));
+		if (sMNVSReplaysConfirmYesOrNo == 0)
+		{
+			func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+			sMNVSReplaysConfirmYesOrNo = 1;
+		}
+	}
 }
 
 static s32 mnVSReplaysGetMapSpriteOffset(s32 gkind)
@@ -776,6 +963,11 @@ void mnVSReplaysFuncRun(GObj *gobj)
 
 	(void)gobj;
 
+	if (sMNVSReplaysConfirmActive != FALSE)
+	{
+		mnVSReplaysUpdateConfirmMenu();
+		return;
+	}
 	if (scSubsysControllerGetPlayerTapButtons(B_BUTTON) != FALSE)
 	{
 		if (sMNVSReplaysFocus == nMNVSReplaysFocusActions)
@@ -795,7 +987,7 @@ void mnVSReplaysFuncRun(GObj *gobj)
 		if (sMNVSReplaysFocus == nMNVSReplaysFocusList)
 		{
 			sMNVSReplaysFocus = nMNVSReplaysFocusToggle;
-			mnVSReplaysMakeToggle();
+			mnVSReplaysMakeTopRow();
 			mnVSReplaysRefreshListUi();
 			func_800269C0_275C0(nSYAudioFGMMenuScroll2);
 			return;
@@ -837,8 +1029,19 @@ void mnVSReplaysFuncRun(GObj *gobj)
 		{
 			sMNVSReplaysSaveEnabled = (sMNVSReplaysSaveEnabled == FALSE) ? TRUE : FALSE;
 			syNetplaySaveWriteReplaySaveEnabled(sMNVSReplaysSaveEnabled);
-			mnVSReplaysMakeToggle();
+			mnVSReplaysMakeTopRow();
 			func_800269C0_275C0(nSYAudioFGMMenuSelect);
+		}
+		else if (sMNVSReplaysFocus == nMNVSReplaysFocusDeleteAll)
+		{
+			if (sMNVSReplaysFileCount > 0)
+			{
+				func_800269C0_275C0(nSYAudioFGMMenuSelect);
+				sMNVSReplaysConfirmActive = TRUE;
+				sMNVSReplaysConfirmYesOrNo = 1;
+				sMNVSReplaysChangeWait = 0;
+				mnVSReplaysMakeConfirm();
+			}
 		}
 		else if (sMNVSReplaysListEntered == FALSE)
 		{
@@ -859,16 +1062,36 @@ void mnVSReplaysFuncRun(GObj *gobj)
 		}
 		return;
 	}
-	if (scSubsysControllerGetPlayerTapButtons(L_JPAD | L_CBUTTONS | R_JPAD | R_CBUTTONS) != FALSE)
+	if (mnVSReplaysIsTopRowFocus() != FALSE)
 	{
-		if (sMNVSReplaysFocus == nMNVSReplaysFocusToggle)
+		if (mnVSReplaysCheckGetOptionButtonInput(is_button, R_JPAD | R_CBUTTONS) ||
+		    mnVSReplaysCheckGetOptionStickInputLR(stick_range, 20, 1))
 		{
-			sMNVSReplaysSaveEnabled = (sMNVSReplaysSaveEnabled == FALSE) ? TRUE : FALSE;
-			syNetplaySaveWriteReplaySaveEnabled(sMNVSReplaysSaveEnabled);
-			mnVSReplaysMakeToggle();
-			func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+			if (sMNVSReplaysFocus == nMNVSReplaysFocusToggle)
+			{
+				mnVSReplaysSetOptionChangeWaitN(is_button, stick_range, 7);
+				func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+				sMNVSReplaysFocus = nMNVSReplaysFocusDeleteAll;
+				mnVSReplaysMakeTopRow();
+			}
+			return;
 		}
-		else if (sMNVSReplaysFocus == nMNVSReplaysFocusActions)
+		if (mnVSReplaysCheckGetOptionButtonInput(is_button, L_JPAD | L_CBUTTONS) ||
+		    mnVSReplaysCheckGetOptionStickInputLR(stick_range, -20, 0))
+		{
+			if (sMNVSReplaysFocus == nMNVSReplaysFocusDeleteAll)
+			{
+				mnVSReplaysSetOptionChangeWaitP(is_button, stick_range, 7);
+				func_800269C0_275C0(nSYAudioFGMMenuScroll2);
+				sMNVSReplaysFocus = nMNVSReplaysFocusToggle;
+				mnVSReplaysMakeTopRow();
+			}
+			return;
+		}
+	}
+	else if (scSubsysControllerGetPlayerTapButtons(L_JPAD | L_CBUTTONS | R_JPAD | R_CBUTTONS) != FALSE)
+	{
+		if (sMNVSReplaysFocus == nMNVSReplaysFocusActions)
 		{
 			sMNVSReplaysActionChoice =
 			    (sMNVSReplaysActionChoice == nMNVSReplaysActionPlayback) ? nMNVSReplaysActionDelete :
@@ -907,7 +1130,7 @@ void mnVSReplaysFuncRun(GObj *gobj)
 		else if (sMNVSReplaysFocus == nMNVSReplaysFocusList)
 		{
 			sMNVSReplaysFocus = nMNVSReplaysFocusToggle;
-			mnVSReplaysMakeToggle();
+			mnVSReplaysMakeTopRow();
 			mnVSReplaysRefreshListUi();
 		}
 		return;
@@ -940,16 +1163,13 @@ void mnVSReplaysFuncRun(GObj *gobj)
 				mnVSReplaysRefreshListUi();
 			}
 		}
-		else
+		else if (mnVSReplaysIsTopRowFocus() != FALSE)
 		{
 			mnVSReplaysSetOptionChangeWaitN(is_button, stick_range, 7);
 			func_800269C0_275C0(nSYAudioFGMMenuScroll2);
-			if (sMNVSReplaysFocus == nMNVSReplaysFocusToggle)
-			{
-				sMNVSReplaysFocus = nMNVSReplaysFocusList;
-				mnVSReplaysMakeToggle();
-				mnVSReplaysRefreshListUi();
-			}
+			sMNVSReplaysFocus = nMNVSReplaysFocusList;
+			mnVSReplaysMakeTopRow();
+			mnVSReplaysRefreshListUi();
 		}
 		return;
 	}
@@ -964,6 +1184,7 @@ void mnVSReplaysFuncStart(void)
 	sMNVSReplaysMetaGObj = NULL;
 	sMNVSReplaysToggleGObj = NULL;
 	sMNVSReplaysActionsGObj = NULL;
+	sMNVSReplaysConfirmGObj = NULL;
 	for (file_index = 0; file_index < (s32)ARRAY_COUNT(sMNVSReplaysFiles); file_index++)
 	{
 		sMNVSReplaysFiles[file_index] = NULL;
@@ -973,6 +1194,8 @@ void mnVSReplaysFuncStart(void)
 	sMNVSReplaysFocus = nMNVSReplaysFocusToggle;
 	sMNVSReplaysActionChoice = nMNVSReplaysActionPlayback;
 	sMNVSReplaysListEntered = FALSE;
+	sMNVSReplaysConfirmActive = FALSE;
+	sMNVSReplaysConfirmYesOrNo = 1;
 	sMNVSReplaysCursorIndex = 0;
 	sMNVSReplaysScrollOffset = 0;
 	sMNVSReplaysChangeWait = 0;
@@ -996,7 +1219,7 @@ void mnVSReplaysFuncStart(void)
 	mnVSReplaysMakeCamera();
 	mnVSReplaysMakeUiCamera();
 	mnVSReplaysMakeDecals();
-	mnVSReplaysMakeToggle();
+	mnVSReplaysMakeTopRow();
 	mnVSReplaysMakeList();
 	mnVSReplaysMakeMetadata();
 	if (gSCManagerSceneData.scene_prev != nSCKindVSBattle)
