@@ -27,6 +27,7 @@ extern void port_log(const char *fmt, ...);
  * docs/bugs/netplay_guard_shield_attach_refresh_diag_2026-07-01.md. */
 extern void syNetRbSnapDiagLogGuardShieldJointPose(const char *tag);
 extern void syNetRbSnapRefreshGuardShieldYRotNDrawMatrix(GObj *fighter_gobj);
+extern void syNetRbSnapSafeEjectOrphanEffectGObj(GObj *effect_gobj);
 
 static sb32 efManagerNetplaySnapshotEffectDiagEnabled(void)
 {
@@ -6738,6 +6739,36 @@ void efManagerYoshiEggLaySetAnim(GObj *effect_gobj, s32 index)
 }
 
 // 0x80102FE4
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerYoshiEggLayProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *ep;
+
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	if (ep == NULL)
+	{
+		/* Synctest hidden-cosmetic churn can leave a YoshiEggLay proc on a shell with ep=nil;
+		 * vanilla dereference SIGSEGVs (fault_addr=0x8). gcEjectGObj also faults when obj=nil. */
+		syNetRbSnapSafeEjectOrphanEffectGObj(effect_gobj);
+		return;
+	}
+
+	if (ep->effect_vars.yoshi_egg_lay.force_index != ep->effect_vars.yoshi_egg_lay.index)
+	{
+		efManagerYoshiEggLaySetAnim(effect_gobj, ep->effect_vars.yoshi_egg_lay.force_index);
+	}
+	gcPlayAnimAll(effect_gobj);
+
+	if ((ep->effect_vars.yoshi_egg_lay.index == 2) && (effect_gobj->anim_frame <= 0.0F))
+	{
+		ep->effect_vars.yoshi_egg_lay.force_index = 0;
+	}
+}
+#else
 void efManagerYoshiEggLayProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -6753,6 +6784,7 @@ void efManagerYoshiEggLayProcUpdate(GObj *effect_gobj)
         ep->effect_vars.yoshi_egg_lay.force_index = 0;
     }
 }
+#endif
 
 // 0x80103060
 GObj* efManagerYoshiEggLayMakeEffect(GObj *fighter_gobj)
