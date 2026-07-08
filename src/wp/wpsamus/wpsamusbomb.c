@@ -3,6 +3,28 @@
 #include <reloc_data.h>
 #ifdef PORT
 extern void *func_800269C0_275C0(u16 id);
+#include <ef/efmanager.h>
+#include <ef/efdisplay.h>
+
+static void wpSamusBombMakeExplodeSparkle(GObj *weapon_gobj)
+{
+    LBParticle *pc;
+    Vec3f *pos;
+
+    if (weapon_gobj == NULL)
+    {
+        return;
+    }
+    efDisplayEnsureParticleDrawInfrastructure();
+    pos = &DObjGetStruct(weapon_gobj)->translate.vec.f;
+    pc = efManagerSparkleWhiteMultiExplodeMakeEffect(pos);
+    if ((pc != NULL) && (pc->xf != NULL))
+    {
+        pc->xf->scale.x = WPSAMUSBOMB_EXPLODE_EFFECT_SCALE;
+        pc->xf->scale.y = WPSAMUSBOMB_EXPLODE_EFFECT_SCALE;
+        pc->xf->scale.z = WPSAMUSBOMB_EXPLODE_EFFECT_SCALE;
+    }
+}
 #endif
 
 // // // // // // // // // // // //
@@ -87,7 +109,11 @@ sb32 wpSamusBombProcUpdate(GObj *weapon_gobj)
 
     if (wpMainDecLifeCheckExpire(wp) != FALSE)
     {
+#ifdef PORT
+        wpSamusBombMakeExplodeSparkle(weapon_gobj);
+#else
         efManagerSparkleWhiteMultiExplodeMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f);
+#endif
         wpSamusBombExplodeInitVars(weapon_gobj);
         func_800269C0_275C0(nSYAudioFGMExplodeS);
 
@@ -167,7 +193,11 @@ sb32 wpSamusBombProcMap(GObj *weapon_gobj)
 sb32 wpSamusBombProcHit(GObj *weapon_gobj)
 {
     func_800269C0_275C0(nSYAudioFGMExplodeS);
+#ifdef PORT
+    wpSamusBombMakeExplodeSparkle(weapon_gobj);
+#else
     efManagerSparkleWhiteMultiExplodeMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f);
+#endif
     wpSamusBombExplodeInitVars(weapon_gobj);
 
     return FALSE;
@@ -177,7 +207,11 @@ sb32 wpSamusBombProcHit(GObj *weapon_gobj)
 sb32 wpSamusBombProcAbsorb(GObj *weapon_gobj)
 {
     func_800269C0_275C0(nSYAudioFGMExplodeS);
+#ifdef PORT
+    wpSamusBombMakeExplodeSparkle(weapon_gobj);
+#else
     efManagerSparkleWhiteMultiExplodeMakeEffect(&DObjGetStruct(weapon_gobj)->translate.vec.f);
+#endif
 
     return TRUE;
 }

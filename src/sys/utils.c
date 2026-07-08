@@ -309,6 +309,21 @@ f32 syUtilsRandFloatCosmetic(void)
     return value / 65536.0F;
 }
 
+/*
+ * Always-cosmetic float draw: never touches the shared gameplay LCG.
+ * Use for pure VFX jitter whose spawn count can differ across peers after
+ * rollback (ShockSmall electric sparks) without changing hashed sim state —
+ * Cosmetic() would still burn the game seed on forward sim and fork `rng`.
+ * See docs/bugs/netplay_shocksmall_cosmetic_rng_fc_diverge_2026-07-08.md.
+ */
+f32 syUtilsRandFloatForcedCosmetic(void)
+{
+    u16 value;
+
+    value = syUtilsRandUShortFromSeed(&sSYUtilsCosmeticRandomSeed);
+    return value / 65536.0F;
+}
+
 s32 syUtilsRandIntRangeCosmetic(s32 range)
 {
     if (syNetRollbackIsResimulating() == FALSE)

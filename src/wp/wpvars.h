@@ -14,6 +14,7 @@
 
 #define WPSAMUSBOMB_EXPLODE_LIFETIME 6
 #define WPSAMUSBOMB_EXPLODE_SIZE 180.0F
+#define WPSAMUSBOMB_EXPLODE_EFFECT_SCALE 1.3F
 #define WPSAMUSBOMB_WAIT_LIFETIME 100					 			// Countdown of Bomb until it explodes
 #define WPSAMUSBOMB_WAIT_VEL_Y 10.0F					 			// Initial velocity of Bomb
 #define WPSAMUSBOMB_WAIT_ROTATE_SPEED_AIR F_CLC_DTOR32(20.0F)	 	// Bomb spins at this rate while airborne

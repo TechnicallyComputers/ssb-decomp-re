@@ -591,6 +591,11 @@ void ftCommonYoshiEggSetDamageCollCollisions(GObj* fighter_gobj);
 void ftCommonYoshiEggProcStatus(GObj* fighter_gobj);
 void ftCommonYoshiEggSetStatus(GObj* fighter_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+void ftCommonYoshiEggApplyEggLayWiggleGfx(GObj* fighter_gobj, GObj* effect_gobj);
+sb32 ftCommonYoshiEggTryEscapeFromBreakAnimComplete(GObj* fighter_gobj);
+#endif
+
 // CaptureCaptain
 void ftCommonCaptureCaptainUpdatePositions(GObj* fighter_gobj, GObj* capture_gobj, Vec3f* pos);
 void ftCommonCaptureCaptainProcPhysics(GObj* fighter_gobj);

@@ -127,12 +127,107 @@ void ftCommonCaptureYoshiProcCapture(GObj *fighter_gobj, GObj *capture_gobj)
 
     ftParamSetCaptureImmuneMask(this_fp, FTCATCHKIND_MASK_ALL);
     ftPhysicsStopVelAll(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: cull orphaned charge-shot shells after capture interrupt. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, NULL);
+    }
+#endif
     ftCommonCaptureYoshiProcPhysics(fighter_gobj);
     mpCommonUpdateFighterProjectFloor(fighter_gobj);
 }
 
+static void ftCommonYoshiEggApplyEggLayWiggleGfxToJoint(FTStruct *fp, DObj *joint)
+{
+    if ((fp == NULL) || (joint == NULL))
+    {
+        return;
+    }
+    if (fp->ga == nMPKineticsGround)
+    {
+        if (ABS(fp->input.pl.stick_range.y) >= FTCOMMON_YOSHIEGG_WIGGLE_STICK_RANGE_MIN)
+        {
+            joint->translate.vec.f.y =
+                ((fp->input.pl.stick_range.y < 0) ? -1 : 1) * FTCOMMON_YOSHIEGG_WIGGLE_GFX_RANGE_XY;
+        }
+        else
+        {
+            joint->translate.vec.f.y = 0.0F;
+        }
+        if (ABS(fp->input.pl.stick_range.x) >= FTCOMMON_YOSHIEGG_WIGGLE_STICK_RANGE_MIN)
+        {
+            joint->translate.vec.f.x =
+                ((fp->input.pl.stick_range.x < 0) ? -1 : 1) * FTCOMMON_YOSHIEGG_WIGGLE_GFX_RANGE_XY;
+        }
+        else
+        {
+            joint->translate.vec.f.x = 0.0F;
+        }
+    }
+    else
+    {
+        joint->translate.vec.f.x = 0.0F;
+        joint->translate.vec.f.y = 0.0F;
+    }
+}
+
 #if defined(PORT) && defined(SSB64_NETMENU)
-static void ftCommonYoshiEggBeginPrepareAnimForNetplay(GObj *effect_gobj)
+void ftCommonYoshiEggApplyEggLayWiggleGfx(GObj *fighter_gobj, GObj *effect_gobj)
+{
+    FTStruct *fp;
+    EFStruct *ep;
+    DObj *egg_root;
+    DObj *joint;
+
+    if ((fighter_gobj == NULL) || (effect_gobj == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+    {
+        return;
+    }
+    fp = ftGetStruct(fighter_gobj);
+    if ((fp == NULL) || (fp->status_id != nFTCommonStatusYoshiEgg))
+    {
+        return;
+    }
+    ep = efGetStruct(effect_gobj);
+    /*
+     * Post-gcPlayAnimAll reapply runs for the wait anim (index 0) only. Vanilla: once
+     * EggLayBreak (index 1) is bound the anim owns joint translate and stick input has no
+     * visible effect; touching translate here stomped the break scrunch (down-only squish).
+     */
+    if ((ep == NULL) || (ep->effect_vars.yoshi_egg_lay.index != 0))
+    {
+        return;
+    }
+    egg_root = DObjGetStruct(effect_gobj);
+    if ((egg_root == NULL) || (egg_root->child == NULL))
+    {
+        return;
+    }
+    joint = egg_root->child;
+    ftCommonYoshiEggApplyEggLayWiggleGfxToJoint(fp, joint);
+}
+
+static void ftCommonYoshiEggClearEggLayWiggleGfxForNetplay(GObj *effect_gobj)
+{
+    DObj *dobj;
+    DObj *joint;
+
+    if (effect_gobj == NULL)
+    {
+        return;
+    }
+    dobj = DObjGetStruct(effect_gobj);
+    if ((dobj == NULL) || (dobj->child == NULL))
+    {
+        return;
+    }
+    joint = dobj->child;
+    joint->translate.vec.f.x = 0.0F;
+    joint->translate.vec.f.y = 0.0F;
+}
+
+void ftCommonYoshiEggBeginPrepareAnimForNetplay(GObj *effect_gobj)
 {
     EFStruct *ep;
 
@@ -145,10 +240,12 @@ static void ftCommonYoshiEggBeginPrepareAnimForNetplay(GObj *effect_gobj)
     {
         return;
     }
-    /* Netplay rollback only: victim egg skips throw intro (index 2) so prepare wiggle starts immediately. */
+    /* Adopt/recovery only — fresh mints keep vanilla throw intro (index 2) from MakeEffect. */
     ep->effect_vars.yoshi_egg_lay.force_index = 0;
+    ep->effect_vars.yoshi_egg_lay.index = 0;
     efManagerYoshiEggLaySetAnim(effect_gobj, 0);
     gcSetAnimSpeed(effect_gobj, 1.0F);
+    ftCommonYoshiEggClearEggLayWiggleGfxForNetplay(effect_gobj);
 }
 #endif
 
@@ -159,12 +256,17 @@ void ftCommonYoshiEggMakeEffect(GObj *fighter_gobj)
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-    /* Netplay rollback only: adopt an existing shell before vanilla mints a twin @ YoshiEgg entry. */
+    /* Netplay rollback only: adopt once @ YoshiEgg entry (effect_gobj still NULL after SetStatus). */
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
-        if (syNetRbSnapTryAdoptLiveYoshiEggLayEffectForFighter(fighter_gobj) != FALSE)
+        if (ftStatusVarsCaptureYoshi(fp)->effect_gobj == NULL)
         {
-            return;
+            if (syNetRbSnapTryAdoptLiveYoshiEggLayEffectForFighter(fighter_gobj) != FALSE)
+            {
+                /* Recycled shells keep index=1 / break anim from prior capture — reset once here only. */
+                ftCommonYoshiEggBeginPrepareAnimForNetplay(ftStatusVarsCaptureYoshi(fp)->effect_gobj);
+                return;
+            }
         }
     }
 #endif
@@ -174,23 +276,71 @@ void ftCommonYoshiEggMakeEffect(GObj *fighter_gobj)
 
         if (ftStatusVarsCaptureYoshi(fp)->effect_gobj != NULL)
         {
-#if defined(PORT) && defined(SSB64_NETMENU)
-            ftCommonYoshiEggBeginPrepareAnimForNetplay(ftStatusVarsCaptureYoshi(fp)->effect_gobj);
-#endif
             fp->is_effect_attach = TRUE;
         }
     }
 }
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+sb32 ftCommonYoshiEggTryEscapeFromBreakAnimComplete(GObj *fighter_gobj)
+{
+    FTStruct *fp;
+    GObj *effect_gobj;
+    EFStruct *ep;
+    Vec3f pos;
+
+    if ((fighter_gobj == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+    {
+        return FALSE;
+    }
+    fp = ftGetStruct(fighter_gobj);
+    if ((fp == NULL) || (fp->status_id != nFTCommonStatusYoshiEgg) || (fp->motion_vars.flags.flag0 == 0))
+    {
+        return FALSE;
+    }
+    effect_gobj = ftStatusVarsCaptureYoshi(fp)->effect_gobj;
+    if (effect_gobj == NULL)
+    {
+        return FALSE;
+    }
+    ep = efGetStruct(effect_gobj);
+    if ((ep == NULL) || (ep->effect_vars.yoshi_egg_lay.index != 1) || (effect_gobj->anim_frame > 0.0F))
+    {
+        return FALSE;
+    }
+    pos = DObjGetStruct(fighter_gobj)->translate.vec.f;
+    pos.z = 0.0F;
+    syNetRbSnapLogYoshiEggLayEscape(fighter_gobj, "break_eject_hook");
+    syNetRbSnapQueueYoshiEggLayHatchCosmeticsLive(fighter_gobj);
+    func_800269C0_275C0(nSYAudioFGMYoshiEggLayShatter);
+
+    fp->physics.vel_air.y = FTCOMMON_YOSHIEGG_ESCAPE_VEL_Y;
+    fp->physics.vel_air.x = fp->physics.vel_air.z = 0.0F;
+
+    DObjGetStruct(fighter_gobj)->translate.vec.f.y += FTCOMMON_YOSHIEGG_ESCAPE_OFF_Y;
+
+    mpCommonSetFighterAir(fp);
+    ftMainSetStatus(fighter_gobj, nFTCommonStatusFall, 0.0F, 1.0F, FTSTATUS_PRESERVE_DAMAGEPLAYER);
+    ftParamSetTimedHitStatusIntangible(fp, FTCOMMON_YOSHIEGG_INTANGIBLE_TIMER);
+    return TRUE;
+}
+#endif
 
 // 0x8014C9A0
 void ftCommonYoshiEggProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     sb32 is_escape = FALSE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    const char *escape_reason = NULL;
+#endif
 
     if (ftStatusVarsCaptureYoshi(fp)->is_damagefloor == TRUE)
     {
         is_escape = TRUE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        escape_reason = "damagefloor";
+#endif
 
         if (ftStatusVarsCaptureYoshi(fp)->effect_gobj != NULL)
         {
@@ -205,20 +355,54 @@ void ftCommonYoshiEggProcUpdate(GObj *fighter_gobj)
 
         if (ftStatusVarsCaptureYoshi(fp)->effect_gobj != NULL)
         {
-            EFStruct *ep = efGetStruct(ftStatusVarsCaptureYoshi(fp)->effect_gobj);
+            GObj *effect_gobj = ftStatusVarsCaptureYoshi(fp)->effect_gobj;
+            EFStruct *ep = efGetStruct(effect_gobj);
 
-            if ((ep->effect_vars.yoshi_egg_lay.index == 1) && (ftStatusVarsCaptureYoshi(fp)->effect_gobj->anim_frame <= 0.0F))
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* Netplay rollback only: stale/recycled egg-lay shells can keep a non-NULL GObj* with ep=nil. */
+            if ((syNetplayRollbackSemanticsActive() != FALSE) && (ep == NULL))
+            {
+                ftStatusVarsCaptureYoshi(fp)->effect_gobj = NULL;
+                fp->is_effect_attach = FALSE;
+                syNetRbSnapSanitizeCaptureYoshiEffectGobj(fp);
+                (void)syNetRbSnapTryAdoptLiveYoshiEggLayEffectForFighter(fighter_gobj);
+                effect_gobj = ftStatusVarsCaptureYoshi(fp)->effect_gobj;
+                ep = (effect_gobj != NULL) ? efGetStruct(effect_gobj) : NULL;
+                if (effect_gobj != NULL)
+                {
+                    ftCommonYoshiEggBeginPrepareAnimForNetplay(effect_gobj);
+                }
+            }
+#endif
+            if ((ep != NULL) && (ep->effect_vars.yoshi_egg_lay.index == 1) && (effect_gobj->anim_frame <= 0.0F)
+#if defined(PORT) && defined(SSB64_NETMENU)
+                /* Netplay rollback only: recycled shells can keep break-complete vars while flag0 is still 0
+                 * at capture entry — instant hatch (soak2 first/last capture ~19–24f in-egg). Vanilla always
+                 * arms flag0 before break index is live. */
+                && ((syNetplayRollbackSemanticsActive() == FALSE) || (fp->motion_vars.flags.flag0 != 0))
+#endif
+                )
             {
                 is_escape = TRUE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+                escape_reason = "break_anim_complete";
+#endif
             }
 #if defined(PORT) && defined(SSB64_NETMENU)
             /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-            /* Netplay rollback only: escape window must tick down even when shell exists but break anim incomplete. */
-            else if ((syNetplayRollbackSemanticsActive() != FALSE) && (fp->motion_vars.flags.flag0 == 1))
+            /* Netplay rollback only: ep=nil stall only — do not tick the post-flag0 countdown while a live
+             * coupled shell exists with ep!=NULL but index!=1; reconcile can lag flag0 on the effect blob while
+             * physics is entering break, and the old (index!=1) gate escaped ~15f after flag0 without the
+             * break scrunch (soak2 variable in-egg timing). No-shell escape uses the branch below. */
+            else if ((syNetplayRollbackSemanticsActive() != FALSE) && (fp->motion_vars.flags.flag0 == 1) &&
+                     (ep == NULL))
             {
                 if (ftStatusVarsCaptureYoshi(fp)->breakout_wait-- <= 0)
                 {
                     is_escape = TRUE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+                    escape_reason = "stalled_ep_nil";
+#endif
                 }
             }
 #endif
@@ -228,6 +412,9 @@ void ftCommonYoshiEggProcUpdate(GObj *fighter_gobj)
             if (ftStatusVarsCaptureYoshi(fp)->breakout_wait-- <= 0)
             {
                 is_escape = TRUE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+                escape_reason = "no_shell_countdown";
+#endif
             }
         }
     }
@@ -241,6 +428,7 @@ void ftCommonYoshiEggProcUpdate(GObj *fighter_gobj)
         /* Netplay rollback only: defer hatch shell/particles to first visible frame after load/resim. */
         if (syNetplayRollbackSemanticsActive() != FALSE)
         {
+            syNetRbSnapLogYoshiEggLayEscape(fighter_gobj, escape_reason);
             syNetRbSnapQueueYoshiEggLayHatchCosmeticsLive(fighter_gobj);
         }
         else
@@ -275,39 +463,28 @@ void ftCommonYoshiEggProcInterrupt(GObj *fighter_gobj)
     {
 #if defined(PORT) && defined(SSB64_NETMENU)
         /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-        /* Netplay rollback only: skip wiggle when egg-lay DObj tree is missing after reconcile eject. */
+        /* Netplay rollback only: eject/recouple when egg-lay DObj tree is incomplete after reconcile. */
         if (syNetplayRollbackSemanticsActive() != FALSE)
         {
             DObj *egg_root = DObjGetStruct(effect_gobj);
 
             if ((egg_root == NULL) || (egg_root->child == NULL))
             {
-                ftStatusVarsCaptureYoshi(fp)->effect_gobj = NULL;
-                return;
+                syNetRbSnapSanitizeCaptureYoshiEffectGobj(fp);
+                effect_gobj = ftStatusVarsCaptureYoshi(fp)->effect_gobj;
+                if (effect_gobj == NULL)
+                {
+                    return;
+                }
             }
         }
 #endif
         joint = DObjGetStruct(effect_gobj)->child;
-
-        if (fp->ga == nMPKineticsGround)
+        if (joint == NULL)
         {
-            if (ABS(fp->input.pl.stick_range.y) >= FTCOMMON_YOSHIEGG_WIGGLE_STICK_RANGE_MIN)
-            {
-                joint->translate.vec.f.y = ((fp->input.pl.stick_range.y < 0) ? -1 : 1) * FTCOMMON_YOSHIEGG_WIGGLE_GFX_RANGE_XY;
-            }
-            else joint->translate.vec.f.y = 0.0F;
-
-            if (ABS(fp->input.pl.stick_range.x) >= FTCOMMON_YOSHIEGG_WIGGLE_STICK_RANGE_MIN)
-            {
-                joint->translate.vec.f.x = ((fp->input.pl.stick_range.x < 0) ? -1 : 1) * FTCOMMON_YOSHIEGG_WIGGLE_GFX_RANGE_XY;
-            }
-            else joint->translate.vec.f.x = 0.0F;
+            return;
         }
-        else
-        {
-            joint->translate.vec.f.x = 0.0F;
-            joint->translate.vec.f.y = 0.0F;
-        }
+        ftCommonYoshiEggApplyEggLayWiggleGfxToJoint(fp, joint);
     }
 }
 
@@ -324,7 +501,19 @@ void ftCommonYoshiEggProcPhysics(GObj *fighter_gobj)
         {
             if (ftStatusVarsCaptureYoshi(fp)->effect_gobj != NULL)
             {
-                gcSetAnimSpeed(ftStatusVarsCaptureYoshi(fp)->effect_gobj, FTCOMMON_YOSHIEGG_WIGGLE_ANIM_SPEED);
+#if defined(PORT) && defined(SSB64_NETMENU)
+                /*
+                 * Netplay rollback only: mash gcSetAnimSpeed(5.0) stacked with per-tick snapshot restore
+                 * and stale speed into EggLayBreak reads as constant fast squish. Offline/local sim keeps
+                 * vanilla 5.0 during active mash; VS/resim presentation stays at 1.0 (breakout countdown
+                 * still advances from mash — gameplay unchanged).
+                 */
+                f32 egg_wiggle_anim_speed =
+                    (syNetplayRollbackSemanticsActive() != FALSE) ? 1.0F : FTCOMMON_YOSHIEGG_WIGGLE_ANIM_SPEED;
+#else
+                f32 egg_wiggle_anim_speed = FTCOMMON_YOSHIEGG_WIGGLE_ANIM_SPEED;
+#endif
+                gcSetAnimSpeed(ftStatusVarsCaptureYoshi(fp)->effect_gobj, egg_wiggle_anim_speed);
             }
         }
         else if (ftStatusVarsCaptureYoshi(fp)->effect_gobj != NULL)
@@ -337,6 +526,13 @@ void ftCommonYoshiEggProcPhysics(GObj *fighter_gobj)
         {
             fp->motion_vars.flags.flag0 = 1;
             ftStatusVarsCaptureYoshi(fp)->breakout_wait = FTCOMMON_YOSHIEGG_ESCAPE_WAIT_DEFAULT;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+            if (syNetplayRollbackSemanticsActive() != FALSE)
+            {
+                syNetRbSnapLogYoshiEggLayTimerDiag(fighter_gobj, "flag0_arm");
+            }
+#endif
         }
     }
     if (fp->motion_vars.flags.flag0 == 1)
@@ -346,6 +542,18 @@ void ftCommonYoshiEggProcPhysics(GObj *fighter_gobj)
             EFStruct *ep = efGetStruct(ftStatusVarsCaptureYoshi(fp)->effect_gobj);
 
             ep->effect_vars.yoshi_egg_lay.force_index = 1;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* Netplay rollback only: break scrunch must not inherit wait-phase mash 5.0 speed. */
+            if (syNetplayRollbackSemanticsActive() != FALSE)
+            {
+                gcSetAnimSpeed(ftStatusVarsCaptureYoshi(fp)->effect_gobj, 1.0F);
+                if (ep->effect_vars.yoshi_egg_lay.index != 1)
+                {
+                    ep->effect_vars.yoshi_egg_lay.index = 1;
+                    efManagerYoshiEggLaySetAnim(ftStatusVarsCaptureYoshi(fp)->effect_gobj, 1);
+                }
+            }
+#endif
         }
     }
     if (fp->ga == nMPKineticsGround)
@@ -430,6 +638,14 @@ void ftCommonYoshiEggProcStatus(GObj *fighter_gobj)
     ftStatusVarsCaptureYoshi(fp)->breakout_wait = FTCOMMON_YOSHIEGG_ESCAPE_WAIT_MAX;
 
     fp->motion_vars.flags.flag0 = 0;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapLogYoshiEggLayTimerDiag(fighter_gobj, "egg_enter");
+    }
+#endif
 }
 
 // 0x8014CF20

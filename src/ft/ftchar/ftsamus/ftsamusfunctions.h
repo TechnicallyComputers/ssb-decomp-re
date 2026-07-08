@@ -31,6 +31,9 @@ extern f32 ftSamusSpecialNStartGetAnimSpeed(FTStruct* fp);
 extern void ftSamusSpecialNStartInitStatusVars(FTStruct* fp);
 extern void ftSamusSpecialNStartSetStatus(GObj* fighter_gobj);
 extern void ftSamusSpecialAirNStartSetStatus(GObj* fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+extern sb32 ftSamusSpecialNPortReconcileMaxChargeLoopIfNeeded(GObj* fighter_gobj);
+#endif
 
 // SpecialHi / SpecialAirHi
 extern void ftSamusSpecialHiProcUpdate(GObj* fighter_gobj);

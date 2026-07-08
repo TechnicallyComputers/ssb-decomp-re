@@ -199,6 +199,9 @@ extern f32 ftKirbyCopySamusSpecialNStartGetAnimSpeed(FTStruct* fp);
 extern void ftKirbyCopySamusSpecialNInitStatusVars(FTStruct* fp);
 extern void ftKirbyCopySamusSpecialNStartSetStatus(GObj* fighter_gobj);
 extern void ftKirbyCopySamusSpecialAirNStartSetStatus(GObj* fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+extern sb32 ftKirbyCopySamusSpecialNPortReconcileMaxChargeLoopIfNeeded(GObj* fighter_gobj);
+#endif
 
 // CopyDonkeySpecialN
 extern void ftKirbyCopyDonkeySpecialNProcDamage(GObj* fighter_gobj);

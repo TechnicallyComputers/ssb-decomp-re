@@ -20,6 +20,7 @@ extern s32 syUtilsRandSeed(void);
 extern void syUtilsResetCosmeticRandomSeed(s32 seed);
 extern u16 syUtilsRandUShortCosmetic(void);
 extern f32 syUtilsRandFloatCosmetic(void);
+extern f32 syUtilsRandFloatForcedCosmetic(void);
 extern s32 syUtilsRandIntRangeCosmetic(s32 range);
 /* Accessor for the per-peer cosmetic LCG seed. Exposed for netplay diagnostics:
  * effect manager (`ef/efmanager.c`) and particle system (`lb/lbparticle.c`)

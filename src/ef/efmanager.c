@@ -19,15 +19,46 @@ extern void port_log(const char *fmt, ...);
 #define syUtilsRandIntRange syUtilsRandIntRangeCosmetic
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
+#include <string.h>
 #include <lb/lbparticle.h>
 #include <sys/netinput.h>
 #include <sys/objman.h>
 #include <sys/netrollback.h>
+#include <sys/netplay_sim_quantize.h>
 /* Diagnostic only: joints[YRotN] local scale/translate/rotate dump for shielding fighters. See
  * docs/bugs/netplay_guard_shield_attach_refresh_diag_2026-07-01.md. */
 extern void syNetRbSnapDiagLogGuardShieldJointPose(const char *tag);
 extern void syNetRbSnapRefreshGuardShieldYRotNDrawMatrix(GObj *fighter_gobj);
 extern void syNetRbSnapSafeEjectOrphanEffectGObj(GObj *effect_gobj);
+extern void ftCommonYoshiEggApplyEggLayWiggleGfx(GObj *fighter_gobj, GObj *effect_gobj);
+extern sb32 ftCommonYoshiEggTryEscapeFromBreakAnimComplete(GObj *fighter_gobj);
+
+sb32 efManagerNetplayTryCancelYoshiEggLayBreakEject(GObj *effect_gobj)
+{
+	EFStruct *ep;
+
+	if ((effect_gobj == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+	{
+		return FALSE;
+	}
+	/* user_data is not EFStruct on every GObj kind — interface shells (id=1016) reuse
+	 * the slot with small sentinel values; efGetStruct would pass a non-NULL ep check
+	 * then fault in ep->proc_update (soak2 tick 225 SIGSEGV fault_addr=0x29). */
+	if (effect_gobj->id != nGCCommonKindEffect)
+	{
+		return FALSE;
+	}
+	ep = efGetStruct(effect_gobj);
+	if ((ep == NULL) || (ep->proc_update != efManagerYoshiEggLayProcUpdate) || (ep->fighter_gobj == NULL))
+	{
+		return FALSE;
+	}
+	if ((ep->effect_vars.yoshi_egg_lay.index != 1) || (effect_gobj->anim_frame > 0.0F))
+	{
+		return FALSE;
+	}
+	return ftCommonYoshiEggTryEscapeFromBreakAnimComplete(ep->fighter_gobj);
+}
 
 static sb32 efManagerNetplaySnapshotEffectDiagEnabled(void)
 {
@@ -107,6 +138,35 @@ static void efManagerNetplayMaybeLogQuakeCameraSuppressed(GObj *effect_gobj, con
 	    (unsigned int)((pos != NULL) ? efManagerNetplayF32Bits(pos->z) : 0U));
 }
 
+/*
+ * Union-stomped / recycled EFStruct shells can hold a non-NULL garbage LBTransform*
+ * (soak2 Kirby Stone→Fox hit: xf=0x7f4d000000fa; Android xf similarly outside pool).
+ * Do not dereference until this passes — pool walks in IsAllocated are pointer-compare only.
+ */
+static sb32 efManagerNetplayXfPointerLooksValid(const LBTransform *xf)
+{
+	uintptr_t xf_addr;
+
+	if (xf == NULL)
+	{
+		return FALSE;
+	}
+	xf_addr = (uintptr_t)xf;
+	if (xf_addr < 0x10000u)
+	{
+		return FALSE;
+	}
+	if ((xf_addr & 0xFFFFu) == 0xFFFFu)
+	{
+		return FALSE;
+	}
+	if ((xf_addr & 0x3u) != 0u)
+	{
+		return FALSE;
+	}
+	return TRUE;
+}
+
 sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, const char **out_reason)
 {
 	LBParticle *pc;
@@ -119,6 +179,11 @@ sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, const ch
 	if (xf == NULL)
 	{
 		*out_reason = "null_xf";
+		return FALSE;
+	}
+	if (efManagerNetplayXfPointerLooksValid(xf) == FALSE)
+	{
+		*out_reason = "xf_garbage";
 		return FALSE;
 	}
 	if (lbParticleTransformIsOnFreeList(xf) != FALSE)
@@ -200,7 +265,9 @@ static void efManagerNetplayEjectStaleXfEffect(
 {
 	static u32 s_stale_log_budget = 64U;
 	sb32 verbose;
+	sb32 xf_ok;
 
+	xf_ok = efManagerNetplayXfPointerLooksValid(xf);
 	verbose = efManagerNetplaySnapshotEffectDiagEnabled();
 	if ((verbose != FALSE) || (s_stale_log_budget > 0U))
 	{
@@ -208,21 +275,28 @@ static void efManagerNetplayEjectStaleXfEffect(
 		{
 			s_stale_log_budget--;
 		}
+		/* Never read xf->fields when the pointer is garbage (soak2 Stone@2536 SIGSEGV users_num). */
 		port_log(
 		    "SSB64 NetRbSnapshot: effect_xf_stale tick=%u proc=%s reason=%s effect_gobj_id=%u xf=%p xf_owner=%p "
 		    "particle=%p free=%d alloc=%d users=%u\n",
-		    (unsigned int)syNetInputGetTick(), proc_tag, reason, (unsigned int)effect_gobj->id, (void *)xf,
-		    (xf != NULL) ? (void *)xf->effect_gobj : NULL,
-		    (void *)lbParticleFindStructForEffectGobj(effect_gobj),
-		    (xf != NULL) ? (int)lbParticleTransformIsOnFreeList(xf) : -1,
-		    (xf != NULL) ? (int)lbParticleTransformIsAllocated(xf) : -1,
-		    (unsigned int)((xf != NULL) ? xf->users_num : 0U));
+		    (unsigned int)syNetInputGetTick(), proc_tag, reason,
+		    (unsigned int)((effect_gobj != NULL) ? effect_gobj->id : 0U), (void *)xf,
+		    (xf_ok != FALSE) ? (void *)xf->effect_gobj : NULL,
+		    (effect_gobj != NULL) ? (void *)lbParticleFindStructForEffectGobj(effect_gobj) : NULL,
+		    (xf_ok != FALSE) ? (int)lbParticleTransformIsOnFreeList(xf) : -1,
+		    (xf_ok != FALSE) ? (int)lbParticleTransformIsAllocated(xf) : -1,
+		    (unsigned int)((xf_ok != FALSE) ? xf->users_num : 0U));
 	}
 	if (ep != NULL)
 	{
+		ep->xf = NULL;
+		ep->effect_vars.common.xf = NULL;
 		efManagerSetPrevStructAlloc(ep);
 	}
-	gcEjectGObj(effect_gobj);
+	if (effect_gobj != NULL)
+	{
+		gcEjectGObj(effect_gobj);
+	}
 }
 #endif
 
@@ -2016,16 +2090,25 @@ EFStruct* efManagerGetNextStructAlloc(sb32 is_force_return)
             return NULL;
         }
     }
-    sEFManagerStructsAllocFree = ep->next;
+	sEFManagerStructsAllocFree = ep->next;
 
-    ep->fighter_gobj = NULL;
-    ep->xf = NULL;
-    ep->is_pause_effect = FALSE;
-    ep->proc_update = NULL;
+	ep->fighter_gobj = NULL;
+	ep->xf = NULL;
+	ep->is_pause_effect = FALSE;
+	ep->proc_update = NULL;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	/*
+	 * Zero the union so recycled shells never hand a stomped quake.priority
+	 * (>=6) to QuakeFuncRun → gcAddGObjProcess hang. Vanilla N64 reuse
+	 * relied on callers overwriting the live members before use; LP64 +
+	 * rollback recycle made stale u8 priority fatal.
+	 */
+	memset(&ep->effect_vars, 0, sizeof(ep->effect_vars));
+#endif
 
-    sEFManagerStructsFreeNum--;
+	sEFManagerStructsFreeNum--;
 
-    return ep;
+	return ep;
 }
 
 // 0x800FD4B8
@@ -2757,68 +2840,39 @@ void efManagerDefaultProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
 
-#if defined(PORT) && defined(SSB64_NETMENU)
-    /* Netplay rollback/reconcile can leave a non-NULL but stale LBTransform pointer. */
+#ifdef PORT
+    /* SR-character / union-stomp: effect_vars.common.xf can be NULL or garbage (see NETMENU
+     * soft sanitize). Offline PORT early-out; netmenu ejects via IsLive after the same check. */
     if (ep == NULL)
     {
+#if defined(SSB64_NETMENU)
         efManagerNetplayEjectStaleXfEffect(effect_gobj, NULL, NULL, "DefaultProcUpdate", "null_ep");
-        return;
-    }
-    {
-        LBTransform *xf = ep->effect_vars.common.xf;
-        const char *reason;
-
-        if (efManagerNetplayEffectXfIsLive(effect_gobj, xf, &reason) == FALSE)
-        {
-            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DefaultProcUpdate", reason);
-            return;
-        }
-        if ((xf->effect_gobj != effect_gobj) || (lbParticleTransformIsAllocated(xf) == FALSE))
-        {
-            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DefaultProcUpdate", "pre_write_race");
-            return;
-        }
-        xf->translate.x += ep->effect_vars.common.vel.x;
-        xf->translate.y += ep->effect_vars.common.vel.y;
-        return;
-    }
 #endif
-#ifdef PORT
-    /* SR-character hit effects spawned from collision-resolve paths
-     * (gmCollisionResolveAttackerWeapon and siblings) can race past the
-     * LBParticleAddTransformForStruct that normally populates
-     * effect_vars.common.xf. The vanilla allocator runs LBParticleProcess-
-     * Struct synchronously and the user_num check rejects the spawn when
-     * xf isn't set, but synth-fkind weapon spawns route through paths
-     * where effect_vars never gets initialized at all (different EFStruct
-     * variant, common is union-overlapped with damage_normal_heavy.size).
-     * The bare-pointer access here AVs on first frame of any synth hit. */
-    if (ep == NULL || ep->effect_vars.common.xf == NULL) return;
-    /* effect_vars is a union that overlays common.xf with several other
-     * variants (damage_normal_heavy.size and friends). For synth-fighter
-     * weapon spawns the union is initialized to a size variant, so xf
-     * dereferences a non-NULL but invalid pointer. The corrupt pointer
-     * pattern observed: high 32 bits leak from an adjacent heap page
-     * address (~0x024F...) and low 32 bits are 0xFFFFFFFF garbage. Reject
-     * anything below the low-userspace threshold, anything with the
-     * low-16 pattern that screams "garbage" (low 16 bits all set, or
-     * misaligned for a struct pointer). Real LBTransform pointers come
-     * from a pool aligned at least to 4 bytes. */
+        return;
+    }
+    if (ep->effect_vars.common.xf == NULL)
+    {
+#if defined(SSB64_NETMENU)
+        efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, NULL, "DefaultProcUpdate", "null_xf");
+#endif
+        return;
+    }
     {
         uintptr_t xf_addr = (uintptr_t)ep->effect_vars.common.xf;
-        if (xf_addr < 0x10000u) return;
-        if ((xf_addr & 0xFFFFu) == 0xFFFFu) return;
-        if ((xf_addr & 0x3u) != 0u) return;
+
+        if ((xf_addr < 0x10000u) || ((xf_addr & 0xFFFFu) == 0xFFFFu) || ((xf_addr & 0x3u) != 0u))
+        {
+#if defined(SSB64_NETMENU)
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, ep->effect_vars.common.xf,
+                                               "DefaultProcUpdate", "xf_garbage");
+#endif
+            return;
+        }
     }
 #endif
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* Netplay rollback/reconcile can leave a non-NULL but stale LBTransform pointer. */
-    if (ep == NULL)
-    {
-        efManagerNetplayEjectStaleXfEffect(effect_gobj, NULL, NULL, "DefaultProcUpdate", "null_ep");
-        return;
-    }
     {
         LBTransform *xf = ep->effect_vars.common.xf;
         const char *reason;
@@ -3518,11 +3572,23 @@ GObj* efManagerShockSmallMakeEffect(Vec3f *pos)
     EFStruct *ep;
     f32 scale;
     f32 angle;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Local override: do not burn the shared gameplay LCG for this pure VFX.
+     * syUtilsRandFloat is remapped to Cosmetic() at file scope, which still
+     * advances the game seed on forward sim — asymmetric ShockSmall spawns
+     * after resim fork FRAME_COMMIT `rng` while figh/eff stay matched. */
+#undef syUtilsRandFloat
+#define syUtilsRandFloat syUtilsRandFloatForcedCosmetic
+#endif
 
     effect_gobj = efManagerMakeEffectNoForce(&dEFManagerShockSmallEffectDesc);
 
     if (effect_gobj == NULL)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+#undef syUtilsRandFloat
+#define syUtilsRandFloat syUtilsRandFloatCosmetic
+#endif
         return NULL;
     }
     dobj = DObjGetStruct(effect_gobj);
@@ -3560,6 +3626,10 @@ GObj* efManagerShockSmallMakeEffect(Vec3f *pos)
 
     dobj->rotate.vec.f.z = syUtilsRandFloat() * F_CLC_DTOR32(360.0F); // F_CLC_DTOR32(360.0F)
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+#undef syUtilsRandFloat
+#define syUtilsRandFloat syUtilsRandFloatCosmetic
+#endif
     return effect_gobj;
 }
 
@@ -3578,6 +3648,12 @@ void efManagerDustLightProcUpdate(GObj *effect_gobj)
         LBTransform *xf = ep->effect_vars.dust_light.xf;
         const char *reason;
 
+        if (efManagerNetplayXfPointerLooksValid(xf) == FALSE)
+        {
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustLightProcUpdate",
+                                               (xf == NULL) ? "null_xf" : "xf_garbage");
+            return;
+        }
         if (efManagerNetplayEffectXfIsLive(effect_gobj, xf, &reason) == FALSE)
         {
             efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustLightProcUpdate", reason);
@@ -3751,6 +3827,12 @@ void efManagerDustHeavyDoubleProcUpdate(GObj *effect_gobj)
         LBTransform *xf = ep->effect_vars.dust_heavy.xf;
         const char *reason;
 
+        if (efManagerNetplayXfPointerLooksValid(xf) == FALSE)
+        {
+            efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustHeavyDoubleProcUpdate",
+                                               (xf == NULL) ? "null_xf" : "xf_garbage");
+            return;
+        }
         if (efManagerNetplayEffectXfIsLive(effect_gobj, xf, &reason) == FALSE)
         {
             efManagerNetplayEjectStaleXfEffect(effect_gobj, ep, xf, "DustHeavyDoubleProcUpdate", reason);
@@ -4968,8 +5050,33 @@ void efManagerQuakeProcUpdate(GObj *effect_gobj)
 void efManagerQuakeFuncRun(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
+    u32 priority;
 
-    gcAddGObjProcess(effect_gobj, efManagerQuakeProcUpdate, nGCProcessKindFunc, ep->effect_vars.quake.priority);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: any netplay VS.
+     * Union-stomped / recycled EFStructs can leave quake.priority >= 6; vanilla
+     * gcAddGObjProcess then spins forever (`om : GObjProcess's priority is bad
+     * value`). Clamp to the valid camera-quake band (0..3) before binding. See
+     * docs/bugs/netplay_quake_priority_gobjproc_hang_2026-07-08.md. */
+    if (ep == NULL)
+    {
+        effect_gobj->func_run = NULL;
+        return;
+    }
+    priority = (u32)ep->effect_vars.quake.priority;
+    if (priority > 3U)
+    {
+        port_log(
+            "SSB64 Netplay: quake_func_run_bad_priority effect_gobj_id=%u pri=%u clamped=0\n",
+            (unsigned int)effect_gobj->id, (unsigned int)priority);
+        priority = 0U;
+        ep->effect_vars.quake.priority = 0U;
+    }
+#else
+    priority = (u32)ep->effect_vars.quake.priority;
+#endif
+
+    gcAddGObjProcess(effect_gobj, efManagerQuakeProcUpdate, nGCProcessKindFunc, priority);
 
     effect_gobj->func_run = NULL;
 }
@@ -4980,6 +5087,19 @@ GObj* efManagerQuakeMakeEffect(s32 magnitude)
     s32 unused[2];
     EFStruct *ep;
     GObj *effect_gobj;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Restrict to vanilla magnitudes 0..3 so priority=3-magnitude stays in 0..3.
+     * Snapshot respawn used to call MakeEffect(0xFF)/(-1) historically; garbage
+     * magnitude also trips gcAddGObjProcess's priority>=6 hang. */
+    if ((magnitude < 0) || (magnitude > 3))
+    {
+        port_log(
+            "SSB64 Netplay: quake_make_bad_magnitude magnitude=%d clamped=0\n",
+            (int)magnitude);
+        magnitude = 0;
+    }
+#endif
 
     ep = efManagerGetEffectNoForce();
 
@@ -6736,6 +6856,13 @@ void efManagerYoshiEggLaySetAnim(GObj *effect_gobj, s32 index)
     ep->effect_vars.yoshi_egg_lay.index = index;
 
     lbCommonAddDObjAnimJointAll(DObjGetStruct(effect_gobj)->child, lbRelocGetFileData(AObjEvent32**, gFTDataYoshiSpecial3, dEFManagerYoshiEggLayAnimJoints[index]), 1.0F);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: joint rebind must not leave wait-phase mash speed on break scrunch. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        gcSetAnimSpeed(effect_gobj, 1.0F);
+    }
+#endif
 }
 
 // 0x80102FE4
@@ -6759,9 +6886,47 @@ void efManagerYoshiEggLayProcUpdate(GObj *effect_gobj)
 
 	if (ep->effect_vars.yoshi_egg_lay.force_index != ep->effect_vars.yoshi_egg_lay.index)
 	{
-		efManagerYoshiEggLaySetAnim(effect_gobj, ep->effect_vars.yoshi_egg_lay.force_index);
+		s32 force_index = ep->effect_vars.yoshi_egg_lay.force_index;
+		s32 index = ep->effect_vars.yoshi_egg_lay.index;
+
+		if (syNetplayRollbackSemanticsActive() != FALSE)
+		{
+			/*
+			 * Snapshot apply + reconcile own joint binding on load. Physics arms force_index=1 while
+			 * blobs keep index=0 — SetAnim(1) at 1.0F every rb tick replays early scrunch. Still
+			 * run intro→wait SetAnim once; other mismatches defer to snapshot apply / physics entry.
+			 */
+			if ((force_index == 0) && (index == 2))
+			{
+				efManagerYoshiEggLaySetAnim(effect_gobj, 0);
+			}
+		}
+		else
+		{
+			efManagerYoshiEggLaySetAnim(effect_gobj, force_index);
+		}
 	}
 	gcPlayAnimAll(effect_gobj);
+
+	if (syNetplayRollbackSemanticsActive() != FALSE)
+	{
+		GObj *fighter_gobj = ep->fighter_gobj;
+
+		if (fighter_gobj != NULL)
+		{
+			ftCommonYoshiEggApplyEggLayWiggleGfx(fighter_gobj, effect_gobj);
+		}
+		if ((ep->effect_vars.yoshi_egg_lay.index == 1) && (effect_gobj->anim_frame <= 0.0F) &&
+		    (fighter_gobj != NULL))
+		{
+			/*
+			 * Effect proc runs after fighter ProcUpdate on the break-complete tick; reconcile /
+			 * forward eject can drop the shell before the fighter observes anim_frame<=0. Escape
+			 * here on the same tick the break anim ends (vanilla timing, ~10f after flag0).
+			 */
+			(void)ftCommonYoshiEggTryEscapeFromBreakAnimComplete(fighter_gobj);
+		}
+	}
 
 	if ((ep->effect_vars.yoshi_egg_lay.index == 2) && (effect_gobj->anim_frame <= 0.0F))
 	{
@@ -7510,6 +7675,27 @@ void efManagerKirbyInhaleWindProcUpdate(GObj *effect_gobj)
     if ((ep == NULL) || (ep->xf == NULL) || (ep->fighter_gobj == NULL) ||
         (DObjGetStruct(ep->fighter_gobj) == NULL))
     {
+        GObjProcess *gobjproc;
+        GObjProcess *next;
+
+        for (gobjproc = effect_gobj->gobjproc_head; gobjproc != NULL; gobjproc = next)
+        {
+            next = gobjproc->link_next;
+            if ((gobjproc->kind == nGCProcessKindFunc) &&
+                (gobjproc->exec.func == efManagerKirbyInhaleWindProcUpdate))
+            {
+                gcEndGObjProcess(gobjproc);
+            }
+        }
+        if (ep != NULL)
+        {
+            if (ep->xf != NULL)
+            {
+                lbParticleEjectStructID(ep->xf->generator_id, ep->bank_id >> 3);
+            }
+            efManagerSetPrevStructAlloc(ep);
+            effect_gobj->user_data.p = NULL;
+        }
         gcEjectGObj(effect_gobj);
         return;
     }

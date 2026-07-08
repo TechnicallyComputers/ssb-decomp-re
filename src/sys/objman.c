@@ -11,6 +11,7 @@ extern void port_log(const char *fmt, ...);
 
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_resim_replay_hang_diag.h>
+extern sb32 efManagerNetplayTryCancelYoshiEggLayBreakEject(struct GObj *effect_gobj);
 #endif
 
 #ifdef PORT
@@ -1047,7 +1048,21 @@ GObjProcess* gcAddGObjProcess(GObj *gobj, void (*proc)(GObj*), u8 kind, u32 prio
 	if (priority >= 6)
 	{
 		syDebugPrintf("om : GObjProcess's priority is bad value\n");
+#if defined(PORT) && defined(SSB64_NETMENU)
+		/* SSB64_NETMENU: refuse instead of spinning forever. Quake FuncRun and
+		 * similar call sites pass union-stomped priorities after effect-pool
+		 * recycle; the watchdog hang backtrace lands here. See
+		 * docs/bugs/netplay_quake_priority_gobjproc_hang_2026-07-08.md. */
+		port_log(
+		    "SSB64: gcAddGObjProcess reject bad priority=%u gobj_id=%u proc=%p\n",
+		    (unsigned int)priority,
+		    (unsigned int)((gobj != NULL) ? gobj->id : 0U),
+		    (void *)proc);
+		gcSetGObjProcessPrevAlloc(gobjproc);
+		return NULL;
+#else
 		while (TRUE);
+#endif
 	}
 	gobjproc->priority = priority;
 	gobjproc->kind = kind;
@@ -2111,11 +2126,16 @@ void gcEjectGObj(GObj *gobj)
 	if (gcPortGObjEjectTraceEnabled() != FALSE)
 	{
 		port_log("SSB64: gcEjectGObj ENTER sim_tick=%u gobj=%p id=%u kind=%u link_id=%u dl_link_id=%u "
-		         "gpr_head=%p obj=%p link_next=%p link_prev=%p\n",
+		         "gpr_head=%p obj=%p link_next=%p link_prev=%p caller=%p\n",
 		         (unsigned int)syNetInputGetTick(), (void *)gobj, gobj->id, (unsigned)gobj->obj_kind,
 		         (unsigned)gobj->link_id, (unsigned)gobj->dl_link_id, (void *)gobj->gobjproc_head, gobj->obj,
-		         (void *)gobj->link_next, (void *)gobj->link_prev);
+		         (void *)gobj->link_next, (void *)gobj->link_prev, __builtin_return_address(0));
 		gcPortRecordGObjEject(gobj);
+	}
+	if ((gobj->id == nGCCommonKindEffect) &&
+	    (efManagerNetplayTryCancelYoshiEggLayBreakEject(gobj) != FALSE))
+	{
+		return;
 	}
 #endif
 

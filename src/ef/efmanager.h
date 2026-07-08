@@ -15,6 +15,7 @@ extern s32 efManagerGetEffectStructFreeCount(void);
 extern sb32 efManagerNetSafeFreeStruct(EFStruct *ep, GObj *effect_gobj, const char *site);
 extern sb32 efManagerNetplayEffectXfIsLive(GObj *effect_gobj, LBTransform *xf, const char **out_reason);
 extern void efManagerNetplayTeardownParticleCouplingBeforeForwardEject(GObj *effect_gobj);
+extern sb32 efManagerNetplayTryCancelYoshiEggLayBreakEject(GObj *effect_gobj);
 /* Walk free-list vs live effect GObjs; optionally rebuild the pool free chain. */
 extern sb32 efManagerNetAuditPool(sb32 try_repair, const char *site);
 #endif

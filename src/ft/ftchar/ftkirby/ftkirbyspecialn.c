@@ -42,6 +42,7 @@ static s16 ftKirbySpecialNResolveInhaledCopyId(const FTStruct *kirby_fp, const F
 
 #if defined(SSB64_NETMENU)
 #include <stdlib.h>
+#include <sys/netplay_sim_quantize.h>
 
 extern void port_log(const char *fmt, ...);
 
@@ -986,6 +987,14 @@ void ftKirbySpecialNCopySetStatus(GObj *fighter_gobj)
 // 0x80163364
 void ftKirbySpecialNEndSetStatus(GObj *fighter_gobj)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: snapshot save can strip the wind GObj during loop; StopEffect here
+     * clears any LB orphan when B is released without a capture. See docs/bugs/netplay_kirby_inhale_wind_persist_forward_sim_2026-07-07.md. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        ftKirbySpecialNStopEffect(fighter_gobj);
+    }
+#endif
     ftMainSetStatus(fighter_gobj, nFTKirbyStatusSpecialNEnd, 0.0F, 1.0F, FTSTATUS_PRESERVE_EFFECT);
     ftMainPlayAnimEventsAll(fighter_gobj);
 }
@@ -1062,6 +1071,12 @@ void ftKirbySpecialAirNCopySetStatus(GObj *fighter_gobj)
 // 0x801635B0
 void ftKirbySpecialAirNEndSetStatus(GObj *fighter_gobj)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        ftKirbySpecialNStopEffect(fighter_gobj);
+    }
+#endif
     ftMainSetStatus(fighter_gobj, nFTKirbyStatusSpecialAirNEnd, 0.0F, 1.0F, FTSTATUS_PRESERVE_EFFECT);
     ftMainPlayAnimEventsAll(fighter_gobj);
 }

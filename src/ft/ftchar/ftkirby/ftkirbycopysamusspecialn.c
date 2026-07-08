@@ -5,6 +5,7 @@
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <wp/wpvars.h>
+#include <ft/ftchar/ftkirby/ftkirby.h>
 extern wpSamusChargeShotAttributes dWPSamusChargeShotWeaponAttributes[];
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
@@ -99,22 +100,55 @@ static void ftKirbyCopySamusSpecialNPortSetStatusWait(GObj *fighter_gobj)
 	ftCommonWaitSetStatus(fighter_gobj);
 }
 
+static sb32 ftKirbyCopySamusSpecialNPortIsChargeCoupleStatus(const FTStruct *fp)
+{
+	if (fp == NULL)
+	{
+		return FALSE;
+	}
+	return ((fp->status_id == nFTKirbyStatusCopySamusSpecialNStart) ||
+	        (fp->status_id == nFTKirbyStatusCopySamusSpecialNLoop) ||
+	        (fp->status_id == nFTKirbyStatusCopySamusSpecialAirNStart)) ?
+	           TRUE :
+	           FALSE;
+}
+
+sb32 ftKirbyCopySamusSpecialNPortReconcileMaxChargeLoopIfNeeded(GObj *fighter_gobj)
+{
+	FTStruct *fp;
+
+	if ((fighter_gobj == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+	{
+		return FALSE;
+	}
+	fp = ftGetStruct(fighter_gobj);
+	if ((fp == NULL) || (fp->status_id != nFTKirbyStatusCopySamusSpecialNLoop) ||
+	    (fp->passive_vars.kirby.copysamus_charge_level < FTKIRBY_COPYSAMUS_CHARGE_MAX))
+	{
+		return FALSE;
+	}
+	ftParamCheckSetFighterColAnimID(fighter_gobj, nGMColAnimFighterCommonSpecialNCharge, 0);
+	ftKirbyCopySamusSpecialNPortSetStatusWait(fighter_gobj);
+	return TRUE;
+}
+
 static void ftKirbyCopySamusSpecialNPortEnsureCoupledChargeShot(GObj *fighter_gobj)
 {
 	FTStruct *fp = ftGetStruct(fighter_gobj);
 	Vec3f pos;
 
-	ftKirbyCopySamusSpecialNPortValidateCoupledCharge(fp);
-#if defined(SSB64_NETMENU)
-	/* Netplay rollback only: reacquire orphaned charge shot after snapshot scrub. */
-	if (syNetplayRollbackSemanticsActive() != FALSE)
+	if ((syNetplayRollbackSemanticsActive() == FALSE) ||
+	    (ftKirbyCopySamusSpecialNPortIsChargeCoupleStatus(fp) == FALSE) ||
+	    (fp->passive_vars.kirby.copysamus_charge_level >= FTKIRBY_COPYSAMUS_CHARGE_MAX))
 	{
-		if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
-		{
-			fp->status_vars.kirby.copysamus_specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
-		}
+		return;
 	}
-#endif
+	ftKirbyCopySamusSpecialNPortValidateCoupledCharge(fp);
+	/* Netplay rollback only: reacquire orphaned charge shot after snapshot scrub. */
+	if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
+	{
+		fp->status_vars.kirby.copysamus_specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+	}
 	if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
 	{
 		ftKirbyCopySamusSpecialNGetChargeShotPosition(fp, &pos);
@@ -123,13 +157,8 @@ static void ftKirbyCopySamusSpecialNPortEnsureCoupledChargeShot(GObj *fighter_go
 	}
 	if (fp->status_vars.kirby.copysamus_specialn.charge_gobj != NULL)
 	{
-#if defined(SSB64_NETMENU)
 		/* Netplay rollback only: cull duplicate charge shots on shared grid. */
-		if (syNetplayRollbackSemanticsActive() != FALSE)
-		{
-			syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.kirby.copysamus_specialn.charge_gobj);
-		}
-#endif
+		syNetRbSnapCullSamusChargeShotsForFighter(fighter_gobj, fp->status_vars.kirby.copysamus_specialn.charge_gobj);
 		ftKirbyCopySamusSpecialNPortRefreshChargeShotGfx(fp);
 	}
 }
@@ -185,6 +214,8 @@ void ftKirbyCopySamusSpecialNSetChargeShotPosition(FTStruct *fp)
     ftKirbyCopySamusSpecialNPortValidateCoupledCharge(fp);
     /* Netplay rollback only: reacquire charge shot pointer after rollback load. */
     if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+        (ftKirbyCopySamusSpecialNPortIsChargeCoupleStatus(fp) != FALSE) &&
+        (fp->passive_vars.kirby.copysamus_charge_level < FTKIRBY_COPYSAMUS_CHARGE_MAX) &&
         (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL))
     {
         fp->status_vars.kirby.copysamus_specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
@@ -271,6 +302,11 @@ void ftKirbyCopySamusSpecialNLoopProcUpdate(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 
 #if defined(PORT) && defined(SSB64_NETMENU)
+    if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+        (ftKirbyCopySamusSpecialNPortReconcileMaxChargeLoopIfNeeded(fighter_gobj) != FALSE))
+    {
+        return;
+    }
     ftKirbyCopySamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
 #endif
     fp->status_vars.kirby.copysamus_specialn.charge_int--;
@@ -373,6 +409,11 @@ void ftKirbyCopySamusSpecialNLoopSetStatus(GObj *fighter_gobj)
 
     ftKirbyCopySamusSpecialNGetChargeShotPosition(fp, &pos);
 #if defined(PORT) && defined(SSB64_NETMENU)
+    if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+        (ftKirbyCopySamusSpecialNPortReconcileMaxChargeLoopIfNeeded(fighter_gobj) != FALSE))
+    {
+        return;
+    }
     ftKirbyCopySamusSpecialNPortEnsureCoupledChargeShot(fighter_gobj);
 #else
     fp->status_vars.kirby.copysamus_specialn.charge_gobj = wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.kirby.copysamus_charge_level, 0);
@@ -395,17 +436,30 @@ void ftKirbyCopySamusSpecialNEndProcUpdate(GObj *fighter_gobj)
         ftKirbyCopySamusSpecialNGetChargeShotPosition(fp, &pos);
 
 #if defined(PORT) && defined(SSB64_NETMENU)
-        if (syNetplayRollbackSemanticsActive() != FALSE)
         {
-            if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
+            sb32 allow_charge_spawn;
+
+            allow_charge_spawn = TRUE;
+            if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+                (syNetRbSnapDeferWeaponSimDuringLoadVerify() != FALSE))
             {
-                fp->status_vars.kirby.copysamus_specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+                allow_charge_spawn = FALSE;
             }
-        }
-        if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
-        {
-            fp->status_vars.kirby.copysamus_specialn.charge_gobj =
-                wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.kirby.copysamus_charge_level, 1);
+            if (allow_charge_spawn != FALSE)
+            {
+                if (syNetplayRollbackSemanticsActive() != FALSE)
+                {
+                    if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
+                    {
+                        fp->status_vars.kirby.copysamus_specialn.charge_gobj = syNetRbSnapReacquireChargeShotForFP(fp);
+                    }
+                }
+                if (fp->status_vars.kirby.copysamus_specialn.charge_gobj == NULL)
+                {
+                    fp->status_vars.kirby.copysamus_specialn.charge_gobj =
+                        wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.kirby.copysamus_charge_level, 1);
+                }
+            }
         }
 
 #endif
@@ -424,7 +478,13 @@ void ftKirbyCopySamusSpecialNEndProcUpdate(GObj *fighter_gobj)
             wp->weapon_vars.charge_shot.owner_gobj = NULL;
             fp->status_vars.kirby.copysamus_specialn.charge_gobj = NULL;
         }
-        else wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.kirby.copysamus_charge_level, 1);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        else if ((syNetplayRollbackSemanticsActive() == FALSE) ||
+                 (syNetRbSnapDeferWeaponSimDuringLoadVerify() == FALSE))
+#endif
+        {
+            wpSamusChargeShotMakeWeapon(fighter_gobj, &pos, fp->passive_vars.kirby.copysamus_charge_level, 1);
+        }
 
         if (fp->ga == nMPKineticsAir)
         {
