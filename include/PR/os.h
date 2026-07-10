@@ -270,6 +270,17 @@ extern "C"
 	 * Structure for controllers
 	 */
 
+	/*
+	 * MSVC's <errno.h> defines `errno` as a macro expanding to `_errno()`.
+	 * Netplay TUs include errno.h (curl / sockets) before PR/os.h, which
+	 * would turn these fields into illegal `_errno` function members
+	 * (C2032). Push/pop keeps the N64 field name and layout intact.
+	 */
+#if defined(_MSC_VER)
+#pragma push_macro("errno")
+#undef errno
+#endif
+
 	typedef struct
 	{
 		u16 type;  /* Controller Type */
@@ -293,6 +304,10 @@ extern "C"
 		u8 dataCrc;		   /* CRC code for data */
 		u8 errno;
 	} OSContRamIo;
+
+#if defined(_MSC_VER)
+#pragma pop_macro("errno")
+#endif
 
 	/*
 	 * Structure for file system
