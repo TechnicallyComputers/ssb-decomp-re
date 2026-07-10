@@ -8,9 +8,15 @@
 #include <stdlib.h>
 #include <sys/taskman.h>
 extern float port_widescreen_clip_x_scale(void);
-/* Particle generator variance is visual-only; keep it off the gameplay RNG stream in netplay. */
+/* Particle generator variance is visual-only. Under netmenu use forced cosmetic
+ * so asymmetric spawn paths do not advance the hashed gameplay LCG. */
+#if defined(SSB64_NETMENU)
+#define syUtilsRandFloat syUtilsRandFloatForcedCosmetic
+#define syUtilsRandIntRange syUtilsRandIntRangeForcedCosmetic
+#else
 #define syUtilsRandFloat syUtilsRandFloatCosmetic
 #define syUtilsRandIntRange syUtilsRandIntRangeCosmetic
+#endif
 #endif
 
 #if defined(PORT) && defined(SSB64_NETMENU)

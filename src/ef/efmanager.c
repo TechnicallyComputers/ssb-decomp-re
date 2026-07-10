@@ -14,9 +14,16 @@ extern void *func_800269C0_275C0(u16 id);
 /* For the defensive NULL-file_head guard's one-shot warning. */
 #include <stdlib.h>
 extern void port_log(const char *fmt, ...);
-/* Effect jitter is cosmetic; in netplay it must not advance gameplay RNG during rollback/resim. */
+/* Effect jitter is cosmetic. Under netmenu, never burn the hashed gameplay LCG
+ * on forward sim — asymmetric VFX spawn counts (kick flame, dust, ShockSmall)
+ * must not fork FRAME_COMMIT `rng` while figh/eff stay matched. */
+#if defined(SSB64_NETMENU)
+#define syUtilsRandFloat syUtilsRandFloatForcedCosmetic
+#define syUtilsRandIntRange syUtilsRandIntRangeForcedCosmetic
+#else
 #define syUtilsRandFloat syUtilsRandFloatCosmetic
 #define syUtilsRandIntRange syUtilsRandIntRangeCosmetic
+#endif
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <string.h>
@@ -3572,23 +3579,11 @@ GObj* efManagerShockSmallMakeEffect(Vec3f *pos)
     EFStruct *ep;
     f32 scale;
     f32 angle;
-#if defined(PORT) && defined(SSB64_NETMENU)
-    /* Local override: do not burn the shared gameplay LCG for this pure VFX.
-     * syUtilsRandFloat is remapped to Cosmetic() at file scope, which still
-     * advances the game seed on forward sim — asymmetric ShockSmall spawns
-     * after resim fork FRAME_COMMIT `rng` while figh/eff stay matched. */
-#undef syUtilsRandFloat
-#define syUtilsRandFloat syUtilsRandFloatForcedCosmetic
-#endif
 
     effect_gobj = efManagerMakeEffectNoForce(&dEFManagerShockSmallEffectDesc);
 
     if (effect_gobj == NULL)
     {
-#if defined(PORT) && defined(SSB64_NETMENU)
-#undef syUtilsRandFloat
-#define syUtilsRandFloat syUtilsRandFloatCosmetic
-#endif
         return NULL;
     }
     dobj = DObjGetStruct(effect_gobj);
@@ -3626,10 +3621,6 @@ GObj* efManagerShockSmallMakeEffect(Vec3f *pos)
 
     dobj->rotate.vec.f.z = syUtilsRandFloat() * F_CLC_DTOR32(360.0F); // F_CLC_DTOR32(360.0F)
 
-#if defined(PORT) && defined(SSB64_NETMENU)
-#undef syUtilsRandFloat
-#define syUtilsRandFloat syUtilsRandFloatCosmetic
-#endif
     return effect_gobj;
 }
 
@@ -5040,6 +5031,45 @@ void efManagerQuakeProcUpdate(GObj *effect_gobj)
         {
             efManagerNetplayMaybeLogQuakeCameraSuppressed(effect_gobj, &pos);
             return;
+        }
+        /*
+         * Quake DObj translate is anim-driven shake amplitude, normally tens of units. A recycled
+         * or mis-bound shell can leave translate at stage-scale values (soak2 session 43656188:
+         * fold pos ≈ (-8500, 2157, -5000)); vel_at then yanks cobj.at thousands of units/frame and
+         * the camera stops framing fighters for seconds while pan slowly recovers. CObj is excluded
+         * from syNetSyncHashGMCamera, so peers stay SYNCTEST_OK. Clamp to a strong-but-sane shake.
+         */
+        {
+            f32 impulse_mag = syVectorMag3D(&pos);
+
+            if (impulse_mag > 250.0F)
+            {
+                static u32 s_clamp_log_budget = 32U;
+                f32 scale = 250.0F / impulse_mag;
+
+                if ((s_clamp_log_budget > 0U) || (efManagerNetplayQuakeCameraDiagEnabled() != FALSE))
+                {
+                    if (s_clamp_log_budget > 0U)
+                    {
+                        s_clamp_log_budget--;
+                    }
+                    port_log(
+                        "SSB64 Netplay: quake_camera_impulse_clamped tick=%u effect_gobj_id=%u "
+                        "mag=%.2f vel=(%.2f,%.2f,%.2f) dobj=(%.2f,%.2f,%.2f)\n",
+                        (unsigned int)syNetInputGetTick(),
+                        (unsigned int)effect_gobj->id,
+                        impulse_mag,
+                        pos.x,
+                        pos.y,
+                        pos.z,
+                        dobj->translate.vec.f.x,
+                        dobj->translate.vec.f.y,
+                        dobj->translate.vec.f.z);
+                }
+                pos.x *= scale;
+                pos.y *= scale;
+                pos.z *= scale;
+            }
         }
 #endif
         gmCameraSetVelAt(&pos);

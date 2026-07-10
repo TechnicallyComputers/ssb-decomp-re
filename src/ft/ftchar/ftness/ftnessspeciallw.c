@@ -182,7 +182,7 @@ void ftNessSpecialLwHoldProcUpdate(GObj *fighter_gobj)
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* Netplay rollback only: canonicalize absorb/magnet sim state. */
-    syNetplayCanonicalizeNessSpecialLwSimState(fighter_gobj);
+    syNetplayCanonicalizeNessSpecialLwProcUpdateState(fighter_gobj);
 
 #endif
 
@@ -201,7 +201,7 @@ void ftNessSpecialAirLwHoldProcUpdate(GObj *fighter_gobj)
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* Netplay rollback only: canonicalize absorb/magnet sim state. */
-    syNetplayCanonicalizeNessSpecialLwSimState(fighter_gobj);
+    syNetplayCanonicalizeNessSpecialLwProcUpdateState(fighter_gobj);
 
 #endif
 
@@ -267,6 +267,14 @@ void ftNessSpecialLwInitVars(GObj *fighter_gobj)
 #endif
 
     fp->motion_vars.flags.flag1 = 0;
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay rollback only: recover bubble when stale is_effect_attach blocked vanilla mint. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetplayEnsureNessPsychicMagnetEffect(fighter_gobj);
+    }
+#endif
 }
 
 // 0x80155750
@@ -292,7 +300,7 @@ void ftNessSpecialLwHitProcUpdate(GObj *fighter_gobj)
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* Netplay rollback only: canonicalize absorb/magnet sim state. */
-    syNetplayCanonicalizeNessSpecialLwSimState(fighter_gobj);
+    syNetplayCanonicalizeNessSpecialLwProcUpdateState(fighter_gobj);
 
 #endif
 
@@ -309,7 +317,7 @@ void ftNessSpecialAirLwHitProcUpdate(GObj *fighter_gobj)
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* Netplay rollback only: canonicalize absorb/magnet sim state. */
-    syNetplayCanonicalizeNessSpecialLwSimState(fighter_gobj);
+    syNetplayCanonicalizeNessSpecialLwProcUpdateState(fighter_gobj);
 
 #endif
 

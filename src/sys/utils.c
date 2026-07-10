@@ -226,8 +226,12 @@ u16 syUtilsRandUShort(void)
 f32 syUtilsRandFloat(void)
 {
 #ifdef PORT
-    u32 step = ((u32)*sSYUtilsRandomSeedPtr * 214013u) + 2531011u;
+    u32 step;
+
+    syNetSyncRngTraceBeforeGameSeedStep();
+    step = ((u32)*sSYUtilsRandomSeedPtr * 214013u) + 2531011u;
     *sSYUtilsRandomSeedPtr = (s32)step;
+    syNetSyncRngTraceAfterGameSeedStep((s32)step);
 #else
     s32 step = (*sSYUtilsRandomSeedPtr * 214013) + 2531011;
     *sSYUtilsRandomSeedPtr = step;
@@ -322,6 +326,11 @@ f32 syUtilsRandFloatForcedCosmetic(void)
 
     value = syUtilsRandUShortFromSeed(&sSYUtilsCosmeticRandomSeed);
     return value / 65536.0F;
+}
+
+s32 syUtilsRandIntRangeForcedCosmetic(s32 range)
+{
+    return (s32)((u32)syUtilsRandUShortFromSeed(&sSYUtilsCosmeticRandomSeed) * (u32)range / 65536u);
 }
 
 s32 syUtilsRandIntRangeCosmetic(s32 range)

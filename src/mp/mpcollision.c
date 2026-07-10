@@ -4420,11 +4420,16 @@ sb32 mpCollisionCheckExistLineID(s32 line_id)
 {
     if (line_id == -1)
     {
+#ifdef PORT
+        /* N64 debug halt — on PC return FALSE so netplay rollback/resim cannot SIGABRT. */
+        return FALSE;
+#else
         while (TRUE)
         {
             syDebugPrintf("mpGetExistCollisionId() id = %d\n", line_id);
             scManagerRunPrintGObjStatus();
         }
+#endif
     }
     if (line_id == -2)
     {

@@ -13,6 +13,15 @@ extern alSoundEffect* func_800269C0_275C0(u16);
 extern void *portFixupFTTexturePartContainer(void *container);
 #include <port_log.h>
 #include "fighter_registry.h"
+#if defined(SSB64_NETMENU)
+#include <sys/utils.h>
+/* Motion-script effect scatter / dust jitter is cosmetic-only; must not burn the
+ * hashed gameplay LCG when spawn timing differs across peers (rebirth Appear @3046). */
+static f32 ftParamEffectJitterRand(void)
+{
+    return syUtilsRandFloatForcedCosmetic();
+}
+#endif
 #endif
 
 /* Resolve `attr->textureparts_container` (a reloc token under PORT, a real
@@ -2044,15 +2053,27 @@ void* ftParamMakeEffect(GObj *fighter_gobj, s32 effect_id, s32 joint_id, Vec3f *
         {
             if (effect_scatter->x != 0)
             {
+#if defined(PORT) && defined(SSB64_NETMENU)
+                pos.x += (ftParamEffectJitterRand() - 0.5F) * (effect_scatter->x * 2.0F);
+#else
                 pos.x += (syUtilsRandFloat() - 0.5F) * (effect_scatter->x * 2.0F);
+#endif
             }
             if (effect_scatter->y != 0)
             {
+#if defined(PORT) && defined(SSB64_NETMENU)
+                pos.y += (ftParamEffectJitterRand() - 0.5F) * (effect_scatter->y * 2.0F);
+#else
                 pos.y += (syUtilsRandFloat() - 0.5F) * (effect_scatter->y * 2.0F);
+#endif
             }
             if (effect_scatter->z != 0)
             {
+#if defined(PORT) && defined(SSB64_NETMENU)
+                pos.z += (ftParamEffectJitterRand() - 0.5F) * (effect_scatter->z * 2.0F);
+#else
                 pos.z += (syUtilsRandFloat() - 0.5F) * (effect_scatter->z * 2.0F);
+#endif
             }
         }
         if (is_scale_pos != FALSE)
@@ -2141,8 +2162,13 @@ void* ftParamMakeEffect(GObj *fighter_gobj, s32 effect_id, s32 joint_id, Vec3f *
         break;
 
     case nEFKindDustExpandLarge:
+#if defined(PORT) && defined(SSB64_NETMENU)
+        pos.x += ((ftParamEffectJitterRand() * 160.0F) - 80.0F);
+        pos.y += ((ftParamEffectJitterRand() * 160.0F) - 80.0F);
+#else
         pos.x += ((syUtilsRandFloat() * 160.0F) - 80.0F);
         pos.y += ((syUtilsRandFloat() * 160.0F) - 80.0F);
+#endif
 
         effect = efManagerDustExpandLargeMakeEffect(&pos);
         break;
