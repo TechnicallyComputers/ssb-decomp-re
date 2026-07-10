@@ -11,6 +11,10 @@ extern void port_dump_backtrace(void);
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#endif
 
 #if defined(PORT) && defined(SSB64_NETMENU)
 static sb32 ftMainDecompDiagEnabled(void)
@@ -4838,10 +4842,11 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
     if ((status_id < 0) && (ftMainDecompDiagEnabled() != FALSE)) {
         port_log("SSB64: !!! ftMainSetStatus ENTRY status_id=0x%x (negative) "
                  "fighter_gobj=%p caller_ra=%p\n",
+            (u32)status_id, fighter_gobj,
 #if defined(_MSC_VER)
-            (u32)status_id, fighter_gobj, (void *)0);
+            _ReturnAddress());
 #else
-            (u32)status_id, fighter_gobj, __builtin_return_address(0));
+            __builtin_return_address(0));
 #endif
         port_dump_backtrace();
     }

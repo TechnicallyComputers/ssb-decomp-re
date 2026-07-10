@@ -2129,7 +2129,7 @@ void gcEjectGObj(GObj *gobj)
 		         "gpr_head=%p obj=%p link_next=%p link_prev=%p caller=%p\n",
 		         (unsigned int)syNetInputGetTick(), (void *)gobj, gobj->id, (unsigned)gobj->obj_kind,
 		         (unsigned)gobj->link_id, (unsigned)gobj->dl_link_id, (void *)gobj->gobjproc_head, gobj->obj,
-		         (void *)gobj->link_next, (void *)gobj->link_prev, __builtin_return_address(0));
+		         (void *)gobj->link_next, (void *)gobj->link_prev, PORT_CALLER_RA());
 		gcPortRecordGObjEject(gobj);
 	}
 	if ((gobj->id == nGCCommonKindEffect) &&

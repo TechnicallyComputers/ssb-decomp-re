@@ -14,6 +14,14 @@ extern void *func_800269C0_275C0(u16 id);
 /* For the defensive NULL-file_head guard's one-shot warning. */
 #include <stdlib.h>
 extern void port_log(const char *fmt, ...);
+/* MSVC has no __builtin_return_address; match objman.c. */
+#if defined(_MSC_VER)
+#include <intrin.h>
+#pragma intrinsic(_ReturnAddress)
+#define PORT_CALLER_RA() _ReturnAddress()
+#else
+#define PORT_CALLER_RA() __builtin_return_address(0)
+#endif
 /* Effect jitter is cosmetic. Under netmenu, never burn the hashed gameplay LCG
  * on forward sim — asymmetric VFX spawn counts (kick flame, dust, ShockSmall)
  * must not fork FRAME_COMMIT `rng` while figh/eff stay matched. */
@@ -2627,7 +2635,7 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
      * Bail cleanly (nothing allocated yet) and log the caller so the next soak
      * names the offending effect. See docs/bugs/. */
     if (!syEfDescPtrPlausible(effect_desc)) {
-        efManagerLogImplausiblePtr("effect_desc", effect_desc, __builtin_return_address(0));
+        efManagerLogImplausiblePtr("effect_desc", effect_desc, PORT_CALLER_RA());
         return NULL;
     }
 #endif
@@ -2641,7 +2649,7 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
         if (ep == NULL)
         {
 #if defined(PORT) && defined(SSB64_NETMENU)
-            efManagerLogMakeEffectAllocFail("ef_struct", effect_desc, __builtin_return_address(0));
+            efManagerLogMakeEffectAllocFail("ef_struct", effect_desc, PORT_CALLER_RA());
 #endif
             return NULL;
         }
@@ -2658,7 +2666,7 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
             efManagerSetPrevStructAlloc(ep);
         }
 #if defined(PORT) && defined(SSB64_NETMENU)
-        efManagerLogMakeEffectAllocFail("gobj", effect_desc, __builtin_return_address(0));
+        efManagerLogMakeEffectAllocFail("gobj", effect_desc, PORT_CALLER_RA());
 #endif
         return NULL;
     }
@@ -2690,7 +2698,7 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
      * the resolved base (addr) is validated after, to also catch the LP64
      * 0xFFFFFFFF-stomped variant seen during the Link bomb explosion. */
     if (!syEfDescPtrPlausible(effect_desc->file_head)) {
-        efManagerLogImplausiblePtr("file_head", effect_desc->file_head, __builtin_return_address(0));
+        efManagerLogImplausiblePtr("file_head", effect_desc->file_head, PORT_CALLER_RA());
         if (ep != NULL) {
             efManagerSetPrevStructAlloc(ep);
         }
@@ -2702,7 +2710,7 @@ GObj* efManagerMakeEffect(EFDesc *effect_desc, sb32 is_force_return)
         if (sBadFileHeadWarnCount < 10) {
             sBadFileHeadWarnCount++;
             port_log("SSB64: efManagerMakeEffect bail — *file_head=%p (effect_desc=%p caller=%p)\n",
-                     *effect_desc->file_head, effect_desc, __builtin_return_address(0));
+                     *effect_desc->file_head, effect_desc, PORT_CALLER_RA());
         }
         if (ep != NULL) {
             efManagerSetPrevStructAlloc(ep);
