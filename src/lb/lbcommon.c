@@ -791,10 +791,12 @@ alSoundEffect* lbCommonMakePositionFGM(u16 fgm, f32 pos)
          * byte of siz34's unk_0x28 EE0C pointer slot).  Writing through
          * the alSoundEffect view would corrupt unk_0x28's high byte
          * and crash the FGM ucode parser the first time the EE0C is
-         * dereferenced.  Reach siz34's `unk_0x2F` (offset 0x43 on LP64)
-         * directly via byte arithmetic — siz34's struct definition is
-         * private to n_env.c, so no header is available to share. */
-        *((u8 *)snd + 0x43) = (u8)balance;
+         * dereferenced.  Reach siz34's `unk_0x2F` directly via byte
+         * arithmetic — siz34's struct definition is private to n_env.c, so no
+         * header is available to share.  The target byte sits at 0x43 when
+         * pointers widen and at the N64-native 0x2F on ILP32 (e.g. Android
+         * armeabi-v7a); see the layout asserts in n_env.c. */
+        *((u8 *)snd + ((sizeof(uintptr_t) == 8) ? 0x43 : 0x2F)) = (u8)balance;
 #else
         snd->balance = balance;
 #endif

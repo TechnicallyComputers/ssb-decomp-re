@@ -2628,6 +2628,23 @@ void mnPlayersVSUpdateFighter(s32 player)
 	#ifdef PORT
 	s32 costume;
 #endif
+#ifdef PORT
+	/* Issue #244: connected NOT slots reactivated after a match have no
+	 * fighter GObj yet; still skip rather than indexing fighter tables with
+	 * nFTKindNull. */
+	if
+	(
+		(sMNPlayersVSSlots[player].pkind == nFTPlayerKindNot) ||
+		((sMNPlayersVSSlots[player].fkind == nFTKindNull) && (sMNPlayersVSSlots[player].is_selected == FALSE))
+	)
+	{
+		if (fighter_gobj != NULL)
+		{
+			fighter_gobj->flags = GOBJ_FLAG_HIDDEN;
+		}
+		is_skip_fighter = TRUE;
+	}
+#else
 	if (fighter_gobj != NULL)
 	{
 		if (sMNPlayersVSSlots[player].pkind == nFTPlayerKindNot)
@@ -2641,6 +2658,7 @@ void mnPlayersVSUpdateFighter(s32 player)
 			is_skip_fighter = TRUE;
 		}
 	}
+#endif
 	if (is_skip_fighter == FALSE)
 	{
 		sMNPlayersVSSlots[player].shade = mnPlayersVSGetShade(player);
@@ -2656,6 +2674,15 @@ void mnPlayersVSUpdateFighter(s32 player)
 			{
 				sMNPlayersVSSlots[player].costume = costume;
 				ftParamInitAllParts(fighter_gobj, costume, sMNPlayersVSSlots[player].shade);
+			}
+			DObjGetStruct(fighter_gobj)->translate.vec.f.x = (player * 840) - 1250;
+			DObjGetStruct(fighter_gobj)->translate.vec.f.y = -850.0F;
+			{
+				f32 scale = port_widescreen_clip_x_scale();
+				if (scale > 0.0F && scale < 1.0F)
+				{
+					DObjGetStruct(fighter_gobj)->translate.vec.f.x /= scale;
+				}
 			}
 			fighter_gobj->flags = GOBJ_FLAG_NONE;
 		}

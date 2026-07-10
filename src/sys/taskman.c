@@ -56,7 +56,12 @@ static sb32 syTaskmanDecompDiagEnabled(void)
 #else
 #define SYTASKMAN_DIAG_LOG(...) ((void)0)
 #endif
-_Static_assert(sizeof(uintptr_t) == 8, "PORT build requires 64-bit uintptr_t");
+/* The token-pointer table (port/resource/RelocPointerTable) and Fast3D's
+ * uintptr_t Gfx words make the port pointer-width-agnostic, so both LP64/LLP64
+ * (8-byte) and ILP32 (4-byte, e.g. Android armeabi-v7a) builds are supported.
+ * Guard only against an exotic uintptr_t that matches neither. */
+_Static_assert(sizeof(uintptr_t) == 8 || sizeof(uintptr_t) == 4,
+               "PORT build requires 32- or 64-bit uintptr_t");
 #endif
 
 // externs

@@ -15,6 +15,7 @@ extern void syAudioSetBGMVolume(u32, u32);
 #ifdef PORT
 #include <stddef.h>
 #include <sys/objman.h>
+#include <stdbool.h>
 #include <sys/scheduler.h>
 extern sb32 syNetPeerIsVSSessionActive(void);
 extern u32 syNetSyncNetplayEffectiveTimeLimitMinutes(void);
@@ -58,6 +59,8 @@ static void ifCommonPortFixupSpriteFull(Sprite *sprite)
         }
     }
 }
+
+extern bool port_enhancement_is_hud_disabled(void);
 #endif
 
 // // // // // // // // // // // //
@@ -819,6 +822,9 @@ void ifCommonPlayerDamageProcUpdate(GObj *interface_gobj)
 // 0x8010EEFC
 void ifCommonPlayerDamageProcDisplay(GObj *interface_gobj)
 {
+#ifdef PORT
+    if (port_enhancement_is_hud_disabled()) return;
+#endif
     f32 pos_x;
     f32 scale;
     f32 pos_y;
@@ -1069,6 +1075,9 @@ void ifCommonPlayerDamageStopBreakAnim(FTStruct *fp)
 // 0x8010F878
 void ifCommonPlayerStockMultiProcDisplay(GObj *interface_gobj)
 {
+#ifdef PORT
+    if (port_enhancement_is_hud_disabled()) return;
+#endif
     s32 player;
     FTStruct *fp;
     s32 unused;
@@ -1256,6 +1265,9 @@ void ifCommonPlayerStockMultiMakeInterface(s32 player)
 // 0x8010FF24
 void ifCommonPlayerStockSingleProcDisplay(GObj *interface_gobj)
 {
+#ifdef PORT
+    if (port_enhancement_is_hud_disabled()) return;
+#endif
     s32 player = ifGetPlayer(interface_gobj);
     s32 stocks = gSCManagerBattleState->players[player].stock_count;
 
@@ -1714,6 +1726,9 @@ void ifCommonPlayerMagnifyUpdateViewport(Gfx **dls, FTStruct *fp)
 // 0x801111A0
 void ifCommonPlayerMagnifyProcDisplay(FTStruct *fp)
 {
+#ifdef PORT
+    if (port_enhancement_is_hud_disabled()) return;
+#endif
     GObj *interface_gobj;
     DObj *dobj;
     IFPlayerMagnify *ifmag;
@@ -1998,6 +2013,9 @@ void ifCommonPlayerArrowsUpdateFlags(f32 x, f32 y)
 // 0x80111A3C
 void ifCommonPlayerTagProcDisplay(GObj *interface_gobj)
 {
+#ifdef PORT
+    if (port_enhancement_is_hud_disabled()) return;
+#endif
     s32 player = ifGetPlayer(interface_gobj);
     FTStruct *fp;
     f32 x;
@@ -2140,6 +2158,9 @@ void ifCommonItemArrowPruneStaleInterfaces(void)
 // 0x80111D64
 void ifCommonItemArrowProcDisplay(GObj *interface_gobj)
 {
+#ifdef PORT
+    if (port_enhancement_is_hud_disabled()) return;
+#endif
     ITStruct *ip = itGetStruct(interface_gobj); // So I'm guessing this copies the corresponding item's user_data? Its classifier is 0x3F8.
     SObj *sobj;
     f32 x;
@@ -2671,6 +2692,9 @@ void ifCommonSuddenDeathMakeInterface(void)
 // 0x80112C18
 void ifCommonTimerProcDisplay(GObj *interface_gobj)
 {
+#ifdef PORT
+    if (port_enhancement_is_hud_disabled()) return;
+#endif
     s32 digit;
     s32 i;
     s32 time;

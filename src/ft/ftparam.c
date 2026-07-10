@@ -2943,7 +2943,11 @@ void func_ovl2_800EBD08(DObj *root_dobj, f32 arg1, Vec3f *vec, f32 arg3)
 s32 ftParamGetCostumeCommonID(s32 fkind, s32 color)
 {
 #ifdef PORT
-    return port_fighter_costume_row(fkind)->royal[color];
+    struct FTCostume *row = port_fighter_costume_row(fkind);
+    if (row == NULL) {
+        return 0;
+    }
+    return row->royal[color];
 #else
     return dFTParamCostumeIDs[fkind].royal[color];
 #endif
@@ -2953,7 +2957,11 @@ s32 ftParamGetCostumeCommonID(s32 fkind, s32 color)
 s32 ftParamGetCostumeTeamID(s32 fkind, s32 color)
 {
 #ifdef PORT
-    return port_fighter_costume_row(fkind)->team[color];
+    struct FTCostume *row = port_fighter_costume_row(fkind);
+    if (row == NULL) {
+        return 0;
+    }
+    return row->team[color];
 #else
     return dFTParamCostumeIDs[fkind].team[color];
 #endif
@@ -2963,7 +2971,11 @@ s32 ftParamGetCostumeTeamID(s32 fkind, s32 color)
 s32 ftParamGetCostumeDebug(s32 fkind)
 {
 #ifdef PORT
-    return port_fighter_costume_row(fkind)->develop;
+    struct FTCostume *row = port_fighter_costume_row(fkind);
+    if (row == NULL) {
+        return 0;
+    }
+    return row->develop;
 #else
     return dFTParamCostumeIDs[fkind].develop;
 #endif

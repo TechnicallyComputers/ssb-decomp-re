@@ -295,20 +295,27 @@ typedef struct ALWhatever8009EDD0_siz34
 } ALWhatever8009EDD0_siz34;
 
 #ifdef PORT
-_Static_assert(offsetof(ALWhatever8009EE0C, unk30) == 0x50,
-    "EE0C.unk30 must be at offset 0x50 — parser asm hard-codes this");
-_Static_assert(offsetof(ALWhatever8009EDD0_siz34, unkALWhatever8009EDD0_siz34_0x28) == 0x38,
-    "siz34.unk_0x28 must be at offset 0x38");
-_Static_assert(sizeof(ALWhatever8009EDD0_siz34) == 0x48,
-    "siz34 sizeof must be 0x48 (72 bytes) on LP64");
-_Static_assert(offsetof(ALWhatever8009EDD0_siz34, unkALWhatever8009EDD0_siz34_0x2F) == 0x43,
-    "siz34.unk_0x2F must be at offset 0x43 on LP64 — lbCommonMakePositionFGM "
-    "writes this byte via byte arithmetic in lbcommon.c (the alSoundEffect "
-    "type-pun trick is a no-op on LP64 because pointer widening shifted layouts).");
-_Static_assert(offsetof(ALWhatever8009EE0C, unk44) == 0x68,
-    "EE0C.unk44 expected at 0x68 on LP64");
-_Static_assert(offsetof(ALWhatever8009EE0C, unk48) == 0x70,
-    "EE0C.unk48 expected at 0x70 on LP64");
+/* Pointer-bearing audio structs widen on 8-byte host pointers and revert to
+ * N64-native layout on ILP32. Keep both layouts asserted without relying on
+ * compiler-specific preprocessor macros. */
+_Static_assert((sizeof(uintptr_t) == 8 && offsetof(ALWhatever8009EE0C, unk30) == 0x50) ||
+               (sizeof(uintptr_t) == 4 && offsetof(ALWhatever8009EE0C, unk30) == 0x30),
+    "EE0C.unk30 offset must match host pointer width");
+_Static_assert((sizeof(uintptr_t) == 8 && offsetof(ALWhatever8009EDD0_siz34, unkALWhatever8009EDD0_siz34_0x28) == 0x38) ||
+               (sizeof(uintptr_t) == 4 && offsetof(ALWhatever8009EDD0_siz34, unkALWhatever8009EDD0_siz34_0x28) == 0x28),
+    "siz34.unk_0x28 offset must match host pointer width");
+_Static_assert((sizeof(uintptr_t) == 8 && sizeof(ALWhatever8009EDD0_siz34) == 0x48) ||
+               (sizeof(uintptr_t) == 4 && sizeof(ALWhatever8009EDD0_siz34) == 0x34),
+    "siz34 sizeof must match host pointer width");
+_Static_assert((sizeof(uintptr_t) == 8 && offsetof(ALWhatever8009EDD0_siz34, unkALWhatever8009EDD0_siz34_0x2F) == 0x43) ||
+               (sizeof(uintptr_t) == 4 && offsetof(ALWhatever8009EDD0_siz34, unkALWhatever8009EDD0_siz34_0x2F) == 0x2F),
+    "siz34.unk_0x2F offset must match lbCommonMakePositionFGM byte poke");
+_Static_assert((sizeof(uintptr_t) == 8 && offsetof(ALWhatever8009EE0C, unk44) == 0x68) ||
+               (sizeof(uintptr_t) == 4 && offsetof(ALWhatever8009EE0C, unk44) == 0x44),
+    "EE0C.unk44 offset must match host pointer width");
+_Static_assert((sizeof(uintptr_t) == 8 && offsetof(ALWhatever8009EE0C, unk48) == 0x70) ||
+               (sizeof(uintptr_t) == 4 && offsetof(ALWhatever8009EE0C, unk48) == 0x48),
+    "EE0C.unk48 offset must match host pointer width");
 #endif
 
 typedef struct ALWhatever8009EDD0_off18

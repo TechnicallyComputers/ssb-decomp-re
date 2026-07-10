@@ -6,12 +6,13 @@
 #endif
 
 #ifdef PORT
+#include <stddef.h>
 #if defined(_MSC_VER)
 __declspec(noreturn) extern void abort(void);
 #else
 extern void abort(void) __attribute__((noreturn));
 #endif
-extern void *malloc(unsigned long size);
+extern void *malloc(size_t size);
 extern void free(void *ptr);
 extern void *realloc(void *ptr, unsigned long size);
 extern long strtol(const char *nptr, char **endptr, int base);

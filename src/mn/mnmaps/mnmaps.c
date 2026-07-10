@@ -422,12 +422,6 @@ sb32 mnMapsCheckLocked(s32 gkind)
 		}
 		else return TRUE;
 	}
-	else if (sMNMapsIsTrainingMode != FALSE && ((gkind == nGRKindLast) || (gkind == nGRKindMetal) || (gkind == nGRKindZako)))
-	{
-		// Port-introduced stages hide from the Training Mode CSS — the training
-		// wallpaper paths (Smash-logo overlay) aren't wired up for them yet.
-		return TRUE;
-	}
 	else return FALSE;
 }
 
