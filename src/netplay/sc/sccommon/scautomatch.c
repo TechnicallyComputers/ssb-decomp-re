@@ -57,8 +57,10 @@ sb32 mnVSNetAutomatchAMConsumeStagingHandshake(void);
 sb32 mnVSNetAutomatchAMIsError(void);
 void mnVSNetAutomatchAMStagingReturnToAutomatch(void);
 void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason);
+sb32 mnVSNetAutomatchAMCanUserCancel(void);
 sb32 mnVSNetAutomatchAMPollUserCancel(void);
 sb32 mnVSNetAutomatchAMPollAbortDuringBootstrap(void);
+const char *mnVSNetAutomatchAMStatusText(void);
 void mnVSNetAutomatchForceRequeueAfterBarrierTimeout(void);
 #endif
 extern void *func_800269C0_275C0(u16 id);
@@ -78,7 +80,9 @@ s32 mnVSNetAutomatchGetNumberDigitCount(s32 number, s32 digit_count_max);
 void mnVSNetAutomatchMakeNumber(GObj *gobj, s32 number, f32 x, f32 y, u32 *colors, s32 digit_count_max, sb32 is_fixed_digit_count);
 s32 mnVSNetAutomatchGetCharacterID(const char c);
 f32 mnVSNetAutomatchGetCharacterSpacing(const char *str, s32 c);
+f32 mnVSNetAutomatchGetStringWidth(const char *str);
 void mnVSNetAutomatchMakeString(GObj *gobj, const char *str, f32 x, f32 y, u32 *colors);
+void mnVSNetAutomatchMakeCenteredString(GObj *gobj, const char *str, f32 center_x, f32 y, u32 *colors);
 void mnVSNetAutomatchSelectFighterPuck(s32 player, s32 select_button);
 f32 mnVSNetAutomatchGetNextPortraitX(s32 portrait, f32 current_pos_x);
 sb32 mnVSNetAutomatchCheckFighterCrossed(s32 fkind);
@@ -517,6 +521,38 @@ f32 mnVSNetAutomatchGetCharacterSpacing(const char *str, s32 c)
 	}
 }
 
+f32 mnVSNetAutomatchGetStringWidth(const char *str)
+{
+	f32 widths[/* */] =
+	{
+		5.0F, 4.0F, 4.0F, 4.0F, 4.0F, 4.0F, 4.0F, 4.0F, 3.0F, 4.0F, 4.0F, 4.0F, 5.0F, 5.0F, 4.0F,
+		4.0F, 5.0F, 4.0F, 4.0F, 5.0F, 4.0F, 5.0F, 5.0F, 5.0F, 5.0F, 4.0F, 2.0F, 7.0F, 3.0F
+	};
+	f32 current_x = 0.0F;
+	s32 i;
+
+	if (str == NULL)
+	{
+		return 0.0F;
+	}
+	for (i = 0; str[i] != 0; i++)
+	{
+		if ((str[i] >= '0') && (str[i] <= '9'))
+		{
+			current_x += str[i] - '0';
+		}
+		else if (str[i] == ' ')
+		{
+			current_x += 3.0F;
+		}
+		else
+		{
+			current_x += widths[mnVSNetAutomatchGetCharacterID(str[i])] + mnVSNetAutomatchGetCharacterSpacing(str, i);
+		}
+	}
+	return current_x;
+}
+
 // 0x801320F8
 void mnVSNetAutomatchMakeString(GObj *gobj, const char *str, f32 x, f32 y, u32 *colors)
 {
@@ -590,6 +626,15 @@ void mnVSNetAutomatchMakeString(GObj *gobj, const char *str, f32 x, f32 y, u32 *
 			sobj->sprite.blue = colors[2];
 		}
 	}
+}
+
+void mnVSNetAutomatchMakeCenteredString(GObj *gobj, const char *str, f32 center_x, f32 y, u32 *colors)
+{
+	if ((gobj == NULL) || (str == NULL) || (colors == NULL))
+	{
+		return;
+	}
+	mnVSNetAutomatchMakeString(gobj, str, center_x - (mnVSNetAutomatchGetStringWidth(str) * 0.5F), y, colors);
 }
 
 // 0x80132384
@@ -4111,8 +4156,51 @@ void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason)
 	syTaskmanSetLoadScene();
 }
 
+sb32 mnVSNetAutomatchAMCanUserCancel(void)
+{
+	/* After MM_POLL_MATCHED the peer is committed; B must not abandon them mid-handshake. */
+	switch (sMnAMState)
+	{
+	case MN_AM_ICE_CONNECT:
+	case MN_AM_ENTER:
+	case MN_AM_BOOTSTRAP_LAN:
+		return FALSE;
+	default:
+		return TRUE;
+	}
+}
+
+const char *mnVSNetAutomatchAMStatusText(void)
+{
+	switch (sMnAMState)
+	{
+	case MN_AM_IDLE:
+		return "READY";
+	case MN_AM_ENSURE:
+	case MN_AM_ICE_INIT:
+	case MN_AM_BIND:
+	case MN_AM_JOIN:
+		return "CONNECTING TO SERVER";
+	case MN_AM_POLL:
+		return "SEARCHING FOR OPPONENT";
+	case MN_AM_ICE_CONNECT:
+		return "MATCH FOUND";
+	case MN_AM_ENTER:
+	case MN_AM_BOOTSTRAP_LAN:
+		return "CONNECTING TO OPPONENT";
+	case MN_AM_ERR:
+		return "MATCHMAKING ERROR";
+	default:
+		return "MATCHMAKING";
+	}
+}
+
 sb32 mnVSNetAutomatchAMPollUserCancel(void)
 {
+	if (mnVSNetAutomatchAMCanUserCancel() == FALSE)
+	{
+		return FALSE;
+	}
 	return (scSubsysControllerGetPlayerTapButtons(B_BUTTON) != FALSE) ? TRUE : FALSE;
 }
 

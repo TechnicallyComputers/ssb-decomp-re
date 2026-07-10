@@ -20,6 +20,7 @@ extern void mnVSNetAutomatchFuncLights(Gfx **dls);
 extern void mnVSNetAutomatchLoadWallpaperRelocFiles(void);
 extern void mnVSNetAutomatchMakeWallpaper(void);
 extern void mnVSNetAutomatchMakeWallpaperCamera(void);
+extern void mnVSNetAutomatchMakeCenteredString(GObj *gobj, const char *str, f32 center_x, f32 y, u32 *colors);
 
 extern void mnVSNetAutomatchAMStartSearch(void);
 extern void mnVSNetAutomatchMatchmakingTick(void);
@@ -28,11 +29,79 @@ extern sb32 mnVSNetAutomatchAMConsumeStagingHandshake(void);
 extern sb32 mnVSNetAutomatchAMIsError(void);
 extern void mnVSNetAutomatchAMStagingReturnToAutomatch(void);
 extern void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason);
+extern sb32 mnVSNetAutomatchAMCanUserCancel(void);
 extern sb32 mnVSNetAutomatchAMPollUserCancel(void);
+extern const char *mnVSNetAutomatchAMStatusText(void);
+
+#define MN_VS_NET_MATCH_STAGING_STATUS_Y 110.0F
+#define MN_VS_NET_MATCH_STAGING_CANCEL_Y 130.0F
+#define MN_VS_NET_MATCH_STAGING_CENTER_X 160.0F
+
+static GObj *sMNVSNetMatchStagingStatusGObj;
+static GObj *sMNVSNetMatchStagingCancelGObj;
+static const char *sMNVSNetMatchStagingStatusShown;
+static sb32 sMNVSNetMatchStagingCancelShown;
+
+static u32 sMNVSNetMatchStagingStatusColors[3] = { 0xFF, 0xFF, 0xFF };
+static u32 sMNVSNetMatchStagingCancelColors[3] = { 0xC0, 0xC0, 0xC0 };
+
+static GObj *mnVSNetMatchStagingMakeLabel(const char *str, f32 y, u32 *colors)
+{
+	GObj *gobj;
+
+	gobj = gcMakeGObjSPAfter(0, NULL, 17, GOBJ_PRIORITY_DEFAULT);
+	gcAddGObjDisplay(gobj, lbCommonDrawSObjAttr, 26, GOBJ_PRIORITY_DEFAULT, ~0);
+	mnVSNetAutomatchMakeCenteredString(gobj, str, MN_VS_NET_MATCH_STAGING_CENTER_X, y, colors);
+	return gobj;
+}
+
+static void mnVSNetMatchStagingUpdateStatusText(void)
+{
+	const char *status;
+	sb32 can_cancel;
+
+	status = mnVSNetAutomatchAMStatusText();
+	can_cancel = mnVSNetAutomatchAMCanUserCancel();
+
+	if ((sMNVSNetMatchStagingStatusGObj == NULL) || (status != sMNVSNetMatchStagingStatusShown))
+	{
+		if (sMNVSNetMatchStagingStatusGObj != NULL)
+		{
+			gcEjectGObj(sMNVSNetMatchStagingStatusGObj);
+			sMNVSNetMatchStagingStatusGObj = NULL;
+		}
+		sMNVSNetMatchStagingStatusGObj =
+		    mnVSNetMatchStagingMakeLabel(status, MN_VS_NET_MATCH_STAGING_STATUS_Y, sMNVSNetMatchStagingStatusColors);
+		sMNVSNetMatchStagingStatusShown = status;
+	}
+
+	if (can_cancel != FALSE)
+	{
+		if ((sMNVSNetMatchStagingCancelGObj == NULL) || (sMNVSNetMatchStagingCancelShown == FALSE))
+		{
+			if (sMNVSNetMatchStagingCancelGObj != NULL)
+			{
+				gcEjectGObj(sMNVSNetMatchStagingCancelGObj);
+				sMNVSNetMatchStagingCancelGObj = NULL;
+			}
+			sMNVSNetMatchStagingCancelGObj = mnVSNetMatchStagingMakeLabel(
+			    "PRESS B TO CANCEL", MN_VS_NET_MATCH_STAGING_CANCEL_Y, sMNVSNetMatchStagingCancelColors);
+			sMNVSNetMatchStagingCancelShown = TRUE;
+		}
+	}
+	else if (sMNVSNetMatchStagingCancelGObj != NULL)
+	{
+		gcEjectGObj(sMNVSNetMatchStagingCancelGObj);
+		sMNVSNetMatchStagingCancelGObj = NULL;
+		sMNVSNetMatchStagingCancelShown = FALSE;
+	}
+}
 
 static void mnVSNetMatchStagingFuncRun(GObj *gobj)
 {
 	(void)gobj;
+
+	mnVSNetMatchStagingUpdateStatusText();
 
 	if (mnVSNetAutomatchAMPollUserCancel() != FALSE)
 	{
@@ -54,10 +123,17 @@ static void mnVSNetMatchStagingFuncRun(GObj *gobj)
 		mnVSNetAutomatchAMFinalizeVsLoad();
 		return;
 	}
+
+	mnVSNetMatchStagingUpdateStatusText();
 }
 
 static void mnVSNetMatchStagingFuncStart(void)
 {
+	sMNVSNetMatchStagingStatusGObj = NULL;
+	sMNVSNetMatchStagingCancelGObj = NULL;
+	sMNVSNetMatchStagingStatusShown = NULL;
+	sMNVSNetMatchStagingCancelShown = FALSE;
+
 	mnVSNetAutomatchLoadWallpaperRelocFiles();
 
 	gcMakeGObjSPAfter(nGCCommonKindPlayerSelect, mnVSNetMatchStagingFuncRun, 15, GOBJ_PRIORITY_DEFAULT);
@@ -69,6 +145,7 @@ static void mnVSNetMatchStagingFuncStart(void)
 	scSubsysFighterSetLightParams(45.0F, 45.0F, 0xFF, 0xFF, 0xFF, 0xFF);
 
 	mnVSNetAutomatchAMStartSearch();
+	mnVSNetMatchStagingUpdateStatusText();
 
 	if (gSCManagerSceneData.scene_prev != nSCKindMaps)
 	{
