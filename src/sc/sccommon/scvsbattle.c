@@ -153,6 +153,13 @@ void scVSBattleFuncUpdate(void)
 		if ((syNetRollbackIsResimulating() == FALSE) &&
 		    (syNetTickCommitAllowsBattleSimFromLastFuncReadEvaluate() == FALSE))
 		{
+			/*
+			 * Deferred GGPO arms a live cap (mismatch-1) which fails tick-commit. Must pump
+			 * TryBeginDeferred here — otherwise we return before PumpCorrection and BeginResim
+			 * never starts (soak1 hang after Go: GGPO queued → epoch_hold/load_fail_hold, 0× resim).
+			 * See docs/bugs/netplay_deferred_ggpo_pump_before_tick_commit_hold_2026-07-12.md.
+			 */
+			syNetRollbackPumpCorrectionBeforeBattleSim();
 			/* Same as exec-hold FuncRead path: keep ingress alive so battle_exec_sync can finish. */
 			syNetPeerUpdate();
 			return;
@@ -212,7 +219,8 @@ void scVSBattleFuncUpdate(void)
 		syNetRollbackPumpLoadFailBattleExit();
 		return;
 	}
-	if ((syNetPeerIsVSSessionActive() != FALSE) && (syNetRollbackIsResimulating() != FALSE))
+	if (((syNetPeerIsVSSessionActive() != FALSE) || (syNetReplayIsDiagnosticPlaybackActive() != FALSE)) &&
+	    (syNetRollbackIsResimulating() != FALSE))
 	{
 		/* Resim advances only via syNetRollbackUpdate → AdvanceResimBudget → BattleSimOnly. */
 		syNetPeerUpdate();
@@ -221,6 +229,11 @@ void scVSBattleFuncUpdate(void)
 	if ((syNetPeerIsVSSessionActive() != FALSE) &&
 	    (syNetRollbackShouldBlockLiveBattleAdvance(syNetInputGetTick()) != FALSE))
 	{
+		/* Live cap may arm mid-frame after the pre-sim Pump; re-pump so deferred GGPO can BeginResim. */
+		if (syNetRollbackIsResimulating() == FALSE)
+		{
+			syNetRollbackPumpCorrectionBeforeBattleSim();
+		}
 		syNetPeerUpdate();
 		return;
 	}
@@ -259,6 +272,7 @@ void scVSBattleFuncUpdate(void)
 		syNetplayHardenPassPlatformCollBeforeSim();
 		syNetplayHardenAirborneDamageKnockbackCollBeforeSim();
 		syNetplayHardenCaptainGroundKickCollBeforeSim();
+		syNetplayHardenAnimEndWaitThresholdBeforeSim();
 		syNetRbSnapshotPreSimLinkBombAirborneMPCollHardening();
 	}
 #endif
@@ -309,6 +323,17 @@ void scVSBattleFuncUpdate(void)
 	{
 		syNetRollbackAfterBattleUpdate();
 		/*
+		 * Diagnostic forced resim begins inside AfterBattleUpdate and rewinds sim tick; do not
+		 * frame-commit/advance the pre-rewind live tick. Resim owns further advances via
+		 * BattleSimOnly. Live peer resim starts from PeerUpdate before this point and uses the
+		 * early-return at FuncUpdate entry on subsequent frames.
+		 */
+		if ((syNetReplayIsDiagnosticPlaybackActive() != FALSE) &&
+		    (syNetRollbackIsResimulating() != FALSE))
+		{
+			return;
+		}
+		/*
 		 * Sim-state/fighter-slot-hash diagnostic trace: must run after syNetRollbackAfterBattleUpdate()
 		 * (post-quantize) and before syNetInputAdvanceAuthoritativeSimTick() so syNetInputGetTick()
 		 * still names the tick that just finished, and the logged hash matches the canonicalized state
@@ -340,6 +365,7 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 	syNetplayHardenPassPlatformCollBeforeSim();
 	syNetplayHardenAirborneDamageKnockbackCollBeforeSim();
 	syNetplayHardenCaptainGroundKickCollBeforeSim();
+	syNetplayHardenAnimEndWaitThresholdBeforeSim();
 	syNetRbSnapshotPreSimLinkBombAirborneMPCollHardening();
 	ifCommonBattleUpdateInterfaceAll();
 	syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
@@ -363,6 +389,9 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
  * When skew pacing holds sim (no `syNetInputAdvanceAuthoritativeSimTick`), taskman skips scene_update — run gate + wire + rollback
  * detection only. Omits ifCommonBattleUpdateInterfaceAll (gcRunAll), replay, and post-sim snapshot: no sim step
  * completed for this task iteration.
+ *
+ * Deferred GGPO arms a live cap → FuncRead suppress → this slice instead of FuncUpdate. Must still Pump + PeerUpdate
+ * so TryBeginDeferred/BeginResim can run (soak hang: GGPO queued, epoch_hold, 0× resim while net_slice returned early).
  */
 void scVSBattleFuncUpdateSkewPacingNetSlice(void)
 {
@@ -374,6 +403,11 @@ void scVSBattleFuncUpdateSkewPacingNetSlice(void)
 	if (tcv.allow_battle_sim_step == FALSE)
 	{
 		syNetInputMaybeLogNetSliceDiag(syNetInputGetTick(), FALSE, FALSE);
+		if (syNetRollbackIsResimulating() == FALSE)
+		{
+			syNetRollbackPumpCorrectionBeforeBattleSim();
+		}
+		syNetPeerUpdate();
 		return;
 	}
 	{
@@ -381,6 +415,10 @@ void scVSBattleFuncUpdateSkewPacingNetSlice(void)
 
 		funcread_allows_sim = syNetTickCommitAllowsBattleSimFromLastFuncReadEvaluate();
 		syNetInputMaybeLogNetSliceDiag(syNetInputGetTick(), funcread_allows_sim, TRUE);
+		if ((funcread_allows_sim == FALSE) && (syNetRollbackIsResimulating() == FALSE))
+		{
+			syNetRollbackPumpCorrectionBeforeBattleSim();
+		}
 		syNetPeerUpdate();
 		// #region agent log
 		{

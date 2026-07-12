@@ -13,6 +13,9 @@ extern void portFixupStructU16(void *base, unsigned int byte_offset, unsigned in
 #include <sys/audio.h>
 #include <sys/debug.h>
 #include <wp/wpmanager.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netinput.h>
+#endif
 extern void *func_800269C0_275C0(u16 id);
 extern void func_800266A0_272A0(void);
 
@@ -192,7 +195,11 @@ SYTaskmanSetup dSC1PTrainingModeTaskmanSetup =
         2,                          // ???
         0xC000,                     // RDP Output Buffer Size
         sc1PTrainingModeFuncLights, // Pre-render function
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetInputFuncRead,         // Controller I/O (training lab: delay ring D=0)
+#else
         syControllerFuncRead,       // Controller I/O function
+#endif
     },
 
     0,                              // Number of GObjThreads
@@ -632,6 +639,13 @@ void sc1PTrainingModeUpdateAll(void)
 	if (sc1PTrainingModeCheckLagTic() == FALSE)
 	{
 		gcRunAll();
+#if defined(PORT) && defined(SSB64_NETMENU)
+		/* SSB64_NETMENU: advance netinput tick after a real sim step (same cadence as VS). */
+		if (syNetInputIsLocalLabActive() != FALSE)
+		{
+			syNetInputAdvanceAuthoritativeSimTick();
+		}
+#endif
 	}
 	else gmCameraRunFuncCamera(gGMCameraGObj);
 
@@ -1886,6 +1900,10 @@ void sc1PTrainingModeFuncStart(void)
 	SYColorRGBA color;
 
 	sc1PTrainingModeInitVars();
+#if defined(PORT) && defined(SSB64_NETMENU)
+	/* SSB64_NETMENU: local netinput lab (D=0) so stick samples match online FuncRead path. */
+	syNetInputStartLocalLabSession(gSCManagerSceneData.player, 0U);
+#endif
 	sc1PTrainingModeSetupFiles();
 	sc1PTrainingModeLoadSprites();
 	gcMakeDefaultCameraGObj(nGCCommonLinkIDCamera, GOBJ_PRIORITY_DEFAULT, 100, COBJ_FLAG_ZBUFFER, GPACK_RGBA8888(0x00, 0x00, 0x00, 0xFF));
@@ -1986,6 +2004,10 @@ void sc1PTrainingModeStartScene(void)
 		gmRumbleInitPlayers();
 	}
 	while (sSC1PTrainingModeMenu.exit_or_reset != 0);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+	syNetInputEndLocalLabSession();
+#endif
 
 	syAudioStopBGMAll();
 

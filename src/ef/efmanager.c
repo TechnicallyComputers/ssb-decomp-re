@@ -7443,6 +7443,70 @@ LBParticle* efManagerYoshiEggExplodeMakeEffect(Vec3f *pos)
 }
 
 // 0x80103B28
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerCaptureKirbyStarProcUpdate(GObj *effect_gobj)
+{
+	DObj *topn_dobj;
+	EFStruct *ep;
+	FTStruct *fp;
+	FTKirbyCopy *copy;
+	Vec3f pos;
+	DObj *child_dobj;
+	DObj *fighter_dobj;
+
+	/*
+	 * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+	 * Netplay rollback only: GObj can outlive EFStruct after slot_effect_enforce /
+	 * prune (soak2 1063557657 @~1543 ThrownCopyStar + SpecialNCopy). Same family as
+	 * Vulcan Jab / shield. See docs/bugs/netplay_capture_kirby_star_efstruct_null_2026-07-11.md.
+	 */
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	topn_dobj = DObjGetStruct(effect_gobj);
+	if ((ep == NULL) || (topn_dobj == NULL) || (ep->fighter_gobj == NULL))
+	{
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+	fp = ftGetStruct(ep->fighter_gobj);
+	child_dobj = topn_dobj->child;
+	fighter_dobj = DObjGetStruct(ep->fighter_gobj);
+	if ((fp == NULL) || (child_dobj == NULL) || (fighter_dobj == NULL))
+	{
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+
+	copy = lbRelocGetFileData(FTKirbyCopy*, gFTDataKirbyMainMotion, llKirbyMainMotionSpecialNFTKirbyCopy);
+
+	topn_dobj->translate.vec.f.z = 0.0F;
+
+	child_dobj->rotate.vec.f.z += EFCOMMON_CAPTUREKIRBYSTAR_ROTATE_STEP;
+
+	if (ep->effect_vars.capture_kirby_star.effect_timer % EFCOMMON_CAPTUREKIRBYSTAR_SPARK_TIMER_MOD)
+	{
+		f32 effect_scale = copy[fp->fkind].effect_scale;
+		pos = fighter_dobj->translate.vec.f;
+
+		pos.y += syUtilsRandIntRange(effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_Y);
+
+		if (fp->physics.vel_air.x > 0.0F)
+		{
+			pos.x -= syUtilsRandIntRange(effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_X);
+			efManagerStarRodSparkMakeEffect(&pos, -1);
+		}
+		else
+		{
+			pos.x += syUtilsRandIntRange(effect_scale * EFCOMMON_CAPTUREKIRBYSTAR_SPARK_SCATTER_X);
+			efManagerStarRodSparkMakeEffect(&pos, +1);
+		}
+	}
+	ep->effect_vars.capture_kirby_star.effect_timer++;
+}
+#else
 void efManagerCaptureKirbyStarProcUpdate(GObj *effect_gobj)
 {
     DObj *topn_dobj;
@@ -7484,6 +7548,7 @@ void efManagerCaptureKirbyStarProcUpdate(GObj *effect_gobj)
     }
     ep->effect_vars.capture_kirby_star.effect_timer++;
 }
+#endif
 
 // 0x80103CF8
 GObj* efManagerCaptureKirbyStarMakeEffect(GObj *fighter_gobj)
@@ -7536,6 +7601,64 @@ GObj* efManagerCaptureKirbyStarMakeEffect(GObj *fighter_gobj)
 }
 
 // 0x80103DF8
+#if defined(PORT) && defined(SSB64_NETMENU)
+void efManagerLoseKirbyStarProcUpdate(GObj *effect_gobj)
+{
+	EFStruct *ep;
+	DObj *root_dobj;
+	DObj *dobj;
+	Vec3f *translate;
+
+	/*
+	 * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+	 * Netplay rollback only: same NULL-EFStruct race as CaptureKirbyStar (sibling of
+	 * Vulcan Jab / shield). See docs/bugs/netplay_capture_kirby_star_efstruct_null_2026-07-11.md.
+	 */
+	if (effect_gobj == NULL)
+	{
+		return;
+	}
+	ep = efGetStruct(effect_gobj);
+	root_dobj = DObjGetStruct(effect_gobj);
+	if ((ep == NULL) || (root_dobj == NULL) || (root_dobj->child == NULL))
+	{
+		gcEjectGObj(effect_gobj);
+		return;
+	}
+	dobj = root_dobj->child;
+	translate = &dobj->translate.vec.f;
+
+	dobj->rotate.vec.f.z += F_CLC_DTOR32(10.0F);
+
+	dobj->translate.vec.f.x += ep->effect_vars.lose_kirby_star.vel.x;
+	dobj->translate.vec.f.y += ep->effect_vars.lose_kirby_star.vel.y;
+
+	ep->effect_vars.lose_kirby_star.vel.y -= EFCOMMON_LOSEKIRBYSTAR_GRAVITY;
+
+	if (ep->effect_vars.lose_kirby_star.vel.y < EFCOMMON_LOSEKIRBYSTAR_TVEL)
+	{
+		ep->effect_vars.lose_kirby_star.vel.y = EFCOMMON_LOSEKIRBYSTAR_TVEL;
+	}
+	if (ep->effect_vars.lose_kirby_star.lifetime-- <= 0)
+	{
+		func_800269C0_275C0(nSYAudioFGMKirbyStarPing1);
+		efManagerStarSplashMakeEffect(translate, ep->effect_vars.lose_kirby_star.lr);
+		efManagerSetPrevStructAlloc(ep);
+		gcEjectGObj(effect_gobj);
+	}
+	else if
+	(
+		(gMPCollisionGroundData->map_bound_bottom > translate->y) ||
+		(gMPCollisionGroundData->map_bound_right  < translate->x) ||
+		(gMPCollisionGroundData->map_bound_left   > translate->x) ||
+		(gMPCollisionGroundData->map_bound_top    < translate->y)
+	)
+	{
+		efManagerSetPrevStructAlloc(ep);
+		gcEjectGObj(effect_gobj);
+	}
+}
+#else
 void efManagerLoseKirbyStarProcUpdate(GObj *effect_gobj)
 {
     EFStruct *ep = efGetStruct(effect_gobj);
@@ -7572,6 +7695,7 @@ void efManagerLoseKirbyStarProcUpdate(GObj *effect_gobj)
         gcEjectGObj(effect_gobj);
     }
 }
+#endif
 
 // 0x80103F78
 GObj* efManagerLoseKirbyStarMakeEffect(GObj *fighter_gobj)

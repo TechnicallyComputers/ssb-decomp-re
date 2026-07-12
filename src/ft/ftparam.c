@@ -1540,6 +1540,28 @@ void ftParamRunProcEffect(GObj *fighter_gobj, void (*proc)(GObj*, EFStruct*))
     }
 }
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+/*
+ * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+ * Clear joint-attach user_data on the whole effect DObj tree (Trail has multiple nodes).
+ * Root-only clear left child meshes parented after GObj recycle.
+ */
+static void ftParamClearEffectDObjUserDataTree(DObj *dobj)
+{
+    while (dobj != NULL)
+    {
+        DObj *child = dobj->child;
+
+        dobj->user_data.p = NULL;
+        if (child != NULL)
+        {
+            ftParamClearEffectDObjUserDataTree(child);
+        }
+        dobj = dobj->sib_next;
+    }
+}
+#endif
+
 // 0x800E9BE8
 void ftParamStopEffect(GObj *effect_gobj, EFStruct *ep)
 {
@@ -1549,6 +1571,16 @@ void ftParamStopEffect(GObj *effect_gobj, EFStruct *ep)
     {
         lbParticleEjectStructID(einfo->generator_id, ep->bank_id >> 3);
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+     * NoEject joint FX (Kirby Final Cutter Trail/Draw, etc.) parent via DObj user_data.
+     * Leaving that pointer set after GObj recycle keeps a ghost mesh on the fighter joint.
+     * See docs/bugs/netplay_kirby_finalcutter_orphan_blade_2026-07-10.md.
+     */
+    ftParamClearEffectDObjUserDataTree(DObjGetStruct(effect_gobj));
+    ep->fighter_gobj = NULL;
+#endif
     efManagerSetPrevStructAlloc(ep);
     gcEjectGObj(effect_gobj);
 }

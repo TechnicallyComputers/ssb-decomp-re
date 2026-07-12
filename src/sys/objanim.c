@@ -7,8 +7,11 @@ extern void portFixupMObjSub(void *mobjsub);
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_sim_quantize.h>
 /*
- * SSB64_NETMENU compile gate: DObj anim pose/scalar quantize on F32 grid.
+ * SSB64_NETMENU compile gate: DObj/MObj/CObj anim pose/scalar quantize on F32 grid.
  */
+#define syObjAnimWaitAdd(wait, addend) syNetplayAnimWaitAdd((wait), (addend))
+#else
+#define syObjAnimWaitAdd(wait, addend) ((wait) + (addend))
 #endif
 
 extern void syInterpCubic(Vec3f*, void*, f32);
@@ -463,6 +466,23 @@ void gcParseDObjAnimJoint(DObj *dobj)
         }
         else
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /*
+             * Fixed-point wait countdown (NETMENU). Cross-ISA f32 `wait -= speed` near equality
+             * forks continue vs end (soak 988185944 Wait tics 9↔7 with matching status_id;
+             * JumpB tics 53↔51). Shared helper also used by MObj/CObj play paths.
+             */
+            syNetplayAnimCountdownFixedPoint(&dobj->anim_wait, &dobj->anim_frame, dobj->anim_speed);
+            /* Same anim-end latch as ftAnimParseDObjFigatree: once any
+             * joint has written AOBJ_ANIM_END to gobj->anim_frame, don't
+             * let a body-part joint's positive frame counter overwrite
+             * it before proc_update sees the End and transitions out. */
+            if (dobj->parent_gobj->anim_frame > AOBJ_ANIM_END) {
+                dobj->parent_gobj->anim_frame = dobj->anim_frame;
+            }
+            /* Parent sync + leftover collapse for continue vs end. */
+            syNetplayQuantizeDObjAnimScalarsAfterPlayStep(dobj);
+#else
             dobj->anim_wait -= dobj->anim_speed;
             dobj->anim_frame += dobj->anim_speed;
 #ifdef PORT
@@ -476,9 +496,6 @@ void gcParseDObjAnimJoint(DObj *dobj)
 #else
             dobj->parent_gobj->anim_frame = dobj->anim_frame;
 #endif
-#if defined(PORT) && defined(SSB64_NETMENU)
-            /* Netplay rollback only: anim scalar quantize (no-op offline). */
-            syNetplayQuantizeDObjAnimScalars(dobj);
 #endif
 
             if (dobj->anim_wait > 0.0F)
@@ -559,7 +576,7 @@ void gcParseDObjAnimJoint(DObj *dobj)
                 }
                 if (command_kind == nGCAnimEvent32SetVal0RateBlock)
                 {
-                    dobj->anim_wait += payload;
+                    dobj->anim_wait = syObjAnimWaitAdd(dobj->anim_wait, payload);
                 }
                 break;
 
@@ -597,7 +614,7 @@ void gcParseDObjAnimJoint(DObj *dobj)
                 }
                 if (command_kind == nGCAnimEvent32SetValBlock)
                 {
-                    dobj->anim_wait += payload;
+                    dobj->anim_wait = syObjAnimWaitAdd(dobj->anim_wait, payload);
                 }
                 break;
 
@@ -639,7 +656,7 @@ void gcParseDObjAnimJoint(DObj *dobj)
                 }
                 if (command_kind == nGCAnimEvent32SetValRateBlock)
                 {
-                    dobj->anim_wait += payload;
+                    dobj->anim_wait = syObjAnimWaitAdd(dobj->anim_wait, payload);
                 }
                 break;
 
@@ -666,7 +683,7 @@ void gcParseDObjAnimJoint(DObj *dobj)
                 break;
 
             case nGCAnimEvent32Wait:
-                dobj->anim_wait += AObjAnimAdvance(dobj->anim_joint.event32)->command.payload;
+                dobj->anim_wait = syObjAnimWaitAdd(dobj->anim_wait, AObjAnimAdvance(dobj->anim_joint.event32)->command.payload);
                 break;
 
             case nGCAnimEvent32SetValAfterBlock:
@@ -699,7 +716,7 @@ void gcParseDObjAnimJoint(DObj *dobj)
                 }
                 if (command_kind == nGCAnimEvent32SetValAfterBlock)
                 {
-                    dobj->anim_wait += payload;
+                    dobj->anim_wait = syObjAnimWaitAdd(dobj->anim_wait, payload);
                 }
                 break;
 
@@ -807,7 +824,7 @@ void gcParseDObjAnimJoint(DObj *dobj)
 
             case nGCAnimEvent32SetFlags:
                 dobj->flags = dobj->anim_joint.event32->command.flags;
-                dobj->anim_wait += AObjAnimAdvance(dobj->anim_joint.event32)->command.payload;
+                dobj->anim_wait = syObjAnimWaitAdd(dobj->anim_wait, AObjAnimAdvance(dobj->anim_joint.event32)->command.payload);
                 break;
 
             case ANIM_CMD_16:
@@ -821,12 +838,12 @@ void gcParseDObjAnimJoint(DObj *dobj)
                         (u8)dobj->anim_joint.event32->command.flags
                     );
                 }
-                dobj->anim_wait += AObjAnimAdvance(dobj->anim_joint.event32)->command.payload;
+                dobj->anim_wait = syObjAnimWaitAdd(dobj->anim_wait, AObjAnimAdvance(dobj->anim_joint.event32)->command.payload);
                 break;
 
             case ANIM_CMD_17:
                 flags = dobj->anim_joint.event32->command.flags;
-                dobj->anim_wait += AObjAnimAdvance(dobj->anim_joint.event32)->command.payload;
+                dobj->anim_wait = syObjAnimWaitAdd(dobj->anim_wait, AObjAnimAdvance(dobj->anim_joint.event32)->command.payload);
 
                 for (i = 4; i < 14; i++, flags = flags >> 1)
                 {
@@ -1158,8 +1175,13 @@ void gcParseMObjMatAnimJoint(MObj *mobj)
         }
         else
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            syNetplayAnimCountdownFixedPoint(&mobj->anim_wait, &mobj->anim_frame, mobj->anim_speed);
+            syNetplayAnimWaitCollapseLeftover(&mobj->anim_wait);
+#else
             mobj->anim_wait -= mobj->anim_speed;
             mobj->anim_frame += mobj->anim_speed;
+#endif
 
             if (mobj->anim_wait > 0.0F)
             {
@@ -1246,7 +1268,7 @@ void gcParseMObjMatAnimJoint(MObj *mobj)
                 }
                 if (command_kind == nGCAnimEvent32SetVal0RateBlock)
                 {
-                    mobj->anim_wait += payload;
+                    mobj->anim_wait = syObjAnimWaitAdd(mobj->anim_wait, payload);
                 }
                 break;
 
@@ -1285,7 +1307,7 @@ void gcParseMObjMatAnimJoint(MObj *mobj)
 
                 if (command_kind == nGCAnimEvent32SetValBlock)
                 {
-                    mobj->anim_wait += payload;
+                    mobj->anim_wait = syObjAnimWaitAdd(mobj->anim_wait, payload);
                 }
                 break;
 
@@ -1327,7 +1349,7 @@ void gcParseMObjMatAnimJoint(MObj *mobj)
                 }
                 if (command_kind == nGCAnimEvent32SetValRateBlock)
                 {
-                    mobj->anim_wait += payload;
+                    mobj->anim_wait = syObjAnimWaitAdd(mobj->anim_wait, payload);
                 }
                 break;
 
@@ -1354,7 +1376,7 @@ void gcParseMObjMatAnimJoint(MObj *mobj)
                 break;
 
             case nGCAnimEvent32Wait:
-                mobj->anim_wait += mobj->matanim_joint.event32->command.payload;
+                mobj->anim_wait = syObjAnimWaitAdd(mobj->anim_wait, mobj->matanim_joint.event32->command.payload);
 
                 AObjAnimAdvance(mobj->matanim_joint.event32);
                 break;
@@ -1391,7 +1413,7 @@ void gcParseMObjMatAnimJoint(MObj *mobj)
                 }
                 if (command_kind == nGCAnimEvent32SetValAfterBlock)
                 {
-                    mobj->anim_wait += payload;
+                    mobj->anim_wait = syObjAnimWaitAdd(mobj->anim_wait, payload);
                 }
                 break;
 
@@ -1474,7 +1496,7 @@ void gcParseMObjMatAnimJoint(MObj *mobj)
                 }
                 if (command_kind == nGCAnimEvent32SetExtValAfterBlock)
                 {
-                    mobj->anim_wait += payload;
+                    mobj->anim_wait = syObjAnimWaitAdd(mobj->anim_wait, payload);
                 }
                 break;
 
@@ -1511,7 +1533,7 @@ void gcParseMObjMatAnimJoint(MObj *mobj)
                 }
                 if (command_kind == nGCAnimEvent32SetExtValBlock)
                 {
-                    mobj->anim_wait += payload;
+                    mobj->anim_wait = syObjAnimWaitAdd(mobj->anim_wait, payload);
                 }
                 break;
 
@@ -3129,9 +3151,15 @@ void gcParseCObjCamAnimJoint(CObj *cobj)
         }
         else
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            syNetplayAnimCountdownFixedPoint(&cobj->anim_wait, &cobj->anim_frame, cobj->anim_speed);
+            syNetplayAnimWaitCollapseLeftover(&cobj->anim_wait);
+            cobj->parent_gobj->anim_frame = cobj->anim_frame;
+#else
             cobj->anim_wait -= cobj->anim_speed;
             cobj->anim_frame += cobj->anim_speed;
             cobj->parent_gobj->anim_frame = cobj->anim_frame;
+#endif
 
             if (cobj->anim_wait > 0.0F)
             {
@@ -3210,7 +3238,7 @@ void gcParseCObjCamAnimJoint(CObj *cobj)
                 }
                 if (command_kind == nGCAnimEvent32SetVal0RateBlock)
                 {
-                    cobj->anim_wait += payload;
+                    cobj->anim_wait = syObjAnimWaitAdd(cobj->anim_wait, payload);
                 }
                 break;
 
@@ -3248,7 +3276,7 @@ void gcParseCObjCamAnimJoint(CObj *cobj)
                 }
                 if (command_kind == nGCAnimEvent32SetValBlock)
                 {
-                    cobj->anim_wait += payload;
+                    cobj->anim_wait = syObjAnimWaitAdd(cobj->anim_wait, payload);
                 }
                 break;
 
@@ -3290,7 +3318,7 @@ void gcParseCObjCamAnimJoint(CObj *cobj)
                 }
                 if (command_kind == nGCAnimEvent32SetValRateBlock)
                 {
-                    cobj->anim_wait += payload;
+                    cobj->anim_wait = syObjAnimWaitAdd(cobj->anim_wait, payload);
                 }
                 break;
 
@@ -3317,7 +3345,7 @@ void gcParseCObjCamAnimJoint(CObj *cobj)
                 break;
 
             case nGCAnimEvent32Wait:
-                cobj->anim_wait += AObjAnimAdvance(cobj->camanim_joint.event32)->command.payload;
+                cobj->anim_wait = syObjAnimWaitAdd(cobj->anim_wait, AObjAnimAdvance(cobj->camanim_joint.event32)->command.payload);
                 break;
 
             case nGCAnimEvent32SetValAfterBlock:
@@ -3350,7 +3378,7 @@ void gcParseCObjCamAnimJoint(CObj *cobj)
                 }
                 if (command_kind == nGCAnimEvent32SetValAfterBlock)
                 {
-                    cobj->anim_wait += payload;
+                    cobj->anim_wait = syObjAnimWaitAdd(cobj->anim_wait, payload);
                 }
                 break;
 
@@ -3436,7 +3464,7 @@ void gcParseCObjCamAnimJoint(CObj *cobj)
                 return;
 
             case ANIM_CMD_23:
-                cobj->anim_wait += AObjAnimAdvance(cobj->camanim_joint.event32)->command.payload;
+                cobj->anim_wait = syObjAnimWaitAdd(cobj->anim_wait, AObjAnimAdvance(cobj->camanim_joint.event32)->command.payload);
                 cobj->camanim_joint.event32 += 2;
                 break;
 

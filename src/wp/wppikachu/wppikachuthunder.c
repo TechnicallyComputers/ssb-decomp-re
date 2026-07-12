@@ -1,6 +1,11 @@
 #include <wp/weapon.h>
 #include <ft/fighter.h>
 #include <reloc_data.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/utils.h>
+/* Trail texture flicker is presentation-only; weapon hash omits texture_id_curr. */
+#define syUtilsRandIntRange syUtilsRandIntRangeForcedCosmetic
+#endif
 
 // // // // // // // // // // // //
 //                               //

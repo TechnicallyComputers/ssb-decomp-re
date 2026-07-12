@@ -1,5 +1,9 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -18,6 +22,14 @@ void ftKirbyCopyLinkSpecialNDestroyBoomerang(GObj *fighter_gobj)
 
         fp->passive_vars.kirby.copylink_boomerang_gobj = NULL;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay rollback only: cull orphan CopyLink boomerangs after destroy. See docs/bugs/netplay_link_boomerang_phase4_2026-07-11.md. */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetRbSnapCullOwnedBoomerangsForFighter(fighter_gobj, NULL);
+    }
+#endif
 }
 
 // 0x80164688
@@ -30,6 +42,26 @@ void ftKirbyCopyLinkSpecialNMakeBoomerang(GObj *fighter_gobj)
     {
         fp->motion_vars.flags.flag0 = 0;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+        /* Netplay rollback only: reacquire owned boomerang before spawn; cull extras. */
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            GObj *existing = fp->passive_vars.kirby.copylink_boomerang_gobj;
+
+            if ((existing == NULL) || (wpGetStruct(existing) == NULL))
+            {
+                existing = syNetRbSnapReacquireBoomerangForFighter(fighter_gobj);
+            }
+            if (existing != NULL)
+            {
+                fp->passive_vars.kirby.copylink_boomerang_gobj = existing;
+                syNetRbSnapCullOwnedBoomerangsForFighter(fighter_gobj, existing);
+                return;
+            }
+        }
+#endif
+
         pos.x = 0.0F;
         pos.y = 0.0F;
         pos.z = 0.0F;
@@ -37,6 +69,17 @@ void ftKirbyCopyLinkSpecialNMakeBoomerang(GObj *fighter_gobj)
         gmCollisionGetFighterPartsWorldPosition(fp->joints[FTKIRBY_COPYLINK_BOOMERANG_SPAWN_JOINT], &pos);
 
         fp->passive_vars.kirby.copylink_boomerang_gobj = wpLinkBoomerangMakeWeapon(fighter_gobj, &pos);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            if (fp->passive_vars.kirby.copylink_boomerang_gobj == NULL)
+            {
+                return;
+            }
+            syNetRbSnapCullOwnedBoomerangsForFighter(fighter_gobj,
+                                                     fp->passive_vars.kirby.copylink_boomerang_gobj);
+        }
+#endif
     }
 }
 

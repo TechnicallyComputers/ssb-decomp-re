@@ -11,6 +11,9 @@
  */
 #include <sys/netplay_ness_pkthunder_gate.h>
 #include <sys/netplay_sim_quantize.h>
+#include <sys/utils.h>
+/* Trail / reflect-trail texture flicker is presentation-only (weapon hash omits texture_id). */
+#define syUtilsRandIntRange syUtilsRandIntRangeForcedCosmetic
 
 #endif
 

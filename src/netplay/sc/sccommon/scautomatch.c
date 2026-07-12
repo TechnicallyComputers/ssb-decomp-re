@@ -3945,12 +3945,9 @@ static void mnVSNetAutomatchAMSetState(MnVSNetAutomatchAMState state, const char
 		return;
 	}
 	sMnAMState = state;
-	if (port_log_debug_active())
-	{
-		port_log("SSB64 Automatch: state %d->%d (%s->%s) (%s)\n", (int)prev, (int)state,
-		         mnVSNetAutomatchAMStateName(prev), mnVSNetAutomatchAMStateName(state),
-		         (why != NULL && why[0] != '\0') ? why : "");
-	}
+	port_log("SSB64 Automatch: state %d->%d (%s->%s) (%s)\n", (int)prev, (int)state,
+	         mnVSNetAutomatchAMStateName(prev), mnVSNetAutomatchAMStateName(state),
+	         (why != NULL && why[0] != '\0') ? why : "");
 }
 static char sMnAMTicket[72];
 static char sMnAMPublicEndpoint[144];
@@ -3964,6 +3961,7 @@ static sb32 sMnAMStagingP2PReady = FALSE;
 static u32 sMnAMPollPeriodTics;
 static sb32 sMnAMStagingRendezvousStarted = FALSE;
 static u64 sMnAMConnectDeadlineMs;
+static u64 sMnAMConnectStartMs;
 static u64 sMnAMTurnLastAllocateAttemptMs;
 
 #define MN_AM_TURN_ALLOCATE_COOLDOWN_MS_DEFAULT 30000U
@@ -4130,6 +4128,17 @@ static void mnVSNetAutomatchAMMaybeEnqueueMatchPoll(u32 base_interval, sb32 tric
 void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason)
 {
 	const char *why = (reason != NULL && reason[0] != '\0') ? reason : "aborted";
+	u32 elapsed_ms = 0U;
+
+	if (sMnAMConnectStartMs != 0U)
+	{
+		u64 now_ms = mnVSNetAutomatchAMNowMs();
+
+		if (now_ms >= sMnAMConnectStartMs)
+		{
+			elapsed_ms = (u32)(now_ms - sMnAMConnectStartMs);
+		}
+	}
 
 	if (strcmp(why, "cancelled") == 0)
 	{
@@ -4139,7 +4148,15 @@ void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason)
 	{
 		func_800269C0_275C0(nSYAudioFGMMenuDenied);
 	}
-	port_log("SSB64 Automatch: returning to character select (%s)\n", why);
+	port_log("SSB64 Automatch: returning to character select (%s) elapsed_ms=%u state=%s staging_p2p=%d\n", why,
+	         (unsigned int)elapsed_ms, mnVSNetAutomatchAMStateName(sMnAMState),
+	         (int)(sMnAMStagingP2PReady != FALSE));
+#if defined(SSB64_NETPLAY_ICE)
+	if (strcmp(why, "cancelled") != 0)
+	{
+		mnVSNetAutomatchAMIceLogConnectAbortDiag(why, elapsed_ms);
+	}
+#endif
 	syNetPeerRequestAutomatchAbort();
 	syNetPeerCancelAutomatchBootstrap();
 	syNetPeerEndVSSessionLocally();
@@ -4148,6 +4165,7 @@ void mnVSNetAutomatchAMAbortToCharacterSelect(const char *reason)
 		mmMatchmakingEnqueueCancel(FALSE, sMnAMTicket);
 	}
 	sMnAMConnectDeadlineMs = 0U;
+	sMnAMConnectStartMs = 0U;
 	mnVSNetAutomatchAMReset();
 	gSCManagerSceneData.is_vs_automatch_battle = (ub8)FALSE;
 	gSCManagerSceneData.scene_prev = gSCManagerSceneData.scene_curr;
@@ -4227,6 +4245,7 @@ static void mnVSNetAutomatchAMResetSearchState(void)
 	sMnAMPollPeriodTics = 0;
 	sMnAMStagingRendezvousStarted = FALSE;
 	sMnAMConnectDeadlineMs = 0U;
+	sMnAMConnectStartMs = 0U;
 #ifndef SSB64_NETPLAY_ICE
 	sMnAMTurnLastAllocateAttemptMs = 0U;
 #endif
@@ -4519,10 +4538,7 @@ static void mnVSNetAutomatchAMErrEx(const char *reason)
 	const char *why;
 
 	why = (reason != NULL && reason[0] != '\0') ? reason : "connection failed";
-	if (port_log_debug_active())
-	{
-		port_log("SSB64 Automatch: error (%s)\n", why);
-	}
+	port_log("SSB64 Automatch: error (%s)\n", why);
 	func_800269C0_275C0(nSYAudioFGMMenuDenied);
 	mnVSNetAutomatchAMAbortToCharacterSelect(why);
 }
@@ -4772,7 +4788,8 @@ static void mnVSNetAutomatchAMEnterVs(const MmMatchResult *mr)
 	}
 
 	syNetPeerClearAutomatchAbort();
-	sMnAMConnectDeadlineMs = mnVSNetAutomatchAMNowMs() + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
+	sMnAMConnectStartMs = mnVSNetAutomatchAMNowMs();
+	sMnAMConnectDeadlineMs = sMnAMConnectStartMs + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
 	sMnAMPendingLanBootstrap = FALSE;
 
 	/* LAN-first only when peer_lan is on our subnet (true LAN). Same WAN IP alone is not enough
@@ -4960,6 +4977,7 @@ sb32 mnVSNetAutomatchAMConsumeStagingHandshake(void)
 	sMnAMStagingP2PReady = FALSE;
 	sMnAMStagingRendezvousStarted = FALSE;
 	sMnAMConnectDeadlineMs = 0U;
+	sMnAMConnectStartMs = 0U;
 	return TRUE;
 }
 
@@ -5145,7 +5163,8 @@ void mnVSNetAutomatchMatchmakingTick(void)
 					snprintf(sMnAMLanEndpoint, sizeof(sMnAMLanEndpoint), "%s", ice_lan);
 				}
 			}
-			sMnAMConnectDeadlineMs = mnVSNetAutomatchAMNowMs() + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
+			sMnAMConnectStartMs = mnVSNetAutomatchAMNowMs();
+			sMnAMConnectDeadlineMs = sMnAMConnectStartMs + (u64)mnVSNetAutomatchAMConnectTimeoutMs();
 			sMnAMPollPeriodTics = 0U;
 			mnVSNetAutomatchAMSetState(MN_AM_ICE_CONNECT, "matched");
 			port_watchdog_set_connect_phase_pause(1);

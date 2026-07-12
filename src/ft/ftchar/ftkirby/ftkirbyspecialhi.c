@@ -4,6 +4,11 @@
 #include <sc/scmanager.h>
 #include <sys/debug.h>
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netrollbacksnapshot.h>
+#include <sys/netplay_sim_quantize.h>
+/* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -26,6 +31,14 @@ void ftKirbySpecialHiUpdateEffect(GObj *fighter_gobj)
                 ftParamProcStopEffect(fighter_gobj);
                 fp->motion_vars.flags.flag1 = 0;
             }
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /* Attach may already be false while cutter shells still live — force clear. */
+            else if (syNetplayRollbackSemanticsActive() != FALSE)
+            {
+                syNetRbSnapForceClearKirbyFinalCutterBlades(fighter_gobj);
+                fp->motion_vars.flags.flag1 = 0;
+            }
+#endif
             break;
 
         default:
@@ -47,9 +60,23 @@ void ftKirbySpecialHiUpdateEffect(GObj *fighter_gobj)
             ftParamProcStopEffect(fighter_gobj);
             fp->motion_vars.flags.flag2 = 0;
         }
+#if defined(PORT) && defined(SSB64_NETMENU)
+        else if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            syNetRbSnapForceClearKirbyFinalCutterBlades(fighter_gobj);
+            fp->motion_vars.flags.flag2 = 0;
+        }
+#endif
         break;
 
     case 2:
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Stop-before-mint: do not stack Draw on orphan Trail/Up/Down shells. */
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            syNetRbSnapForceClearKirbyFinalCutterBlades(fighter_gobj);
+        }
+#endif
         if (efManagerKirbyCutterDrawMakeEffect(fighter_gobj) != NULL)
         {
             fp->is_effect_attach = TRUE;
@@ -58,6 +85,12 @@ void ftKirbySpecialHiUpdateEffect(GObj *fighter_gobj)
         break;
 
     case 3:
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            syNetRbSnapForceClearKirbyFinalCutterBlades(fighter_gobj);
+        }
+#endif
         if (efManagerKirbyCutterUpMakeEffect(fighter_gobj) != NULL)
         {
             fp->is_effect_attach = TRUE;
@@ -66,6 +99,12 @@ void ftKirbySpecialHiUpdateEffect(GObj *fighter_gobj)
         break;
 
     case 4:
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            syNetRbSnapForceClearKirbyFinalCutterBlades(fighter_gobj);
+        }
+#endif
         if (efManagerKirbyCutterDownMakeEffect(fighter_gobj) != NULL)
         {
             fp->is_effect_attach = TRUE;
@@ -74,6 +113,12 @@ void ftKirbySpecialHiUpdateEffect(GObj *fighter_gobj)
         break;
 
     case 5:
+#if defined(PORT) && defined(SSB64_NETMENU)
+        if (syNetplayRollbackSemanticsActive() != FALSE)
+        {
+            syNetRbSnapForceClearKirbyFinalCutterBlades(fighter_gobj);
+        }
+#endif
         if (efManagerKirbyCutterTrailMakeEffect(fighter_gobj) != NULL)
         {
             fp->is_effect_attach = TRUE;
@@ -116,7 +161,14 @@ void ftKirbySpecialHiLandingProcUpdate(GObj *fighter_gobj)
 
         else pos.x -= FTKIRBY_FINALCUTTER_OFF_X;
 
-        wpKirbyCutterMakeWeapon(fighter_gobj, &pos);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Synctest/load verify: do not mint +1-tick beam while deferred weapon eject is held. */
+        if ((syNetplayRollbackSemanticsActive() == FALSE) ||
+            (syNetRbSnapDeferWeaponSimDuringLoadVerify() == FALSE))
+#endif
+        {
+            wpKirbyCutterMakeWeapon(fighter_gobj, &pos);
+        }
     }
     ftAnimEndCheckSetStatus(fighter_gobj, ftCommonWaitSetStatus);
 }
@@ -238,10 +290,29 @@ void ftKirbySpecialAirHiFallProcMap(GObj *fighter_gobj)
         if (fp->coll_data.mask_stat & MAP_FLAG_FLOOR)
         {
             mpCommonSetFighterGround(fp);
+            /*
+             * PRESERVE_NONE is load-bearing: Landing ACMD remints Draw/Up/Down/Trail and assumes
+             * AirHiFall's blade was StopEffect'd at land. Netmenu r7 PRESERVE_EFFECT stacked those
+             * shells (soak2 seed 1058439841: 5–7 kirby_finalcutter_blade ejects per Wait; hand
+             * Trail + TopN blob). Keep vanilla clear-at-land; StopEffect tree clear (ftparam) is
+             * the ghost fix. See docs/bugs/netplay_kirby_finalcutter_orphan_blade_2026-07-10.md.
+             */
             ftMainSetStatus(fighter_gobj, nFTKirbyStatusSpecialHiLanding, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
 
             fp->proc_lagstart = ftParamProcPauseEffect;
             fp->proc_lagend = ftParamProcResumeEffect;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            /*
+             * PRESERVE_NONE only runs StopEffect when is_effect_attach is set. Netplay often clears
+             * that flag while cutter shells still live — land entry then no-ops and Landing ACMD
+             * stacks remints (soak2: attach_restore on 257 then 5–7 Wait ejects). Force-clear
+             * regardless of the flag. See docs/bugs/netplay_kirby_finalcutter_orphan_blade_2026-07-10.md.
+             */
+            if (syNetplayRollbackSemanticsActive() != FALSE)
+            {
+                syNetRbSnapForceClearKirbyFinalCutterBlades(fighter_gobj);
+            }
+#endif
         }
         else if (fp->coll_data.mask_stat & MAP_FLAG_CLIFF_MASK)
         {
