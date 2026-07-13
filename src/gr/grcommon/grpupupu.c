@@ -156,15 +156,6 @@ static void grPupupuWhispyLogEffectDisplayGObjs(s32 leaves_link, s32 dust_link)
 //                               //
 // // // // // // // // // // // //
 
-enum grPupupuWhispyMouthStatus
-{
-	nGRPupupuWhispyMouthStatusStretch,
-	nGRPupupuWhispyMouthStatusTurn,
-	nGRPupupuWhispyMouthStatusOpen,
-	nGRPupupuWhispyMouthStatusClose,
-    nGRPupupuWhispyMouthStatusEnumCount
-};
-
 enum grPupupuWhispyMouthTexture
 {
     nGRPupupuWhispyMouthTextureOpen,
@@ -766,7 +757,13 @@ void grPupupuWhispyUpdateWait(void)
 // 0x80105C70
 void grPupupuWhispyUpdateTurn(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /* Netplay: snap near-zero map_gobj anim so Turn→Open agrees cross-ISA. */
+    if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[1]) != FALSE)
+#else
     if (gGRCommonStruct.pupupu.map_gobj[1]->anim_frame <= 0.0F)
+#endif
     {
         gGRCommonStruct.pupupu.whispy_mouth_status = nGRPupupuWhispyMouthStatusOpen;
         gGRCommonStruct.pupupu.whispy_status = nGRPupupuWhispyWindStatusOpen;
@@ -776,7 +773,12 @@ void grPupupuWhispyUpdateTurn(void)
 // 0x80105CAC
 void grPupupuWhispyUpdateOpen(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[1]) != FALSE)
+#else
     if (gGRCommonStruct.pupupu.map_gobj[1]->anim_frame <= 0.0F)
+#endif
     {
         gGRCommonStruct.pupupu.whispy_status = nGRPupupuWhispyWindStatusBlow;
 
@@ -1067,7 +1069,12 @@ void grPupupuWhispyUpdateBlow(void)
 // 0x80105DD8
 void grPupupuWhispyUpdateStop(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[1]) != FALSE)
+#else
     if (gGRCommonStruct.pupupu.map_gobj[1]->anim_frame <= 0.0F)
+#endif
     {
         gGRCommonStruct.pupupu.whispy_wind_wait = syUtilsRandIntRange(GRPUPUPU_WHISPY_WAIT_DURATION_RANDOM) + GRPUPUPU_WHISPY_WAIT_DURATION_BASE;
         gGRCommonStruct.pupupu.whispy_status = nGRPupupuWhispyWindStatusWait;
@@ -1077,7 +1084,61 @@ void grPupupuWhispyUpdateStop(void)
 // 0x80105E34
 void grPupupuWhispyUpdateBlink(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    /*
+     * Blink wait is presentation timing. Under netplay:
+     * 1) Post-blink lockout (-9..-1) must keep ticking even if map_gobj[0]
+     *    anim_frame leftovers flap above zero — otherwise one ISA freezes at
+     *    -9, skips the -10 reseed, and forks the gameplay LCG (soak1 FC@600
+     *    diverged=rng, inputs MATCH; Android blink=-9 vs Linux blink=244).
+     * 2) Reseed uses ForcedCosmetic so a residual one-tick timing skew cannot
+     *    advance gSYMainRandom. Wind wait/duration stay on the game LCG.
+     * See docs/bugs/netplay_pupupu_whispy_blink_rng_fc_2026-07-12.md.
+     */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        sb32 eyes_anim_ended;
+        s16 blink_wait;
+        sb32 in_post_blink_lockout;
+
+        if (gGRCommonStruct.pupupu.whispy_eyes_status != -1)
+        {
+            return;
+        }
+        blink_wait = gGRCommonStruct.pupupu.whispy_blink_wait;
+        in_post_blink_lockout = ((blink_wait < 0) && (blink_wait > -10)) ? TRUE : FALSE;
+        eyes_anim_ended = syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[0]);
+        if ((in_post_blink_lockout == FALSE) && (eyes_anim_ended == FALSE))
+        {
+            return;
+        }
+        gGRCommonStruct.pupupu.whispy_blink_wait--;
+
+        if ((gGRCommonStruct.pupupu.whispy_blink_wait == 0) || (gGRCommonStruct.pupupu.whispy_blink_wait == -10))
+        {
+            gGRCommonStruct.pupupu.whispy_eyes_status = nGRPupupuWhispyEyesStatusBlink;
+
+            /*
+             * Do not Stretch the mouth under netplay. Stretch restarts map_gobj[1] and can
+             * desync Open→Blow (gameplay LCG wind_duration) when one ISA thinks the mouth
+             * anim has ended and the other does not. Eyes blink alone is enough presentation.
+             * See docs/bugs/netplay_pupupu_whispy_open_blow_rng_fc_2026-07-12.md.
+             */
+            if (gGRCommonStruct.pupupu.whispy_blink_wait != 0)
+            {
+                gGRCommonStruct.pupupu.whispy_blink_wait =
+                    syUtilsRandIntRangeForcedCosmetic(GRPUPUPU_WHISPY_BLINK_WAIT_RANDOM) +
+                    GRPUPUPU_WHISPY_BLINK_WAIT_BASE;
+            }
+        }
+        return;
+    }
+    if ((gGRCommonStruct.pupupu.whispy_eyes_status == -1) &&
+        (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[0]) != FALSE))
+#else
     if ((gGRCommonStruct.pupupu.whispy_eyes_status == -1) && (gGRCommonStruct.pupupu.map_gobj[0]->anim_frame <= 0.0F))
+#endif
     {
         gGRCommonStruct.pupupu.whispy_blink_wait--;
 
@@ -1085,7 +1146,12 @@ void grPupupuWhispyUpdateBlink(void)
         {
             gGRCommonStruct.pupupu.whispy_eyes_status = nGRPupupuWhispyEyesStatusBlink;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+            if ((syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[1]) != FALSE) &&
+                (gGRCommonStruct.pupupu.whispy_status != nGRPupupuWhispyWindStatusBlow))
+#else
             if ((gGRCommonStruct.pupupu.map_gobj[1]->anim_frame <= 0.0F) && (gGRCommonStruct.pupupu.whispy_status != nGRPupupuWhispyWindStatusBlow))
+#endif
             {
                 gGRCommonStruct.pupupu.whispy_mouth_status = nGRPupupuWhispyMouthStatusStretch;
             }
@@ -1144,7 +1210,12 @@ void grPupupuFlowersBackWindStart(void)
 // 0x80105FC4
 void grPupupuFlowersBackLoopStart(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[2]) != FALSE)
+#else
     if (gGRCommonStruct.pupupu.map_gobj[2]->anim_frame <= 0.0F)
+#endif
     {
         gGRCommonStruct.pupupu.whispy_mouth_texture = 1;
         gGRCommonStruct.pupupu.flowers_back_status = nGRPupupuFlowerStatusWindLoop;
@@ -1247,7 +1318,12 @@ void grPupupuWhispyDustMakeEffect(void)
 // 0x801061CC
 void grPupupuFlowersFrontLoopStart(void)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[3]) != FALSE)
+#else
     if (gGRCommonStruct.pupupu.map_gobj[3]->anim_frame <= 0.0F)
+#endif
     {
         gGRCommonStruct.pupupu.whispy_eyes_texture = 1;
         gGRCommonStruct.pupupu.flowers_front_status = nGRPupupuFlowerStatusWindLoop;
@@ -1437,7 +1513,12 @@ void grPupupuInitAll(void)
     gGRCommonStruct.pupupu.lr_players           = 1;
 
     gGRCommonStruct.pupupu.whispy_wind_wait     = syUtilsRandIntRange(GRPUPUPU_WHISPY_WAIT_DURATION_RANDOM) + GRPUPUPU_WHISPY_WAIT_DURATION_BASE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: blink wait is presentation-only; keep off gameplay LCG. */
+    gGRCommonStruct.pupupu.whispy_blink_wait    = syUtilsRandIntRangeForcedCosmetic(GRPUPUPU_WHISPY_BLINK_WAIT_RANDOM) + GRPUPUPU_WHISPY_BLINK_WAIT_BASE;
+#else
     gGRCommonStruct.pupupu.whispy_blink_wait    = syUtilsRandIntRange(GRPUPUPU_WHISPY_BLINK_WAIT_RANDOM)    + GRPUPUPU_WHISPY_BLINK_WAIT_BASE;
+#endif
 
     gGRCommonStruct.pupupu.flowers_back_status  =
     gGRCommonStruct.pupupu.flowers_front_status = 0;

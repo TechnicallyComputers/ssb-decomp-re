@@ -37,6 +37,34 @@ void gmCollisionCopyMatrix(Mtx44f dst, Mtx44f src)
     dst[3][2] = src[3][2];
 }
 
+#ifdef PORT
+static void gmCollisionPortIdentityMatrix(Mtx44f dst)
+{
+    s32 i;
+    s32 j;
+
+    for (i = 0; i < 4; i++)
+    {
+        for (j = 0; j < 3; j++)
+        {
+            dst[i][j] = (i == j) ? 1.0F : 0.0F;
+        }
+    }
+}
+
+static void gmCollisionPortLogSingularOnce(const char *site)
+{
+    static u32 sLogBudget = 8U;
+
+    if (sLogBudget != 0U)
+    {
+        sLogBudget--;
+        port_log("SSB64 gmCollision: singular %s — safe fallback (no debug halt loop)\n",
+                 (site != NULL) ? site : "unknown");
+    }
+}
+#endif
+
 // 0x800ECDE4
 void gmCollisionTransformMatrixAll(DObj *dobj, FTParts *parts, Mtx44f mtx)
 {
@@ -154,49 +182,70 @@ void gmCollisionSetMatrixNcs(DObj *dobj, FTParts *parts, Mtx44f mtx, Vec3f *scal
         {
             if (scale_mul->x == 0.0F)
             {
+#ifdef PORT
+                gmCollisionPortLogSingularOnce("scale_mul.x in gcSetMatrixNcs");
+#else
                 while (TRUE)
                 {
                     syDebugPrintf("zero div x in gcSetMatrixNcs()\n");
                     scManagerRunPrintGObjStatus();
                 }
+#endif
             }
+            else
+            {
             invx = 1.0F / scale_mul->x;
 
             mtx[0][0] *= invx;
             mtx[1][0] *= invx;
             mtx[2][0] *= invx;
+            }
         }
         if (scale_mul->y != 1.0F)
         {
             if (scale_mul->y == 0.0F)
             {
+#ifdef PORT
+                gmCollisionPortLogSingularOnce("scale_mul.y in gcSetMatrixNcs");
+#else
                 while (TRUE)
                 {
                     syDebugPrintf("zero div y in gcSetMatrixNcs()\n");
                     scManagerRunPrintGObjStatus();
                 }
+#endif
             }
+            else
+            {
             invy = 1.0F / scale_mul->y;
 
             mtx[0][1] *= invy;
             mtx[1][1] *= invy;
             mtx[2][1] *= invy;
+            }
         }
         if (scale_mul->z != 1.0F)
         {
             if (scale_mul->z == 0.0F)
             {
+#ifdef PORT
+                gmCollisionPortLogSingularOnce("scale_mul.z in gcSetMatrixNcs");
+#else
                 while (TRUE)
                 {
                     syDebugPrintf("zero div z in gcSetMatrixNcs()\n");
                     scManagerRunPrintGObjStatus();
                 }
+#endif
             }
+            else
+            {
             invz = 1.0F / scale_mul->z;
 
             mtx[0][2] *= invz;
             mtx[1][2] *= invz;
             mtx[2][2] *= invz;
+            }
         }
     }
     mtx[3][0] = translate->x;
@@ -267,11 +316,17 @@ void gmCollisionSetInvertMatrix(Mtx44f dst, Mtx44f src)
 
     if (scale == 0.0F)
     {
+#ifdef PORT
+        gmCollisionPortLogSingularOnce("det in gcSetInvMatrix");
+        gmCollisionPortIdentityMatrix(dst);
+        return;
+#else
         while (TRUE)
         {
             syDebugPrintf("zero div in gcSetInvMatrix()\n");
             scManagerRunPrintGObjStatus();
         }
+#endif
     }
     scale = 1.0F / scale;
 
@@ -941,11 +996,16 @@ sb32 gmCollisionTestSphere(Vec3f *pos_curr, Vec3f *pos_prev, f32 hitsize, s32 at
             {
                 if (sp54 == 0.0F)
                 {
+#ifdef PORT
+                    gmCollisionPortLogSingularOnce("sp54 in gcColSphere(1)");
+                    return FALSE;
+#else
                     while (TRUE)
                     {
                         syDebugPrintf("zero div 1 in gcColSphere()\n");
                         scManagerRunPrintGObjStatus();
                     }
+#endif
                 }
                 sp44 = sp40 = -sp50 / sp54;
 
@@ -959,11 +1019,16 @@ sb32 gmCollisionTestSphere(Vec3f *pos_curr, Vec3f *pos_prev, f32 hitsize, s32 at
             {
                 if (sp54 == 0.0F)
                 {
+#ifdef PORT
+                    gmCollisionPortLogSingularOnce("sp54 in gcColSphere(2)");
+                    return FALSE;
+#else
                     while (TRUE)
                     {
                         syDebugPrintf("zero div 2 in gcColSphere()\n");
                         scManagerRunPrintGObjStatus();
                     }
+#endif
                 }
                 sp44 = (sqrtf(sp48) + -sp50) / sp54;
                 sp40 = (-sp50 - sqrtf(sp48)) / sp54;

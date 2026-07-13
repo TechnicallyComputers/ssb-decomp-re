@@ -271,8 +271,10 @@ void scVSBattleFuncUpdate(void)
 		 */
 		syNetplayHardenPassPlatformCollBeforeSim();
 		syNetplayHardenAirborneDamageKnockbackCollBeforeSim();
+		syNetplayHardenJumpAerialPassCollBeforeSim();
 		syNetplayHardenCaptainGroundKickCollBeforeSim();
 		syNetplayHardenAnimEndWaitThresholdBeforeSim();
+		syNetplayHardenPupupuWhispyMapAnimBeforeSim();
 		syNetRbSnapshotPreSimLinkBombAirborneMPCollHardening();
 	}
 #endif
@@ -364,8 +366,10 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 	syNetRbSnapshotPreSimUnhalfswapGameplayResimAnim();
 	syNetplayHardenPassPlatformCollBeforeSim();
 	syNetplayHardenAirborneDamageKnockbackCollBeforeSim();
+	syNetplayHardenJumpAerialPassCollBeforeSim();
 	syNetplayHardenCaptainGroundKickCollBeforeSim();
 	syNetplayHardenAnimEndWaitThresholdBeforeSim();
+	syNetplayHardenPupupuWhispyMapAnimBeforeSim();
 	syNetRbSnapshotPreSimLinkBombAirborneMPCollHardening();
 	ifCommonBattleUpdateInterfaceAll();
 	syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();

@@ -21,6 +21,15 @@ enum grPupupuWhispyWindStatus
 	nGRPupupuWhispyWindStatusEnumCount
 };
 
+enum grPupupuWhispyMouthStatus
+{
+	nGRPupupuWhispyMouthStatusStretch,
+	nGRPupupuWhispyMouthStatusTurn,
+	nGRPupupuWhispyMouthStatusOpen,
+	nGRPupupuWhispyMouthStatusClose,
+	nGRPupupuWhispyMouthStatusEnumCount
+};
+
 enum grPupupuFlowerStatus
 {
 	nGRPupupuFlowerStatusDefault,
