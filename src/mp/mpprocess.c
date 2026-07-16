@@ -1350,7 +1350,20 @@ sb32 mpProcessCheckTestLWallCollisionAdjNew(MPCollData *coll_data)
 
     mpCollisionCheckFloorLineCollisionSame(&sp54, &sp48, NULL, &test_line_id, &floor_flags, NULL);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * SSB64_NETMENU: stripped from offline builds. Runtime: AdjNew air/damage wall path only.
+     * Vanilla skips wall-from-floor when the swept floor is PASS (soft platforms). Dream Land
+     * ledge lips are often CLIFF-only (0x8000) without PASS — this gate then attaches the
+     * under-edge wall and Cross-ISA Diff float forks TopN.x while floor_dist stays matched
+     * (soak1 session 401300810 seed 998483872 JumpB @634 after PASS→CLIFF @633). Treat CLIFF
+     * like PASS here so air over the lip matches soft-platform behavior. CliffCatch still uses
+     * CheckTestL/RCliffCollision. See docs/bugs/netplay_airborne_cliff_lip_wall_from_floor_fc_drift_2026-07-13.md.
+     */
+    if ((line_collide != FALSE) && !(floor_flags & (MAP_VERTEX_COLL_PASS | MAP_VERTEX_COLL_CLIFF)))
+#else
     if ((line_collide != FALSE) && !(floor_flags & MAP_VERTEX_COLL_PASS)) // 0x4000
+#endif
     {
         edge_line_id = mpCollisionGetEdgeUnderLLineID(test_line_id);
 
@@ -1720,7 +1733,12 @@ sb32 mpProcessCheckTestRWallCollisionAdjNew(MPCollData *coll_data)
 
     mpCollisionCheckFloorLineCollisionSame(&sp54, &sp48, NULL, &test_line_id, &floor_flags, NULL);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: same CLIFF-as-PASS wall-from-floor skip as LWall AdjNew above. */
+    if ((line_collide != FALSE) && !(floor_flags & (MAP_VERTEX_COLL_PASS | MAP_VERTEX_COLL_CLIFF)))
+#else
     if ((line_collide != FALSE) && !(floor_flags & MAP_VERTEX_COLL_PASS))
+#endif
     {
         edge_line_id = mpCollisionGetEdgeUnderRLineID(test_line_id);
 

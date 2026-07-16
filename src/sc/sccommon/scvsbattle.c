@@ -261,96 +261,111 @@ void scVSBattleFuncUpdate(void)
 	}
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
-	if ((syNetPeerIsVSSessionActive() != FALSE) && (syNetRollbackIsResimulating() == FALSE) &&
-	    (syNetplayRollbackLiveForwardSimEligible() != FALSE))
 	{
-		/*
-		 * Pass-platform grounded fighters use MPColl pos_prev integration; stale pos_prev vs TopN forks
-		 * cross-ISA translate on pass floors (soak2 Fox Squat→Pass @570; Link/Kirby Wait/Turn @481+).
-		 * Re-anchor before gcRunAll so both peers share the same integration base.
-		 */
-		syNetplayHardenPassPlatformCollBeforeSim();
-		syNetplayHardenAirborneDamageKnockbackCollBeforeSim();
-		syNetplayHardenJumpAerialPassCollBeforeSim();
-		syNetplayHardenCaptainGroundKickCollBeforeSim();
-		syNetplayHardenAnimEndWaitThresholdBeforeSim();
-		syNetplayHardenPupupuWhispyMapAnimBeforeSim();
-		syNetRbSnapshotPreSimLinkBombAirborneMPCollHardening();
-	}
-#endif
-#if defined(PORT) && defined(SSB64_NETMENU)
-	if (syNetRollbackShouldDeferInterfaceDuringResimWait() == FALSE)
-	{
-		/*
-		 * Intro presentation repair (unhalfswap + figatree refresh) is resim-only.
-		 * Running it on forward sim — including offline NETMENU VS — poisoned figatree
-		 * heaps during Entry and collapsed Appear to one tick with corrupted joints.
-		 */
-		if (syNetRollbackIsResimulating() != FALSE)
+		sb32 live_battle_sim_ran = FALSE;
+		u32 tick_at_live_battle = 0U;
+
+		if ((syNetPeerIsVSSessionActive() != FALSE) && (syNetRollbackIsResimulating() == FALSE) &&
+		    (syNetplayRollbackLiveForwardSimEligible() != FALSE))
 		{
-			syNetRbSnapshotPreSimUnhalfswapIntroAppearAnim();
-			syNetRbSnapshotPreSimUnhalfswapGameplayResimAnim();
+			/*
+			 * Pass-platform grounded fighters use MPColl pos_prev integration; stale pos_prev vs TopN forks
+			 * cross-ISA translate on pass floors (soak2 Fox Squat→Pass @570; Link/Kirby Wait/Turn @481+).
+			 * Re-anchor before gcRunAll so both peers share the same integration base.
+			 */
+			syNetplayHardenPassPlatformCollBeforeSim();
+			syNetplayHardenAirborneDamageKnockbackCollBeforeSim();
+			syNetplayHardenJumpAerialPassCollBeforeSim();
+			syNetplayHardenCaptainGroundKickCollBeforeSim();
+			syNetplayHardenAnimEndWaitThresholdBeforeSim();
+			syNetplayHardenPupupuWhispyMapAnimBeforeSim();
+			syNetRbSnapshotPreSimLinkBombAirborneMPCollHardening();
 		}
-		ifCommonBattleUpdateInterfaceAll();
-		if (syNetRollbackIsResimulating() != FALSE)
+		if (syNetRollbackShouldDeferInterfaceDuringResimWait() == FALSE)
 		{
-			syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
+			/*
+			 * Intro presentation repair (unhalfswap + figatree refresh) is resim-only.
+			 * Running it on forward sim — including offline NETMENU VS — poisoned figatree
+			 * heaps during Entry and collapsed Appear to one tick with corrupted joints.
+			 */
+			if (syNetRollbackIsResimulating() != FALSE)
+			{
+				syNetRbSnapshotPreSimUnhalfswapIntroAppearAnim();
+				syNetRbSnapshotPreSimUnhalfswapGameplayResimAnim();
+			}
+			ifCommonBattleUpdateInterfaceAll();
+			live_battle_sim_ran = TRUE;
+			tick_at_live_battle = syNetInputGetTick();
+			if (syNetRollbackIsResimulating() != FALSE)
+			{
+				syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
+			}
 		}
-	}
-	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
-	    (gSCManagerBattleState->game_status == nSCBattleGameStatusWait))
-	{
-		syNetSyncTryApplyAuthoritativeNetplayGo(syNetInputGetTick());
-	}
-#else
-	ifCommonBattleUpdateInterfaceAll();
-#endif
-#if defined(PORT) && defined(SSB64_NETMENU)
-	if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
-	    (gSCManagerBattleState->game_status == nSCBattleGameStatusGo))
-	{
-		syNetSyncOnNetplayBattleGo();
-		syNetSyncReconcileBattleTimePassedFromSimTick();
-	}
-	if (syNetRollbackIsResimulating() == FALSE)
-	{
-		syNetReplayUpdate();
-	}
-	syNetPeerUpdate();
-	if (syNetRollbackIsBattleSimHoldActive() != FALSE)
-	{
-		return;
-	}
-	if (syNetInputStrictContractSkippedPublishThisPass() == FALSE)
-	{
-		syNetRollbackAfterBattleUpdate();
-		/*
-		 * Diagnostic forced resim begins inside AfterBattleUpdate and rewinds sim tick; do not
-		 * frame-commit/advance the pre-rewind live tick. Resim owns further advances via
-		 * BattleSimOnly. Live peer resim starts from PeerUpdate before this point and uses the
-		 * early-return at FuncUpdate entry on subsequent frames.
-		 */
-		if ((syNetReplayIsDiagnosticPlaybackActive() != FALSE) &&
-		    (syNetRollbackIsResimulating() != FALSE))
+		if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
+		    (gSCManagerBattleState->game_status == nSCBattleGameStatusWait))
+		{
+			syNetSyncTryApplyAuthoritativeNetplayGo(syNetInputGetTick());
+		}
+		if ((syNetPeerIsVSSessionActive() != FALSE) && (gSCManagerBattleState != NULL) &&
+		    (gSCManagerBattleState->game_status == nSCBattleGameStatusGo))
+		{
+			syNetSyncOnNetplayBattleGo();
+			syNetSyncReconcileBattleTimePassedFromSimTick();
+		}
+		if (syNetRollbackIsResimulating() == FALSE)
+		{
+			syNetReplayUpdate();
+		}
+		syNetPeerUpdate();
+		if (syNetRollbackIsBattleSimHoldActive() != FALSE)
 		{
 			return;
 		}
-		/*
-		 * Sim-state/fighter-slot-hash diagnostic trace: must run after syNetRollbackAfterBattleUpdate()
-		 * (post-quantize) and before syNetInputAdvanceAuthoritativeSimTick() so syNetInputGetTick()
-		 * still names the tick that just finished, and the logged hash matches the canonicalized state
-		 * syNetFrameCommitBuildToken compares — not the raw pre-quantize live state. See
-		 * docs/bugs/netplay_sim_state_trace_pre_quantize_diag_2026-07-01.md.
-		 */
-		syNetPeerMaybeLogSimStateTickTrace();
-		/*
-		 * Frame-commit must run against the completed tick's snapshot before advancing the
-		 * authoritative sim counter — otherwise the client can gcRunAll the next tick first
-		 * (soak2 Android FC @600: live Kirby +1-tic artifact, Fox snap already forked @570).
-		 */
-		syNetPeerFrameCommitAfterCompletedSimStep();
-		syNetInputAdvanceAuthoritativeSimTick();
+		if (syNetInputStrictContractSkippedPublishThisPass() == FALSE)
+		{
+			/*
+			 * Never SavePostTick/frame-commit/Advance unless this pass ran gcRunAll, and never
+			 * right after FinishForwardResim closes to Live without a live battle for GetTick
+			 * (PeerUpdate can complete resim mid-FuncUpdate → exclusive-frontier mislabel).
+			 * See docs/bugs/netplay_post_resim_live_save_without_battle_map_skew_2026-07-16.md.
+			 */
+			if ((syNetPeerIsVSSessionActive() != FALSE) &&
+			    ((live_battle_sim_ran == FALSE) ||
+			     (syNetRollbackAllowLivePostBattleSave(live_battle_sim_ran, tick_at_live_battle) == FALSE)))
+			{
+				return;
+			}
+			syNetRollbackAfterBattleUpdate();
+			/*
+			 * Diagnostic forced resim begins inside AfterBattleUpdate and rewinds sim tick; do not
+			 * frame-commit/advance the pre-rewind live tick. Resim owns further advances via
+			 * BattleSimOnly. Live peer resim starts from PeerUpdate before this point and uses the
+			 * early-return at FuncUpdate entry on subsequent frames.
+			 */
+			if ((syNetReplayIsDiagnosticPlaybackActive() != FALSE) &&
+			    (syNetRollbackIsResimulating() != FALSE))
+			{
+				return;
+			}
+			/*
+			 * Sim-state/fighter-slot-hash diagnostic trace: must run after syNetRollbackAfterBattleUpdate()
+			 * (post-quantize) and before syNetInputAdvanceAuthoritativeSimTick() so syNetInputGetTick()
+			 * still names the tick that just finished, and the logged hash matches the canonicalized state
+			 * syNetFrameCommitBuildToken compares — not the raw pre-quantize live state. See
+			 * docs/bugs/netplay_sim_state_trace_pre_quantize_diag_2026-07-01.md.
+			 */
+			syNetPeerMaybeLogSimStateTickTrace();
+			/*
+			 * Frame-commit must run against the completed tick's snapshot before advancing the
+			 * authoritative sim counter — otherwise the client can gcRunAll the next tick first
+			 * (soak2 Android FC @600: live Kirby +1-tic artifact, Fox snap already forked @570).
+			 */
+			syNetPeerFrameCommitAfterCompletedSimStep();
+			syNetInputAdvanceAuthoritativeSimTick();
+		}
 	}
+#else
+	ifCommonBattleUpdateInterfaceAll();
 #endif
 }
 

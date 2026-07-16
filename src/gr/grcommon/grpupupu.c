@@ -18,6 +18,30 @@ extern void *func_800269C0_275C0(u16 id);
 #include <sys/netrollback.h>
 #include <sys/objtypes.h>
 extern void port_log(const char *fmt, ...);
+extern u32 syNetInputGetTick(void);
+
+/*
+ * Blink wait reseed must not use ForcedCosmetic: JumpAerial / particle VFX burn that
+ * LCG asymmetrically cross-ISA, so the next -10 reseed draws different waits (soak1
+ * 1530031167 @790: Android 214 vs Linux 44 → ground_fold / map-only PEER_SNAPSHOT_DIVERGE)
+ * while figh/rng still match. Mix shared game LCG state with sim tick — neither advances.
+ * See docs/bugs/netplay_pupupu_whispy_blink_cosmetic_stream_map_diverge_2026-07-13.md.
+ */
+static s16 grPupupuWhispyBlinkWaitReseedNetplay(void)
+{
+	u32 tick;
+	u32 seed;
+	u32 x;
+
+	tick = syNetInputGetTick();
+	seed = (u32)syUtilsRandSeed();
+	x = seed ^ (tick * 0x9E3779B9u) ^ 0xC2B2AE35u;
+	x ^= x >> 16;
+	x *= 0x85ebca6bu;
+	x ^= x >> 13;
+	return (s16)(GRPUPUPU_WHISPY_BLINK_WAIT_BASE +
+	             (s32)(x % (u32)GRPUPUPU_WHISPY_BLINK_WAIT_RANDOM));
+}
 
 static sb32 grPupupuWhispyXfParticleBroken(const LBTransform *xf, s32 particle_link)
 {
@@ -773,13 +797,46 @@ void grPupupuWhispyUpdateTurn(void)
 // 0x80105CAC
 void grPupupuWhispyUpdateOpen(void)
 {
+	sb32 do_blow = FALSE;
+
 #if defined(PORT) && defined(SSB64_NETMENU)
-    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-    if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[1]) != FALSE)
+	/* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+	/*
+	 * Open→Blow must not gate on mouth map_gobj[1] leftovers under rollback.
+	 * Stick GGPO mid-Open leaves ISA-sensitive mouth anim_frame that is not in the
+	 * Pupupu ground blob; widen-snap only helps near-zero. Soak 1827128554: Linux
+	 * Blow @4343 vs Android @4347 (matched wind_dur roll / rng) → wind push forked
+	 * map+figh → PEER_SNAPSHOT_DIVERGE. Arm remaining Open ticks into whispy_wind_wait
+	 * when Open mouth PlayAnim runs (see UpdateGObjAnims); countdown is snapshotted.
+	 * See docs/bugs/netplay_pupupu_whispy_open_blow_tick_gate_2026-07-15.md.
+	 */
+	if (syNetplayRollbackSemanticsActive() != FALSE)
+	{
+		if (gGRCommonStruct.pupupu.whispy_mouth_status == nGRPupupuWhispyMouthStatusOpen)
+		{
+			return;
+		}
+		if (gGRCommonStruct.pupupu.whispy_wind_wait > 0)
+		{
+			gGRCommonStruct.pupupu.whispy_wind_wait--;
+		}
+		if (gGRCommonStruct.pupupu.whispy_wind_wait == 0)
+		{
+			do_blow = TRUE;
+		}
+	}
+	else if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[1]) != FALSE)
+	{
+		do_blow = TRUE;
+	}
 #else
-    if (gGRCommonStruct.pupupu.map_gobj[1]->anim_frame <= 0.0F)
+	if (gGRCommonStruct.pupupu.map_gobj[1]->anim_frame <= 0.0F)
+	{
+		do_blow = TRUE;
+	}
 #endif
-    {
+	if (do_blow != FALSE)
+	{
         gGRCommonStruct.pupupu.whispy_status = nGRPupupuWhispyWindStatusBlow;
 
         gGRCommonStruct.pupupu.flowers_back_status = gGRCommonStruct.pupupu.flowers_front_status = nGRPupupuFlowerStatusWindStart;
@@ -1087,29 +1144,21 @@ void grPupupuWhispyUpdateBlink(void)
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
     /*
-     * Blink wait is presentation timing. Under netplay:
-     * 1) Post-blink lockout (-9..-1) must keep ticking even if map_gobj[0]
-     *    anim_frame leftovers flap above zero — otherwise one ISA freezes at
-     *    -9, skips the -10 reseed, and forks the gameplay LCG (soak1 FC@600
-     *    diverged=rng, inputs MATCH; Android blink=-9 vs Linux blink=244).
-     * 2) Reseed uses ForcedCosmetic so a residual one-tick timing skew cannot
-     *    advance gSYMainRandom. Wind wait/duration stay on the game LCG.
-     * See docs/bugs/netplay_pupupu_whispy_blink_rng_fc_2026-07-12.md.
+     * Blink wait is presentation timing hashed into ground_fold / map. Under netplay,
+     * never gate decrement on map_gobj[0] anim_frame leftovers once eyes_status is idle:
+     * 1) Lockout (-9..-1): leftover flap froze one ISA at -9 and skipped -10 reseed
+     *    (soak1 FC@600 diverged=rng). See netplay_pupupu_whispy_blink_rng_fc_2026-07-12.md.
+     * 2) Leave-zero (wait==0): Blow-hold leftover + GGPO pin → +1 blink skew → map-only
+     *    DIVERGE (soak 1851430281). See netplay_pupupu_whispy_blink_zero_hold_map_diverge_2026-07-13.md.
+     * 3) Positive wait after -10 reseed: both held blink=266 for 9 ticks then Linux left
+     *    one tick early (soak1 197856492 @624) → permanent +1 blink / ground_fold fork,
+     *    silent until GGPO baseline map-only DIVERGE @811.
+     *    See docs/bugs/netplay_pupupu_whispy_blink_positive_hold_map_diverge_2026-07-15.md.
+     * Reseed mixes game seed×tick (not ForcedCosmetic / not gameplay LCG). Skip mouth Stretch.
      */
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
-        sb32 eyes_anim_ended;
-        s16 blink_wait;
-        sb32 in_post_blink_lockout;
-
         if (gGRCommonStruct.pupupu.whispy_eyes_status != -1)
-        {
-            return;
-        }
-        blink_wait = gGRCommonStruct.pupupu.whispy_blink_wait;
-        in_post_blink_lockout = ((blink_wait < 0) && (blink_wait > -10)) ? TRUE : FALSE;
-        eyes_anim_ended = syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[0]);
-        if ((in_post_blink_lockout == FALSE) && (eyes_anim_ended == FALSE))
         {
             return;
         }
@@ -1127,9 +1176,7 @@ void grPupupuWhispyUpdateBlink(void)
              */
             if (gGRCommonStruct.pupupu.whispy_blink_wait != 0)
             {
-                gGRCommonStruct.pupupu.whispy_blink_wait =
-                    syUtilsRandIntRangeForcedCosmetic(GRPUPUPU_WHISPY_BLINK_WAIT_RANDOM) +
-                    GRPUPUPU_WHISPY_BLINK_WAIT_BASE;
+                gGRCommonStruct.pupupu.whispy_blink_wait = grPupupuWhispyBlinkWaitReseedNetplay();
             }
         }
         return;
@@ -1410,6 +1457,9 @@ void grPupupuUpdateGObjAnims(void)
     }
     if (gGRCommonStruct.pupupu.whispy_mouth_status != -1)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+		s8 mouth_applied = gGRCommonStruct.pupupu.whispy_mouth_status;
+#endif
         gcAddAnimAll
         (
             gGRCommonStruct.pupupu.map_gobj[1],
@@ -1421,6 +1471,36 @@ void grPupupuUpdateGObjAnims(void)
         );
         gcPlayAnimAll(gGRCommonStruct.pupupu.map_gobj[1]);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+		/* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+		/* Arm Open→Blow tick gate from PlayAnim length (snapshotted via wind_wait). */
+		if ((syNetplayRollbackSemanticsActive() != FALSE) &&
+		    (mouth_applied == (s8)nGRPupupuWhispyMouthStatusOpen) &&
+		    (gGRCommonStruct.pupupu.whispy_status == nGRPupupuWhispyWindStatusOpen) &&
+		    (gGRCommonStruct.pupupu.map_gobj[1] != NULL))
+		{
+			f32 af = gGRCommonStruct.pupupu.map_gobj[1]->anim_frame;
+			u32 ticks;
+
+			if (!(af > 0.0F))
+			{
+				ticks = 1U;
+			}
+			else
+			{
+				ticks = (u32)af;
+				if ((f32)ticks < af)
+				{
+					ticks++;
+				}
+				if (ticks > 0xFFFFU)
+				{
+					ticks = 0xFFFFU;
+				}
+			}
+			gGRCommonStruct.pupupu.whispy_wind_wait = (u16)ticks;
+		}
+#endif
         gGRCommonStruct.pupupu.whispy_mouth_status = -1;
     }
     if (gGRCommonStruct.pupupu.whispy_mouth_texture != -1)
