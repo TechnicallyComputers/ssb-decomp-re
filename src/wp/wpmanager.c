@@ -109,6 +109,27 @@ void wpManagerResetInstanceIds(void)
 {
     sWPManagerInstanceID = 1U;
 }
+
+/*
+ * SSB64_NETMENU: rollback snapshot/restore of the group-id counter. group_id is folded into the
+ * wpn rollback hash and gates weapon-vs-weapon collision (wpProcess group equality), but the
+ * counter itself was hidden global state: synctest/rollback respawns bump it off-schedule, so
+ * peers with different rollback histories mint different group_ids for the same deterministic
+ * spawn (PK Thunder trail 0). See docs/bugs/netplay_weapon_group_id_counter_drift_2026-07-16.md.
+ */
+u32 wpManagerGetGroupIdCounter(void)
+{
+    return sWPManagerGroupID;
+}
+
+void wpManagerSetGroupIdCounter(u32 counter)
+{
+    if (counter == 0U)
+    {
+        counter = 1U;
+    }
+    sWPManagerGroupID = counter;
+}
 #endif
 
 // 0x801655C8

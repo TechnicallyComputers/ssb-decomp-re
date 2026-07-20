@@ -44,4 +44,16 @@ sb32 mpProcessRunFloorCollisionAdjNewNULL(MPCollData* coll_data);
 void mpProcessSetLandingFloor(MPCollData* coll_data);
 void mpProcessSetCollideFloor(MPCollData* coll_data);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+/* Rollback sidecar for JumpAerial CLIFF soft-lip wall suppress (process-local latch). */
+u32 mpProcessNetplaySoftLipStickyGet(s32 player);
+void mpProcessNetplaySoftLipStickySet(s32 player, u32 flags);
+/*
+ * SoftLipX env: log TopN/vel after fighter SpecialCollisions (post_*) or weapon
+ * wpMapProcAllCheckCollEnd (wp_post_*) when soft-lip / sticky / JumpAerial.
+ * domain=ft|wp in the log line; status is status_id (ft) or wp->kind (wp).
+ */
+void mpProcessNetplaySoftLipPhaseDiag(const char *phase, MPCollData *coll_data, GObj *gobj);
+#endif
+
 #endif

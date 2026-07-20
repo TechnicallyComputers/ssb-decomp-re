@@ -3,6 +3,9 @@
 #ifdef PORT
 #include <enhancements/enhancements.h>
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -78,20 +81,43 @@ void ftNessJumpAerialProcPhysics(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     FTAttributes *attr = fp->attr;
-    f32 vel_x;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    f32 ja_in;
+    sb32 used_decmax;
+#endif
 
     ftPhysicsGetAirVelTransN(fp, &ftStatusVarsJumpAerial(fp)->drift, &fp->physics.vel_air.y, &fp->physics.vel_air.z);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    ja_in = ftStatusVarsJumpAerial(fp)->vel_x;
+#endif
     fp->physics.vel_air.x = ftStatusVarsJumpAerial(fp)->vel_x;
 
     if (ftPhysicsCheckClampAirVelXDecMax(fp, attr) == FALSE)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        used_decmax = FALSE;
+#endif
         ftPhysicsClampAirVelXStickDefault(fp, attr);
         ftPhysicsApplyAirVelXFriction(fp, attr);
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    else
+    {
+        used_decmax = TRUE;
+    }
+#endif
     ftStatusVarsJumpAerial(fp)->vel_x = fp->physics.vel_air.x;
 
     fp->physics.vel_air.x += ftStatusVarsJumpAerial(fp)->drift;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay diagnostics: name ja_in→ja_out writer under CLIFF JumpAerial (soak 2120480047). */
+    syNetplayMaybeLogJumpAerialJaVelWitness(fighter_gobj, ja_in, used_decmax,
+                                            ftStatusVarsJumpAerial(fp)->vel_x,
+                                            ftStatusVarsJumpAerial(fp)->drift,
+                                            fp->physics.vel_air.x);
+#endif
 }
 
 // 0x8013FC4C

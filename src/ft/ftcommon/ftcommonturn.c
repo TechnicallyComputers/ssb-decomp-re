@@ -15,7 +15,8 @@ void ftCommonTurnProcUpdate(GObj *fighter_gobj)
     FTStruct *fp = ftGetStruct(fighter_gobj);
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-    /* Netplay rollback only: repair stomped turn.lr_turn before allow/dash. */
+    /* Netplay rollback only: repair stomped turn.lr_dash / lr_turn before allow/dash. */
+    syNetplayHardenTurnLrDash(fp);
     syNetplayHardenTurnLrTurn(fp);
     /* Netplay diagnostics: Turn SetFlag1 / allow gate for dash-dance. */
     syNetplayMaybeLogTurnDashWitness(fighter_gobj, "update", fp->motion_vars.flags.flag1, FALSE);
@@ -32,6 +33,7 @@ void ftCommonTurnProcUpdate(GObj *fighter_gobj)
         fp->physics.vel_ground.x = -fp->physics.vel_ground.x;
 #if defined(PORT) && defined(SSB64_NETMENU)
         /* After facing flip, re-repair so stick*lr_turn uses turn direction (== new lr). */
+        syNetplayHardenTurnLrDash(fp);
         syNetplayHardenTurnLrTurn(fp);
 #endif
     }
@@ -49,7 +51,8 @@ void ftCommonTurnProcInterrupt(GObj *fighter_gobj)
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-    /* Netplay rollback only: repair stomped turn.lr_turn before dash-out check. */
+    /* Netplay rollback only: repair stomped turn.lr_dash / lr_turn before dash-out check. */
+    syNetplayHardenTurnLrDash(fp);
     syNetplayHardenTurnLrTurn(fp);
 #endif
 
@@ -163,7 +166,9 @@ void ftCommonTurnSetStatus(GObj *fighter_gobj, s32 lr_dash)
     ftStatusVarsTurn(fp)->lr_turn = lr_turn;
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-    /* Netplay rollback only: re-apply if a same-frame union stomp cleared lr_turn. */
+    /* Pin InvertLR/Center lr_dash; re-apply if a same-frame union stomp cleared facing. */
+    syNetplayTurnNoteEntryLrDash(fp, lr_dash);
+    syNetplayHardenTurnLrDash(fp);
     syNetplayHardenTurnLrTurn(fp);
 #endif
 }

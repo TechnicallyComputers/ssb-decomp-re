@@ -2,6 +2,21 @@
 #include <gr/ground.h>
 #include <sc/scene.h>
 #include <reloc_data.h>
+#ifdef PORT
+#include <sys/utils.h>
+/* Stage ambient VFX (Dream Land clouds, etc.): spawn altitude / make_wait /
+ * param picks must not burn the hashed gameplay LCG. Asymmetric spawn after
+ * GGPO forks FRAME_COMMIT `rng` while figh/eff stay matched — same class as
+ * efmanager/lbparticle ForcedCosmetic. See
+ * docs/bugs/netplay_efground_stage_vfx_rng_fc_diverge_2026-07-18.md. */
+#if defined(SSB64_NETMENU)
+#define syUtilsRandFloat syUtilsRandFloatForcedCosmetic
+#define syUtilsRandIntRange syUtilsRandIntRangeForcedCosmetic
+#else
+#define syUtilsRandFloat syUtilsRandFloatCosmetic
+#define syUtilsRandIntRange syUtilsRandIntRangeCosmetic
+#endif
+#endif
 
 // // // // // // // // // // // //
 //                               //

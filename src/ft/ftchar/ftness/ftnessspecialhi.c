@@ -292,6 +292,8 @@ void ftNessSpecialAirHiProcPhysics(GObj *fighter_gobj)
         ftPhysicsApplyAirVelXFriction(fp, attr);
     }
 #if defined(PORT) && defined(SSB64_NETMENU)
+    /* Fall-onset TopN harden: Hold ProcMap → syNetplayNessHardenPKThunderHoldAirFallAfterTranslate.
+     * Gravity-delay resurrect blocked in syNetplayNessSanitizePKThunderGravityDelay (soak 128377995). */
     if ((syNetplayRollbackSemanticsActive() != FALSE) &&
         (syNetplayFighterInNessPKThunderHoldSimScope(fp) != FALSE))
     {
@@ -816,11 +818,16 @@ void ftNessSpecialHiUpdateModelPitch(GObj *fighter_gobj) // Update joint's X rot
 #if defined(PORT) && defined(SSB64_NETMENU)
     /* Netplay rollback only: derive pitch from quantized pkjibaku_angle instead of
      * syUtilsArcTan2(vel) so joint[4] rotate matches cross-ISA after decel/wall bounce.
-     * Soak2 session 764556609: FC @531 figh-only, Ness status 236, fold_j* rotates diverged. */
+     * Soak2 session 764556609: FC @531 figh-only, Ness status 236, fold_j* rotates diverged.
+     *
+     * Identity: (atan2(vx, vy) * lr) - 90° == -pkjibaku_angle where
+     * pkjibaku_angle = atan2(vy, vx * lr). Do NOT use (angle * lr) - 90° — that
+     * leaves Ness pitched 90° (nose-up) on horizontal jibaku. See
+     * docs/bugs/netplay_ness_pkthunder_jibaku_model_pitch_2026-07-18.md. */
     if ((syNetplayRollbackSemanticsActive() != FALSE) && (syNetplayFighterInNessPKJibakuSimScope(fp) != FALSE))
     {
         fp->joints[4]->rotate.vec.f.x =
-            (syNetplayQuantizeF32(fp->status_vars.ness.specialhi.pkjibaku_angle) * fp->lr) - F_CST_DTOR32(90.0F);
+            -syNetplayQuantizeF32(fp->status_vars.ness.specialhi.pkjibaku_angle);
     }
     else
 #endif
@@ -1258,11 +1265,30 @@ void ftNessSpecialAirHiJibakuSetStatus(GObj *fighter_gobj)
     if (syNetplayRollbackSemanticsActive() != FALSE)
     {
         syNetplayNessRefreshPKThunderPosForJibakuLaunch(fighter_gobj, fp);
+        /*
+         * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+         * Netplay rollback only: snap self-hit anchor onto the launch 1.0u grid
+         * before dist (soak C FC@3732: head Δy≈0.34 straddled dist-only harden).
+         * See docs/bugs/netplay_ness_jibaku_launch_dist_hold_head_fc_2026-07-19.md.
+         */
+        syNetplayNessHardenPKJibakuLaunchAnchor(&fp->status_vars.ness.specialhi.pkthunder_pos);
         syNetplayNessNotifyJibakuTriggered(fighter_gobj, fp, fp->status_id);
     }
 #endif
     dist_x = DObjGetStruct(fighter_gobj)->translate.vec.f.x - fp->status_vars.ness.specialhi.pkthunder_pos.x;
     dist_y = (DObjGetStruct(fighter_gobj)->translate.vec.f.y + 150.0F) - fp->status_vars.ness.specialhi.pkthunder_pos.y;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+     * Netplay rollback only: Hold PK head ULP forks launch dist→atan2→vel_air
+     * (soaks FC@2534 / FC@2404 figh inputs MATCH). Coarse-snap dist (1.0 u grid)
+     * before angle. See docs/bugs/netplay_ness_jibaku_launch_dist_hold_head_fc_2026-07-18.md.
+     */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        syNetplayNessHardenPKJibakuLaunchDist(&dist_x, &dist_y);
+    }
+#endif
 
     fp->lr = (dist_x >= 0.0F) ? +1 : -1;
 

@@ -1126,16 +1126,49 @@ void grPupupuWhispyUpdateBlow(void)
 // 0x80105DD8
 void grPupupuWhispyUpdateStop(void)
 {
+	sb32 do_wait = FALSE;
+
 #if defined(PORT) && defined(SSB64_NETMENU)
-    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-    if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[1]) != FALSE)
+	/* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+	/*
+	 * Stop→Wait must not gate on mouth map_gobj[1] leftovers under rollback.
+	 * Close anim_frame is not in the Pupupu ground blob; near-zero snap is not
+	 * enough when one ISA ends a tick earlier (soak1 2238087760 @1846: Linux
+	 * Wait ww=981 vs Android still Stop → permanent +1 wind_wait → map-only
+	 * PEER_SNAPSHOT_DIVERGE @1925). Arm remaining Close ticks into
+	 * whispy_wind_wait when Close mouth PlayAnim runs (see UpdateGObjAnims).
+	 * See docs/bugs/netplay_pupupu_whispy_stop_wait_tick_gate_2026-07-18.md.
+	 */
+	if (syNetplayRollbackSemanticsActive() != FALSE)
+	{
+		if (gGRCommonStruct.pupupu.whispy_mouth_status == nGRPupupuWhispyMouthStatusClose)
+		{
+			return;
+		}
+		if (gGRCommonStruct.pupupu.whispy_wind_wait > 0)
+		{
+			gGRCommonStruct.pupupu.whispy_wind_wait--;
+		}
+		if (gGRCommonStruct.pupupu.whispy_wind_wait == 0)
+		{
+			do_wait = TRUE;
+		}
+	}
+	else if (syNetplayMapGobjAnimFrameEnded(gGRCommonStruct.pupupu.map_gobj[1]) != FALSE)
+	{
+		do_wait = TRUE;
+	}
 #else
-    if (gGRCommonStruct.pupupu.map_gobj[1]->anim_frame <= 0.0F)
+	if (gGRCommonStruct.pupupu.map_gobj[1]->anim_frame <= 0.0F)
+	{
+		do_wait = TRUE;
+	}
 #endif
-    {
-        gGRCommonStruct.pupupu.whispy_wind_wait = syUtilsRandIntRange(GRPUPUPU_WHISPY_WAIT_DURATION_RANDOM) + GRPUPUPU_WHISPY_WAIT_DURATION_BASE;
-        gGRCommonStruct.pupupu.whispy_status = nGRPupupuWhispyWindStatusWait;
-    }
+	if (do_wait != FALSE)
+	{
+		gGRCommonStruct.pupupu.whispy_wind_wait = syUtilsRandIntRange(GRPUPUPU_WHISPY_WAIT_DURATION_RANDOM) + GRPUPUPU_WHISPY_WAIT_DURATION_BASE;
+		gGRCommonStruct.pupupu.whispy_status = nGRPupupuWhispyWindStatusWait;
+	}
 }
 
 // 0x80105E34
@@ -1473,11 +1506,16 @@ void grPupupuUpdateGObjAnims(void)
 
 #if defined(PORT) && defined(SSB64_NETMENU)
 		/* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
-		/* Arm Open→Blow tick gate from PlayAnim length (snapshotted via wind_wait). */
+		/*
+		 * Arm Open→Blow / Stop→Wait tick gates from PlayAnim length (snapshotted
+		 * via wind_wait). See open_blow_tick_gate + stop_wait_tick_gate docs.
+		 */
 		if ((syNetplayRollbackSemanticsActive() != FALSE) &&
-		    (mouth_applied == (s8)nGRPupupuWhispyMouthStatusOpen) &&
-		    (gGRCommonStruct.pupupu.whispy_status == nGRPupupuWhispyWindStatusOpen) &&
-		    (gGRCommonStruct.pupupu.map_gobj[1] != NULL))
+		    (gGRCommonStruct.pupupu.map_gobj[1] != NULL) &&
+		    (((mouth_applied == (s8)nGRPupupuWhispyMouthStatusOpen) &&
+		      (gGRCommonStruct.pupupu.whispy_status == nGRPupupuWhispyWindStatusOpen)) ||
+		     ((mouth_applied == (s8)nGRPupupuWhispyMouthStatusClose) &&
+		      (gGRCommonStruct.pupupu.whispy_status == nGRPupupuWhispyWindStatusStop))))
 		{
 			f32 af = gGRCommonStruct.pupupu.map_gobj[1]->anim_frame;
 			u32 ticks;

@@ -1,4 +1,7 @@
 #include <wp/weapon.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <mp/mpprocess.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -139,22 +142,38 @@ sb32 wpMapTestAllCheckFloor(GObj *weapon_gobj)
 // 0x80167B8C
 sb32 wpMapProcAllCheckCollEnd(MPCollData *coll_data, GObj *weapon_gobj, u32 flags)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: SoftLipPhase for weapon map (PK Thunder head CLIFF). */
+    mpProcessNetplaySoftLipPhaseDiag("wp_post_phys", coll_data, weapon_gobj);
+#endif
     if (mpProcessCheckTestLWallCollisionAdjNew(coll_data) != FALSE)
     {
         coll_data->is_coll_end = TRUE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipPhaseDiag("wp_post_lwall", coll_data, weapon_gobj);
+#endif
     if (mpProcessCheckTestRWallCollisionAdjNew(coll_data) != FALSE)
     {
         coll_data->is_coll_end = TRUE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipPhaseDiag("wp_post_rwall", coll_data, weapon_gobj);
+#endif
     if (mpProcessCheckTestCeilCollisionAdjNew(coll_data) != FALSE)
     {
         coll_data->is_coll_end = TRUE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipPhaseDiag("wp_post_ceil", coll_data, weapon_gobj);
+#endif
     if (mpProcessRunFloorCollisionAdjNewNULL(coll_data) != FALSE)
     {
         coll_data->is_coll_end = TRUE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipPhaseDiag("wp_post_floor", coll_data, weapon_gobj);
+#endif
     return coll_data->is_coll_end;
 }
 

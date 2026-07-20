@@ -4,7 +4,496 @@
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <stdlib.h>
 #include <string.h>
+#include <ft/fighter.h>
+#include <ft/ftstatusvars.h>
+#include <wp/wptypes.h>
+#include <sys/netplay_sim_quantize.h>
 extern void port_log(const char *fmt, ...);
+
+/* Set for the duration of mpProcessUpdateMain so AdjNew suppress can scope by fighter. */
+static GObj *sMPProcessNetplayCollGObj;
+
+/*
+ * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+ * Soft-lip residual (PASS|CLIFF floor_flags): under-edge walls still register as
+ * direct L/R AdjNew line hits even after wall-from-floor treats CLIFF like PASS.
+ * Cross-ISA Diff float arms that path on one peer only
+ * (soak1 1324417498 gut=516 DamageFly fline=-1 — Y matched, TopN.x Δ→61.6;
+ *  soak1 262102584 DamageFall gut=5314+ after SetCollProjectFloorID left a
+ *  projected CLIFF fline≠-1 — Y matched, TopN.x +2u/frame → Δ15 lock → FC@5389).
+ * Do not require floor_line_id==-1: Damage/air paths call SetCollProjectFloorID
+ * after the floor miss, so the next wall CheckTest often sees a real projected
+ * CLIFF/PASS line id with the same soft-lip flags.
+ *
+ * Ceil AdjNew edge paths also snap translate->x onto under-edge L/R walls
+ * (RunCeilCollisionAdjNew + RunCeilEdgeAdjust). Wall CheckTest suppress alone
+ * left soak1 1627652882 DamageFall@3344–3357 Y/fdist matched, TopN.x +0.04/frame
+ * → PEER_SNAPSHOT_DIVERGE@3373. Same gate skips those X snaps. AdjNew is
+ * air/damage-only; CliffCatch uses CheckTestL/RCliffCollision.
+ *
+ * Ness PK jibaku/bound need mask_curr wall/ceil for procmap bounce and ledge
+ * logic — blanket suppress caused clip-through (soak1 @422–484). For jibaku on
+ * soft-lip: keep wall/ceil *detection*, quantize translate snaps instead of raw
+ * float (soak1 122093103 FC@1419 jibaku landing topn_tx/ty inputs MATCH).
+ * See docs/bugs/netplay_airborne_cliff_lip_jibaku_fc_drift_2026-07-18.md.
+ *
+ * Non-jibaku JumpAerial on Dream Land CLIFF lip (soak1 1828471508 @2918): Y matched
+ * while TopN.x forked +2u vs −1u with fflags=CLIFF fline=-1, then locked through
+ * SpecialHiHold → PEER_SNAPSHOT_DIVERGE@3157. Residual coll_data flags alone are not
+ * enough when the wall-from-floor sweep sees PASS|CLIFF but residual was cleared —
+ * OR swept soft-lip flags into suppress; also skip FloorEdge / landing-edge X snaps
+ * (CeilEdge already gated). Quantize *any* soft-lip AdjNew translate snap (not only
+ * jibaku) so residual paths that still write TopN cannot keep raw cross-ISA floats.
+ * See docs/bugs/netplay_airborne_cliff_lip_jumpaerial_fc_drift_2026-07-18.md.
+ *
+ * Sticky soft-lip (soak1 1775005817 @514): walls run *before* floor CheckTest, so
+ * SoftLipEx reads residual floor_flags from the prior tick's project. Cross-ISA
+ * project can leave one peer without PASS|CLIFF residual while MpLanding still
+ * logs CLIFF after this tick's floor sweep — Linux then keeps AdjNew wall (X
+ * stalls ~JumpAerial vel) while Android free-flies (~−27u/frame) with Y matched.
+ * Latch PASS|CLIFF when observed; clear only on grounded FLOOR. SoftLipEx ORs the
+ * latch so suppress survives residual clear. See
+ * docs/bugs/netplay_airborne_cliff_lip_jumpaerial_sticky_softlip_2026-07-19.md.
+ */
+static u32 sMPProcessNetplaySoftLipStickyFlags[GMCOMMON_PLAYERS_MAX];
+
+static sb32 mpProcessNetplaySoftLipFloorFlags(u32 floor_flags)
+{
+	return ((floor_flags & (MAP_VERTEX_COLL_PASS | MAP_VERTEX_COLL_CLIFF)) != 0U) ? TRUE : FALSE;
+}
+
+static sb32 mpProcessNetplayCollGObjIsFighter(GObj *gobj)
+{
+	return ((gobj != NULL) && (gobj->link_id == nGCCommonLinkIDFighter)) ? TRUE : FALSE;
+}
+
+static s32 mpProcessNetplaySoftLipPlayerIndex(void)
+{
+	FTStruct *fp;
+
+	/*
+	 * Sticky is per-fighter. Weapon/item UpdateMain also sets CollGObj — do not
+	 * ftGetStruct a WPStruct (soak 128512323: PK Thunder head CLIFF map).
+	 */
+	if (mpProcessNetplayCollGObjIsFighter(sMPProcessNetplayCollGObj) == FALSE)
+	{
+		return -1;
+	}
+	fp = ftGetStruct(sMPProcessNetplayCollGObj);
+	if ((fp == NULL) || (fp->player < 0) || (fp->player >= GMCOMMON_PLAYERS_MAX))
+	{
+		return -1;
+	}
+	return fp->player;
+}
+
+/* domain ft|wp|it|?; player port; kind = status_id (ft) or wp->kind / -1 */
+static void mpProcessNetplayCollIdentity(GObj *gobj, const char **domain_out, s32 *player_out,
+					 s32 *kind_out)
+{
+	const char *domain = "?";
+	s32 player = -1;
+	s32 kind = -1;
+
+	if (gobj == NULL)
+	{
+		gobj = sMPProcessNetplayCollGObj;
+	}
+	if (gobj != NULL)
+	{
+		if (gobj->link_id == nGCCommonLinkIDFighter)
+		{
+			FTStruct *fp = ftGetStruct(gobj);
+
+			domain = "ft";
+			if (fp != NULL)
+			{
+				player = (s32)fp->player;
+				kind = (s32)fp->status_id;
+			}
+		}
+		else if (gobj->link_id == nGCCommonLinkIDWeapon)
+		{
+			WPStruct *wp = (WPStruct *)gobj->user_data.p;
+
+			domain = "wp";
+			if (wp != NULL)
+			{
+				player = (s32)wp->player;
+				kind = (s32)wp->kind;
+			}
+		}
+		else if (gobj->link_id == nGCCommonLinkIDItem)
+		{
+			domain = "it";
+		}
+	}
+	if (domain_out != NULL)
+	{
+		*domain_out = domain;
+	}
+	if (player_out != NULL)
+	{
+		*player_out = player;
+	}
+	if (kind_out != NULL)
+	{
+		*kind_out = kind;
+	}
+}
+
+static void mpProcessNetplaySoftLipStickyNote(u32 floor_flags)
+{
+	s32 player;
+
+	if (syNetplayRollbackSemanticsActive() == FALSE)
+	{
+		return;
+	}
+	if (mpProcessNetplaySoftLipFloorFlags(floor_flags) == FALSE)
+	{
+		return;
+	}
+	player = mpProcessNetplaySoftLipPlayerIndex();
+	if (player < 0)
+	{
+		return;
+	}
+	sMPProcessNetplaySoftLipStickyFlags[player] =
+	    floor_flags & (MAP_VERTEX_COLL_PASS | MAP_VERTEX_COLL_CLIFF);
+}
+
+static void mpProcessNetplaySoftLipStickyClearIfGrounded(MPCollData *coll_data)
+{
+	s32 player;
+
+	if ((coll_data == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+	{
+		return;
+	}
+	if ((coll_data->mask_stat & MAP_FLAG_FLOOR) == 0U)
+	{
+		return;
+	}
+	/*
+	 * Soak 1623281430 @2058: JumpAerial over CLIFF matched 20+ frames then Linux
+	 * AdjNew-clamped X while Android free-flew. Cross-ISA can briefly set FLOOR in
+	 * mask_stat on the lip while floor_flags are still PASS|CLIFF — clearing sticky
+	 * then leaves the next tick's wall CheckTest without residual or latch.
+	 * Keep the latch while the project still reports soft-lip floor flags.
+	 */
+	if (mpProcessNetplaySoftLipFloorFlags(coll_data->floor_flags) != FALSE)
+	{
+		return;
+	}
+	player = mpProcessNetplaySoftLipPlayerIndex();
+	if (player < 0)
+	{
+		return;
+	}
+	sMPProcessNetplaySoftLipStickyFlags[player] = 0U;
+}
+
+static sb32 mpProcessNetplaySoftLipStickyActive(void)
+{
+	s32 player;
+
+	if (syNetplayRollbackSemanticsActive() == FALSE)
+	{
+		return FALSE;
+	}
+	player = mpProcessNetplaySoftLipPlayerIndex();
+	if (player < 0)
+	{
+		return FALSE;
+	}
+	return (sMPProcessNetplaySoftLipStickyFlags[player] != 0U) ? TRUE : FALSE;
+}
+
+u32 mpProcessNetplaySoftLipStickyGet(s32 player)
+{
+	if ((player < 0) || (player >= GMCOMMON_PLAYERS_MAX))
+	{
+		return 0U;
+	}
+	return sMPProcessNetplaySoftLipStickyFlags[player];
+}
+
+void mpProcessNetplaySoftLipStickySet(s32 player, u32 flags)
+{
+	if ((player < 0) || (player >= GMCOMMON_PLAYERS_MAX))
+	{
+		return;
+	}
+	/*
+	 * Rollback blob restore: sticky must match the captured tick so the first
+	 * wall CheckTest after load (before this tick's floor Note) suppresses the
+	 * same way on both peers. Soak 1328818035: emergency_restore@992 matched
+	 * TopN through 993 then forked X@994 (Linux AdjNew +15.7, Android −3.4).
+	 * See docs/bugs/netplay_airborne_cliff_lip_jumpaerial_softlip_snapshot_2026-07-19.md.
+	 */
+	sMPProcessNetplaySoftLipStickyFlags[player] =
+	    flags & (MAP_VERTEX_COLL_PASS | MAP_VERTEX_COLL_CLIFF);
+}
+
+static sb32 mpProcessNetplayUnattachedSoftLipActive(MPCollData *coll_data)
+{
+	if (coll_data == NULL)
+	{
+		return FALSE;
+	}
+	if (mpProcessNetplaySoftLipFloorFlags(coll_data->floor_flags) != FALSE)
+	{
+		return TRUE;
+	}
+	return mpProcessNetplaySoftLipStickyActive();
+}
+
+static sb32 mpProcessNetplayJibakuSoftLipHardenSnaps(MPCollData *coll_data)
+{
+	FTStruct *fp;
+
+	if ((coll_data == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+	{
+		return FALSE;
+	}
+	if (mpProcessNetplayUnattachedSoftLipActive(coll_data) == FALSE)
+	{
+		return FALSE;
+	}
+	if (sMPProcessNetplayCollGObj == NULL)
+	{
+		return FALSE;
+	}
+	fp = ftGetStruct(sMPProcessNetplayCollGObj);
+	return ((fp != NULL) && (syNetplayFighterInNessPKJibakuSimScope(fp) != FALSE)) ? TRUE : FALSE;
+}
+
+static void mpProcessNetplayHardenAdjNewTranslateSnap(MPCollData *coll_data, Vec3f *translate)
+{
+	if ((translate == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+	{
+		return;
+	}
+	if (mpProcessNetplayUnattachedSoftLipActive(coll_data) == FALSE)
+	{
+		return;
+	}
+	if (syNetplaySimQuantizeActive() != FALSE)
+	{
+		translate->x = syNetplayQuantizeF32(translate->x);
+		translate->y = syNetplayQuantizeF32(translate->y);
+	}
+}
+
+static sb32 mpProcessNetplaySuppressAdjNewWallOnUnattachedSoftLip(MPCollData *coll_data)
+{
+	if ((coll_data == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+	{
+		return FALSE;
+	}
+	if (mpProcessNetplayJibakuSoftLipHardenSnaps(coll_data) != FALSE)
+	{
+		return FALSE;
+	}
+	return mpProcessNetplayUnattachedSoftLipActive(coll_data);
+}
+
+/* Suppress when residual, sticky latch, *or* this CheckTest's swept floor carries PASS|CLIFF. */
+static sb32 mpProcessNetplaySuppressAdjNewWallSoftLipEx(MPCollData *coll_data, u32 swept_floor_flags)
+{
+	if ((coll_data == NULL) || (syNetplayRollbackSemanticsActive() == FALSE))
+	{
+		return FALSE;
+	}
+	if (mpProcessNetplayJibakuSoftLipHardenSnaps(coll_data) != FALSE)
+	{
+		return FALSE;
+	}
+	mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
+	mpProcessNetplaySoftLipStickyNote(swept_floor_flags);
+	if (mpProcessNetplayUnattachedSoftLipActive(coll_data) != FALSE)
+	{
+		return TRUE;
+	}
+	return mpProcessNetplaySoftLipFloorFlags(swept_floor_flags);
+}
+
+/*
+ * Env SSB64_NETPLAY_SOFTLIP_X_DIAG=1 — log AdjNew TopN.x writers / soft-lip wall suppress so a
+ * cross-peer soak can name the first asymmetric path (soak 1410199591: DamageFall CLIFF
+ * Δx=+0.2/frame @3752 with mask_unk=0 → not AdjNew wall Run; suspect ceil/edge).
+ */
+static void mpProcessNetplaySoftLipXDiagEx(const char *path, MPCollData *coll_data, f32 x_before,
+					  sb32 suppressed, sb32 force_log)
+{
+	static int s_softlip_x_diag = -1;
+	u32 x_before_bits;
+	u32 x_after_bits;
+	FTStruct *fp;
+	s32 player;
+	u32 sticky;
+
+	if (s_softlip_x_diag < 0)
+	{
+		const char *env = getenv("SSB64_NETPLAY_SOFTLIP_X_DIAG");
+
+		s_softlip_x_diag = ((env != NULL) && (env[0] == '1')) ? 1 : 0;
+	}
+	if ((s_softlip_x_diag == 0) || (coll_data == NULL) || (coll_data->p_translate == NULL) || (path == NULL))
+	{
+		return;
+	}
+	if ((force_log == FALSE) && (suppressed == FALSE) && (coll_data->p_translate->x == x_before))
+	{
+		return;
+	}
+	memcpy(&x_before_bits, &x_before, sizeof(x_before_bits));
+	memcpy(&x_after_bits, &coll_data->p_translate->x, sizeof(x_after_bits));
+	player = mpProcessNetplaySoftLipPlayerIndex();
+	sticky = (player >= 0) ? sMPProcessNetplaySoftLipStickyFlags[player] : 0U;
+	fp = (sMPProcessNetplayCollGObj != NULL) ? ftGetStruct(sMPProcessNetplayCollGObj) : NULL;
+	/*
+	 * residual_fflags = coll_data->floor_flags at call site (may already be cleared
+	 * mid-CheckTest); sticky = latched PASS|CLIFF for this player. Cross-peer first
+	 * path / sticky mismatch names the asymmetric writer (soak 1315107154 / 1410199591).
+	 * force_log: wall CheckTest hit but SoftLipEx did not suppress (lwall_keep / rwall_keep).
+	 */
+	port_log("SSB64 SoftLipX: gut=%u path=%s suppressed=%d x_before=0x%08X x_after=0x%08X "
+		 "residual_fflags=0x%08X sticky=0x%08X softlip=%d fline=%d status=%d player=%d\n",
+		 (unsigned int)gMPCollisionUpdateTic,
+		 path,
+		 (int)suppressed,
+		 (unsigned int)x_before_bits,
+		 (unsigned int)x_after_bits,
+		 (unsigned int)coll_data->floor_flags,
+		 (unsigned int)sticky,
+		 (int)mpProcessNetplayUnattachedSoftLipActive(coll_data),
+		 (int)coll_data->floor_line_id,
+		 (fp != NULL) ? (int)fp->status_id : -1,
+		 (int)player);
+}
+
+static void mpProcessNetplaySoftLipXDiag(const char *path, MPCollData *coll_data, f32 x_before,
+					 sb32 suppressed)
+{
+	mpProcessNetplaySoftLipXDiagEx(path, coll_data, x_before, suppressed, FALSE);
+}
+
+/*
+ * Soak 1747311082 @1474: JumpAerial CLIFF TopN.x forked (+25u) with SoftLipX silent
+ * for status=24 — AdjNew wall CheckTest never armed, so lwall_keep/adjnew could not
+ * name the writer. Phase probes pin first asymmetric stage (post_phys vs post_lwall…).
+ * Same env as SoftLipX (SSB64_NETPLAY_SOFTLIP_X_DIAG=1). Gated to soft-lip / sticky /
+ * JumpAerial to limit volume.
+ */
+void mpProcessNetplaySoftLipPhaseDiag(const char *phase, MPCollData *coll_data, GObj *gobj)
+{
+	static int s_softlip_x_diag = -1;
+	const char *domain;
+	u32 topn_bits;
+	u32 vel_bits;
+	u32 ja_vel_bits;
+	u32 ja_drift_bits;
+	u32 sticky;
+	s32 player;
+	s32 kind;
+	sb32 softlip;
+	f32 ja_vel_x;
+	f32 ja_drift;
+	f32 vel_x;
+
+	if (s_softlip_x_diag < 0)
+	{
+		const char *env = getenv("SSB64_NETPLAY_SOFTLIP_X_DIAG");
+
+		s_softlip_x_diag = ((env != NULL) && (env[0] == '1')) ? 1 : 0;
+	}
+	if ((s_softlip_x_diag == 0) || (phase == NULL) || (coll_data == NULL) ||
+	    (coll_data->p_translate == NULL) || (gobj == NULL) ||
+	    (syNetplayRollbackSemanticsActive() == FALSE))
+	{
+		return;
+	}
+	mpProcessNetplayCollIdentity(gobj, &domain, &player, &kind);
+	if ((player < 0) || (player >= GMCOMMON_PLAYERS_MAX))
+	{
+		return;
+	}
+	sticky = sMPProcessNetplaySoftLipStickyFlags[player];
+	softlip = mpProcessNetplayUnattachedSoftLipActive(coll_data);
+	ja_vel_x = 0.0F;
+	ja_drift = 0.0F;
+	vel_x = 0.0F;
+	if (gobj->link_id == nGCCommonLinkIDFighter)
+	{
+		FTStruct *fp = ftGetStruct(gobj);
+		sb32 is_jumpaerial;
+
+		if (fp == NULL)
+		{
+			return;
+		}
+		is_jumpaerial = ((fp->status_id == nFTCommonStatusJumpAerialF) ||
+				 (fp->status_id == nFTCommonStatusJumpAerialB))
+				    ? TRUE
+				    : FALSE;
+		if ((softlip == FALSE) && (sticky == 0U) && (is_jumpaerial == FALSE) &&
+		    (mpProcessNetplaySoftLipFloorFlags(coll_data->floor_flags) == FALSE))
+		{
+			return;
+		}
+		vel_x = fp->physics.vel_air.x;
+		if (is_jumpaerial != FALSE)
+		{
+			ja_vel_x = ftStatusVarsJumpAerial(fp)->vel_x;
+			ja_drift = ftStatusVarsJumpAerial(fp)->drift;
+		}
+	}
+	else if (gobj->link_id == nGCCommonLinkIDWeapon)
+	{
+		WPStruct *wp = (WPStruct *)gobj->user_data.p;
+
+		/*
+		 * Soak 128512323: PK Thunder head CLIFF map forked while fighter SoftLipPhase
+		 * only named parked Hold Ness. Gate on soft-lip / sticky / PASS|CLIFF.
+		 */
+		if ((softlip == FALSE) && (sticky == 0U) &&
+		    (mpProcessNetplaySoftLipFloorFlags(coll_data->floor_flags) == FALSE))
+		{
+			return;
+		}
+		if (wp != NULL)
+		{
+			vel_x = wp->physics.vel_air.x;
+		}
+	}
+	else
+	{
+		return;
+	}
+	memcpy(&topn_bits, &coll_data->p_translate->x, sizeof(topn_bits));
+	memcpy(&vel_bits, &vel_x, sizeof(vel_bits));
+	memcpy(&ja_vel_bits, &ja_vel_x, sizeof(ja_vel_bits));
+	memcpy(&ja_drift_bits, &ja_drift, sizeof(ja_drift_bits));
+	port_log("SSB64 SoftLipPhase: gut=%u phase=%s domain=%s player=%d status=%d "
+		 "topn_x=0x%08X vel_x=0x%08X ja_vel_x=0x%08X ja_drift=0x%08X sticky=0x%08X "
+		 "residual_fflags=0x%08X softlip=%d fline=%d mask_curr=0x%04X\n",
+		 (unsigned int)gMPCollisionUpdateTic,
+		 phase,
+		 domain,
+		 (int)player,
+		 (int)kind,
+		 (unsigned int)topn_bits,
+		 (unsigned int)vel_bits,
+		 (unsigned int)ja_vel_bits,
+		 (unsigned int)ja_drift_bits,
+		 (unsigned int)sticky,
+		 (unsigned int)coll_data->floor_flags,
+		 (int)softlip,
+		 (int)coll_data->floor_line_id,
+		 (unsigned int)coll_data->mask_curr);
+}
 #endif
 
 // // // // // // // // // // // //
@@ -144,8 +633,15 @@ void mpProcessCeilEdgeAdjustLeft(MPCollData *coll_data)
 
         if (mpCollisionGetFCCommonCeil(coll_data->ceil_line_id, &object_pos, &ceil_dist, &coll_data->ceil_flags, &coll_data->ceil_angle) != FALSE)
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            f32 softlip_x_before = translate->x;
+#endif
             translate->y += ceil_dist;
             translate->x = object_pos.x;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            mpProcessNetplayHardenAdjNewTranslateSnap(coll_data, translate);
+            mpProcessNetplaySoftLipXDiag("ceil_edge_l", coll_data, softlip_x_before, FALSE);
+#endif
         }
     }
 }
@@ -199,8 +695,15 @@ void mpProcessCeilEdgeAdjustRight(MPCollData *coll_data)
 
         if (mpCollisionGetFCCommonCeil(coll_data->ceil_line_id, &object_pos, &ceil_dist, &coll_data->ceil_flags, &coll_data->ceil_angle) != FALSE)
         {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            f32 softlip_x_before = translate->x;
+#endif
             translate->y += ceil_dist;
             translate->x = object_pos.x;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            mpProcessNetplayHardenAdjNewTranslateSnap(coll_data, translate);
+            mpProcessNetplaySoftLipXDiag("ceil_edge_r", coll_data, softlip_x_before, FALSE);
+#endif
         }
     }
 }
@@ -208,6 +711,18 @@ void mpProcessCeilEdgeAdjustRight(MPCollData *coll_data)
 // 0x800D99B8
 void mpProcessRunCeilEdgeAdjust(MPCollData *coll_data)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+     * Soft-lip: CeilEdgeAdjust L/R walk under-edge walls and snap TopN.x — same
+     * cross-ISA class as AdjNew direct wall. Skip entirely (Y already settled).
+     */
+    if (mpProcessNetplaySuppressAdjNewWallOnUnattachedSoftLip(coll_data) != FALSE)
+    {
+        mpProcessNetplaySoftLipXDiag("ceil_edge_skip", coll_data, coll_data->p_translate->x, TRUE);
+        return;
+    }
+#endif
     if (mpProcessCheckCeilEdgeCollisionL(coll_data) != FALSE)
     {
         mpProcessCeilEdgeAdjustLeft(coll_data);
@@ -375,14 +890,40 @@ void mpProcessFloorEdgeRAdjust(MPCollData *coll_data)
 // 0x800D9F84
 void mpProcessRunFloorEdgeAdjust(MPCollData *coll_data)
 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+     * Soft-lip: FloorEdge L/R snaps TopN.x onto under-edge walls — same class as
+     * CeilEdgeAdjust (soak1 1828471508 JumpAerial CLIFF lip). Skip entirely.
+     */
+    if (mpProcessNetplaySuppressAdjNewWallOnUnattachedSoftLip(coll_data) != FALSE)
+    {
+        mpProcessNetplaySoftLipXDiag("floor_edge_skip", coll_data, coll_data->p_translate->x, TRUE);
+        return;
+    }
+#endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+    {
+	f32 softlip_x_before = coll_data->p_translate->x;
+#endif
     if (mpProcessCheckFloorEdgeCollisionL(coll_data) != FALSE)
     {
         mpProcessFloorEdgeLAdjust(coll_data);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	mpProcessNetplaySoftLipXDiag("floor_edge_l", coll_data, softlip_x_before, FALSE);
+	softlip_x_before = coll_data->p_translate->x;
+#endif
     }
     if (mpProcessCheckFloorEdgeCollisionR(coll_data) != FALSE)
     {
         mpProcessFloorEdgeRAdjust(coll_data);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	mpProcessNetplaySoftLipXDiag("floor_edge_r", coll_data, softlip_x_before, FALSE);
+#endif
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    }
+#endif
 }
 
 // 0x800D9FCC
@@ -399,6 +940,10 @@ void mpProcessSetCollProjectFloorID(MPCollData *coll_data) // Check if object is
     {
         coll_data->floor_line_id = -1;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Latch PASS|CLIFF from project so next tick's wall CheckTest still soft-lip suppresses. */
+    mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
+#endif
 }
 
 // 0x800DA034
@@ -428,6 +973,9 @@ sb32 mpProcessUpdateMain(MPCollData *coll_data, sb32 (*proc_coll)(MPCollData*, G
      */
     sb32 result = FALSE;                         // Result of collision test
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    sMPProcessNetplayCollGObj = gobj;
+#endif
     if (translate->x < pos_prev->x)
     {
         diff.x = -(translate->x - pos_prev->x);
@@ -480,6 +1028,10 @@ sb32 mpProcessUpdateMain(MPCollData *coll_data, sb32 (*proc_coll)(MPCollData*, G
     }
     coll_data->update_tic = gMPCollisionUpdateTic;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipStickyClearIfGrounded(coll_data);
+    sMPProcessNetplayCollGObj = NULL;
+#endif
     return result;
 }
 
@@ -703,7 +1255,17 @@ void mpProcessRunLWallCollision(MPCollData *coll_data)
 
     if (translate->x > last_wall_x)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+	{
+	    f32 softlip_x_before = translate->x;
+
+	    translate->x = last_wall_x;
+	    /* Non-AdjNew wall Run — SoftLipX historically only instrumented AdjNew. */
+	    mpProcessNetplaySoftLipXDiag("lwall_run", coll_data, softlip_x_before, FALSE);
+	}
+#else
         translate->x = last_wall_x;
+#endif
     }
 }
 
@@ -927,7 +1489,16 @@ void mpProcessRunRWallCollision(MPCollData *coll_data)
 
     if (translate->x < last_wall_x)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+	{
+	    f32 softlip_x_before = translate->x;
+
+	    translate->x = last_wall_x;
+	    mpProcessNetplaySoftLipXDiag("rwall_run", coll_data, softlip_x_before, FALSE);
+	}
+#else
         translate->x = last_wall_x;
+#endif
     }
 }
 
@@ -989,7 +1560,16 @@ sb32 mpProcessCheckTestFloorCollisionNew(MPCollData *coll_data)
 
     if (is_wall_edge != FALSE)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+	{
+	    f32 softlip_x_before = translate->x;
+
+	    translate->x = object_pos.x;
+	    mpProcessNetplaySoftLipXDiag("floor_new_wall_edge", coll_data, softlip_x_before, FALSE);
+	}
+#else
         translate->x = object_pos.x;
+#endif
 
         mpCollisionGetFCCommonFloor(coll_data->floor_line_id, &object_pos, NULL, &coll_data->floor_flags, &coll_data->floor_angle);
 
@@ -1165,6 +1745,7 @@ sb32 mpProcessCheckTestLWallCollisionAdjNew(MPCollData *coll_data)
     s32 line_collide;
 
     is_collide_lwall = FALSE;
+    floor_flags = 0U;
 
     coll_data->mask_unk &= ~MAP_FLAG_LWALL;
     coll_data->mask_stat &= ~MAP_FLAG_LWALL;
@@ -1407,6 +1988,24 @@ sb32 mpProcessCheckTestLWallCollisionAdjNew(MPCollData *coll_data)
             }
         }
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: strip direct / ceil-edge / residual wall hits on PASS|CLIFF soft lip. */
+    if (is_collide_lwall != FALSE)
+    {
+        if (mpProcessNetplaySuppressAdjNewWallSoftLipEx(coll_data, floor_flags) != FALSE)
+        {
+            mpProcessNetplaySoftLipXDiag("lwall_suppress", coll_data, coll_data->p_translate->x, TRUE);
+            mpProcessResetMultiWallCount();
+            is_collide_lwall = FALSE;
+            coll_data->mask_curr &= ~MAP_FLAG_LWALL;
+        }
+        else
+        {
+            /* Wall hit kept — SoftLipEx false (no residual/sticky). Force-log for soak bisect. */
+            mpProcessNetplaySoftLipXDiagEx("lwall_keep", coll_data, coll_data->p_translate->x, FALSE, TRUE);
+        }
+    }
+#endif
     if (is_collide_lwall != FALSE)
     {
         coll_data->mask_curr |= MAP_FLAG_LWALL;
@@ -1524,10 +2123,19 @@ void mpProcessRunLWallCollisionAdjNew(MPCollData *coll_data)
 
     if (translate->x > last_wall_x)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        f32 softlip_x_before = translate->x;
+#endif
         translate->x = last_wall_x;
 
         coll_data->mask_stat |= MAP_FLAG_LWALL;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        mpProcessNetplaySoftLipXDiag("lwall_adjnew", coll_data, softlip_x_before, FALSE);
+#endif
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplayHardenAdjNewTranslateSnap(coll_data, translate);
+#endif
     coll_data->mask_unk |= MAP_FLAG_LWALL;
 }
 
@@ -1548,6 +2156,7 @@ sb32 mpProcessCheckTestRWallCollisionAdjNew(MPCollData *coll_data)
     s32 line_collide;
 
     is_collide_rwall = FALSE;
+    floor_flags = 0U;
 
     coll_data->mask_unk &= ~MAP_FLAG_RWALL;
     coll_data->mask_stat &= ~MAP_FLAG_RWALL;
@@ -1782,6 +2391,23 @@ sb32 mpProcessCheckTestRWallCollisionAdjNew(MPCollData *coll_data)
             }
         }
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: same PASS|CLIFF soft-lip AdjNew wall suppress as LWall above. */
+    if (is_collide_rwall != FALSE)
+    {
+        if (mpProcessNetplaySuppressAdjNewWallSoftLipEx(coll_data, floor_flags) != FALSE)
+        {
+            mpProcessNetplaySoftLipXDiag("rwall_suppress", coll_data, coll_data->p_translate->x, TRUE);
+            mpProcessResetMultiWallCount();
+            is_collide_rwall = FALSE;
+            coll_data->mask_curr &= ~MAP_FLAG_RWALL;
+        }
+        else
+        {
+            mpProcessNetplaySoftLipXDiagEx("rwall_keep", coll_data, coll_data->p_translate->x, FALSE, TRUE);
+        }
+    }
+#endif
     if (is_collide_rwall != FALSE)
     {
         coll_data->mask_curr |= MAP_FLAG_RWALL;
@@ -1899,10 +2525,19 @@ void mpProcessRunRWallCollisionAdjNew(MPCollData *coll_data)
 
     if (translate->x < last_wall_x)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        f32 softlip_x_before = translate->x;
+#endif
         translate->x = last_wall_x;
 
         coll_data->mask_stat |= MAP_FLAG_RWALL;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        mpProcessNetplaySoftLipXDiag("rwall_adjnew", coll_data, softlip_x_before, FALSE);
+#endif
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplayHardenAdjNewTranslateSnap(coll_data, translate);
+#endif
     coll_data->mask_unk |= MAP_FLAG_RWALL;
 }
 
@@ -2021,7 +2656,30 @@ void mpProcessRunCeilCollisionAdjNew(MPCollData *coll_data)
 
     if (is_collide_ceil != FALSE)
     {
-        translate->x = object_pos.x;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /*
+         * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+         * Soft-lip: edge→L/RWall attach snaps TopN.x; keep Y settle, skip X.
+         * See docs/bugs/netplay_airborne_cliff_lip_ceil_edge_fc_drift_2026-07-18.md.
+         */
+        if (mpProcessNetplaySuppressAdjNewWallOnUnattachedSoftLip(coll_data) == FALSE)
+#endif
+        {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            f32 softlip_x_before = translate->x;
+#endif
+            translate->x = object_pos.x;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            mpProcessNetplayHardenAdjNewTranslateSnap(coll_data, translate);
+            mpProcessNetplaySoftLipXDiag("ceil_coll_x", coll_data, softlip_x_before, FALSE);
+#endif
+        }
+#if defined(PORT) && defined(SSB64_NETMENU)
+        else
+        {
+            mpProcessNetplaySoftLipXDiag("ceil_coll_x_skip", coll_data, translate->x, TRUE);
+        }
+#endif
 
         mpCollisionGetFCCommonCeil(coll_data->ceil_line_id, &object_pos, NULL, &coll_data->ceil_flags, &coll_data->ceil_angle);
 
@@ -2095,26 +2753,39 @@ sb32 mpProcessCheckTestFloorCollisionAdjNew(MPCollData *coll_data, sb32(*proc_ma
             memcpy(&pp_y_bits, &pos_prev->y, sizeof(pp_y_bits));
             memcpy(&fdist_bits, &coll_data->floor_dist, sizeof(fdist_bits));
 
-            port_log("SSB64 MpLanding: landing_branch gut=%u upt=%u branch=%s vv0=%d "
-                     "fline=%d ignore=%d fflags=0x%08X mask_unk=0x%04X gated=%d "
-                     "fdist=0x%08X tr_x=0x%08X tr_y=0x%08X pp_y=0x%08X\n",
-                     (unsigned int)gMPCollisionUpdateTic,
-                     (unsigned int)coll_data->update_tic,
-                     (coll_data->update_tic != gMPCollisionUpdateTic) ? "diff" : "same",
-                     (int)var_v0,
-                     (int)coll_data->floor_line_id,
-                     (int)coll_data->ignore_line_id,
-                     (unsigned int)coll_data->floor_flags,
-                     (unsigned int)coll_data->mask_unk,
-                     (int)((var_v0 != 0) &&
-                           (!(coll_data->floor_flags & MAP_VERTEX_COLL_PASS) ||
-                            (coll_data->floor_line_id != coll_data->ignore_line_id))),
-                     (unsigned int)fdist_bits,
-                     (unsigned int)tr_x_bits,
-                     (unsigned int)tr_y_bits,
-                     (unsigned int)pp_y_bits);
+            {
+                const char *domain;
+                s32 coll_player;
+                s32 coll_kind;
+
+                mpProcessNetplayCollIdentity(gobj, &domain, &coll_player, &coll_kind);
+                port_log("SSB64 MpLanding: landing_branch gut=%u upt=%u domain=%s player=%d "
+                         "kind=%d branch=%s vv0=%d fline=%d ignore=%d fflags=0x%08X "
+                         "mask_unk=0x%04X gated=%d fdist=0x%08X tr_x=0x%08X tr_y=0x%08X "
+                         "pp_y=0x%08X\n",
+                         (unsigned int)gMPCollisionUpdateTic,
+                         (unsigned int)coll_data->update_tic,
+                         domain,
+                         (int)coll_player,
+                         (int)coll_kind,
+                         (coll_data->update_tic != gMPCollisionUpdateTic) ? "diff" : "same",
+                         (int)var_v0,
+                         (int)coll_data->floor_line_id,
+                         (int)coll_data->ignore_line_id,
+                         (unsigned int)coll_data->floor_flags,
+                         (unsigned int)coll_data->mask_unk,
+                         (int)((var_v0 != 0) &&
+                               (!(coll_data->floor_flags & MAP_VERTEX_COLL_PASS) ||
+                                (coll_data->floor_line_id != coll_data->ignore_line_id))),
+                         (unsigned int)fdist_bits,
+                         (unsigned int)tr_x_bits,
+                         (unsigned int)tr_y_bits,
+                         (unsigned int)pp_y_bits);
+            }
         }
     }
+    /* Floor sweep wrote floor_flags even on miss — latch soft-lip for next wall pass. */
+    mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
 #endif
 
     if ((var_v0 != 0) && (!(coll_data->floor_flags & MAP_VERTEX_COLL_PASS) || (coll_data->floor_line_id != coll_data->ignore_line_id)) && ((proc_map == NULL) || (proc_map(gobj) != FALSE)))
@@ -2200,12 +2871,31 @@ void mpProcessSetLandingFloor(MPCollData *coll_data)
             mpCollisionGetFloorEdgeR(coll_data->floor_line_id, &object_pos);
         }
         translate->y = object_pos.y - map_coll->bottom;
-        translate->x = object_pos.x;
-
         mpCollisionGetFCCommonFloor(coll_data->floor_line_id, &object_pos, NULL, &coll_data->floor_flags, &coll_data->floor_angle);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /*
+         * SSB64_NETMENU: soft-lip edge landing snaps TopN.x — keep Y settle, skip X
+         * (same class as RunCeilCollisionAdjNew). Flags refreshed above before gate.
+         * See jumpaerial_fc_drift 2026-07-18.
+         */
+        if (mpProcessNetplaySuppressAdjNewWallOnUnattachedSoftLip(coll_data) == FALSE)
+#endif
+        {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            f32 softlip_x_before = translate->x;
+#endif
+            translate->x = object_pos.x;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            mpProcessNetplayHardenAdjNewTranslateSnap(coll_data, translate);
+            mpProcessNetplaySoftLipXDiag("landing_floor_x", coll_data, softlip_x_before, FALSE);
+#endif
+        }
     }
     coll_data->mask_stat |= MAP_FLAG_FLOOR;
     coll_data->floor_dist = 0.0F;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipStickyClearIfGrounded(coll_data);
+#endif
 }
 
 // 0x800DD6A8
@@ -2227,7 +2917,9 @@ void mpProcessSetCollideFloor(MPCollData *coll_data)
 
         coll_data->mask_stat |= MAP_FLAG_FLOOR;
         coll_data->floor_dist = 0.0F;
-
+#if defined(PORT) && defined(SSB64_NETMENU)
+        mpProcessNetplaySoftLipStickyClearIfGrounded(coll_data);
+#endif
         return;
     }
     is_collide_floor = FALSE;
@@ -2258,11 +2950,26 @@ void mpProcessSetCollideFloor(MPCollData *coll_data)
 
     if (is_collide_floor != FALSE)
     {
-        translate->x = object_pos.x;
-
         mpCollisionGetFCCommonFloor(coll_data->floor_line_id, &object_pos, NULL, &coll_data->floor_flags, &coll_data->floor_angle);
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: soft-lip collide-floor edge X snap — see SetLandingFloor. */
+        if (mpProcessNetplaySuppressAdjNewWallOnUnattachedSoftLip(coll_data) == FALSE)
+#endif
+        {
+#if defined(PORT) && defined(SSB64_NETMENU)
+            f32 softlip_x_before = translate->x;
+#endif
+            translate->x = object_pos.x;
+#if defined(PORT) && defined(SSB64_NETMENU)
+            mpProcessNetplayHardenAdjNewTranslateSnap(coll_data, translate);
+            mpProcessNetplaySoftLipXDiag("collide_floor_x", coll_data, softlip_x_before, FALSE);
+#endif
+        }
 
         coll_data->mask_stat |= MAP_FLAG_FLOOR;
         coll_data->floor_dist = 0.0F;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        mpProcessNetplaySoftLipStickyClearIfGrounded(coll_data);
+#endif
     }
 }

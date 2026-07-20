@@ -35,7 +35,13 @@ s32 sSYUtilsCosmeticRandomSeed = 1;
  */
 extern sb32 syNetRollbackIsResimulating(void);
 extern void syNetSyncRngTraceBeforeGameSeedStep(void);
-extern void syNetSyncRngTraceAfterGameSeedStep(s32 seed_after);
+extern void syNetSyncRngTraceAfterGameSeedStep(s32 seed_after, u32 caller_site);
+#if defined(__GNUC__)
+#define SY_UTILS_RNG_CALLER_SITE() \
+	((u32)(uintptr_t)__builtin_extract_return_addr(__builtin_return_address(0)))
+#else
+#define SY_UTILS_RNG_CALLER_SITE() (0U)
+#endif
 #endif
 
 s32 sSYUtilsQSortItemSize = 0;
@@ -209,7 +215,7 @@ u16 syUtilsRandUShort(void)
     syNetSyncRngTraceBeforeGameSeedStep();
     step = ((u32)*sSYUtilsRandomSeedPtr * 214013u) + 2531011u;
     *sSYUtilsRandomSeedPtr = (s32)step;
-    syNetSyncRngTraceAfterGameSeedStep((s32)step);
+    syNetSyncRngTraceAfterGameSeedStep((s32)step, SY_UTILS_RNG_CALLER_SITE());
 #else
     s32 step = (*sSYUtilsRandomSeedPtr * 214013) + 2531011;
     *sSYUtilsRandomSeedPtr = step;
@@ -231,7 +237,7 @@ f32 syUtilsRandFloat(void)
     syNetSyncRngTraceBeforeGameSeedStep();
     step = ((u32)*sSYUtilsRandomSeedPtr * 214013u) + 2531011u;
     *sSYUtilsRandomSeedPtr = (s32)step;
-    syNetSyncRngTraceAfterGameSeedStep((s32)step);
+    syNetSyncRngTraceAfterGameSeedStep((s32)step, SY_UTILS_RNG_CALLER_SITE());
 #else
     s32 step = (*sSYUtilsRandomSeedPtr * 214013) + 2531011;
     *sSYUtilsRandomSeedPtr = step;

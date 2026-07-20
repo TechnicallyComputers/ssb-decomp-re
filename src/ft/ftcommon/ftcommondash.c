@@ -1,4 +1,7 @@
 #include <ft/fighter.h>
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -151,6 +154,10 @@ sb32 ftCommonDashCheckTurn(GObj *fighter_gobj)
     {
         ftStatusVarsTurn(fp)->lr_dash = ftStatusVarsTurn(fp)->lr_turn;
         ftStatusVarsTurn(fp)->attacks4_buffer = 0;
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* Smash refresh during Turn: pin so HardenTurnLrDash keeps dash-out gate. */
+        syNetplayTurnNoteEntryLrDash(fp, ftStatusVarsTurn(fp)->lr_dash);
+#endif
 
         return TRUE;
     }

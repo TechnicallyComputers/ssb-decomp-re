@@ -504,8 +504,14 @@ sb32 wpNessPKThunderHeadProcUpdate(GObj *weapon_gobj)
 sb32 wpNessPKThunderHeadProcMap(GObj *weapon_gobj)
 {
     WPStruct *wp = wpGetStruct(weapon_gobj);
+    sb32 coll_end;
 
-    if (wpMapTestAllCheckCollEnd(weapon_gobj) != FALSE)
+    coll_end = wpMapTestAllCheckCollEnd(weapon_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: Hold-head CLIFF map → jibaku launch. Offline unchanged. */
+    syNetplayNessHardenPKThunderHeadAfterMap(weapon_gobj);
+#endif
+    if (coll_end != FALSE)
     {
 #if defined(PORT) && defined(SSB64_NETMENU)
         if ((wp != NULL) && (syNetplayNessShouldDeferPKThunderHeadProcTeardown(wp) != FALSE))

@@ -507,6 +507,20 @@ GObj* itManagerMakeItem(GObj *parent_gobj, ITDesc *item_desc, Vec3f *pos, Vec3f 
 
     if (flags & ITEM_FLAG_COLLPROJECT)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /*
+         * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+         * Netplay rollback only: NULL parent + PARENT_WEAPON/FIGHTER/ITEM would
+         * wpGetStruct(NULL) → SIGSEGV fault_addr=0xe0 (GObj.user_data). Treat as
+         * DEFAULT. See docs/bugs/netplay_ness_pkfire_respawn_null_parent_segv_2026-07-19.md.
+         */
+        if ((parent_gobj == NULL) &&
+            ((flags & ITEM_MASK_PARENT) != ITEM_FLAG_PARENT_DEFAULT) &&
+            ((flags & ITEM_MASK_PARENT) != ITEM_FLAG_PARENT_GROUND))
+        {
+            flags = (flags & ~ITEM_MASK_PARENT) | ITEM_FLAG_PARENT_DEFAULT;
+        }
+#endif
         switch (flags & ITEM_MASK_PARENT)
         {
         case ITEM_FLAG_PARENT_GROUND:

@@ -4109,12 +4109,17 @@ static void mnVSNetAutomatchAMMaybeEnqueueMatchPoll(u32 base_interval, sb32 tric
 	{
 		return;
 	}
+	if ((trickle_only != FALSE) && (mnVSNetAutomatchAMIceConnectTrickleMayEnqueue() == FALSE))
+	{
+		return;
+	}
 	if (mmMatchmakingPollMatchOutstanding(sMnAMTicket) != FALSE)
 	{
 		return;
 	}
 	if (trickle_only != FALSE)
 	{
+		/* EnqueuePollIceTrickle applies shared-LAN / wall-clock gate + notes enqueue. */
 		mmMatchmakingEnqueuePollIceTrickle(FALSE, sMnAMTicket);
 	}
 	else
@@ -4202,6 +4207,16 @@ const char *mnVSNetAutomatchAMStatusText(void)
 	case MN_AM_POLL:
 		return "SEARCHING FOR OPPONENT";
 	case MN_AM_ICE_CONNECT:
+#if defined(SSB64_NETPLAY_ICE)
+		/*
+		 * Nomination/bootstrap still runs in ICE_CONNECT. Leaving the banner on
+		 * "MATCH FOUND" made soaks look stuck after match while offer exchange ran.
+		 */
+		if ((mmIceIsConnected() != FALSE) || (mmIceIsCompleted() != FALSE))
+		{
+			return "CONNECTING TO OPPONENT";
+		}
+#endif
 		return "MATCH FOUND";
 	case MN_AM_ENTER:
 	case MN_AM_BOOTSTRAP_LAN:
@@ -5413,8 +5428,8 @@ matchmaking_tick_state:
 			{
 				const char *why;
 
-				mmIceShutdown();
 				mnVSNetAutomatchAMIceNotifyPeerAbort(&sMnAMIcePendingMatch);
+				mmIceShutdown();
 				why = mnVSNetAutomatchAMIceConnectFailureReason();
 				mnVSNetAutomatchAMAbortToCharacterSelect(
 				    (why != NULL && why[0] != '\0') ? why : "ICE connection failed");
@@ -5446,8 +5461,9 @@ matchmaking_tick_state:
 				{
 					gSYNetPeerSuppressBootstrapSceneAdvance = FALSE;
 					(void)syNetPeerSetAutomatchNegotiation(FALSE);
-					mmIceShutdown();
+					/* Notify on the live ICE channel before tearing the agent down. */
 					mnVSNetAutomatchAMIceNotifyPeerAbort(&sMnAMIcePendingMatch);
+					mmIceShutdown();
 					mnVSNetAutomatchAMErrEx("ICE bootstrap failed");
 				}
 			}

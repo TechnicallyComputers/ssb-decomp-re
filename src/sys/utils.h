@@ -24,9 +24,11 @@ extern f32 syUtilsRandFloatForcedCosmetic(void);
 extern s32 syUtilsRandIntRangeCosmetic(s32 range);
 extern s32 syUtilsRandIntRangeForcedCosmetic(s32 range);
 /* Per-peer cosmetic LCG (diagnostics + forced-cosmetic VFX under netmenu).
- * Effect manager and particle system remap to ForcedCosmetic under
- * `SSB64_NETMENU` so asymmetric VFX spawn counts do not burn the hashed game
- * seed. See docs/bugs/netplay_effect_vfx_forced_cosmetic_rng_2026-07-09.md. */
+ * Effect manager, particle system, and stage ground-effect actor remap to
+ * ForcedCosmetic under `SSB64_NETMENU` so asymmetric VFX spawn counts do not
+ * burn the hashed game seed. See
+ * docs/bugs/netplay_effect_vfx_forced_cosmetic_rng_2026-07-09.md and
+ * docs/bugs/netplay_efground_stage_vfx_rng_fc_diverge_2026-07-18.md. */
 extern s32 syUtilsCosmeticRandSeed(void);
 #endif
 extern void syUtilsSetRandomSeedPtr(s32 *seedptr);

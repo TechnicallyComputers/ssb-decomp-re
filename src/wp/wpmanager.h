@@ -18,6 +18,8 @@ u32 wpManagerGetGroupID();
 #if defined(PORT) && defined(SSB64_NETMENU)
 u32 wpManagerAssignInstanceId(void);
 void wpManagerResetInstanceIds(void);
+u32 wpManagerGetGroupIdCounter(void);
+void wpManagerSetGroupIdCounter(u32 counter);
 #endif
 
 // Create new weapon

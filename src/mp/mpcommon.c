@@ -1,6 +1,7 @@
 #include <ft/fighter.h>
 #include <wp/weapon.h>
 #include <it/item.h>
+#include <mp/mpprocess.h>
 #ifdef PORT
 #include <ft/ftcommon/ftcommonfunctions.h>
 #endif
@@ -481,14 +482,25 @@ sb32 mpCommonRunFighterSpecialCollisions(MPCollData *coll_data, GObj *fighter_go
     sb32 is_ceilstop = FALSE;
     sb32 is_collide;
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: SoftLipPhase post_phys = position after UpdateMain integrate. */
+    mpProcessNetplaySoftLipPhaseDiag("post_phys", coll_data, fighter_gobj);
+#endif
+
     if (mpProcessCheckTestLWallCollisionAdjNew(coll_data) != FALSE)
     {
         mpProcessRunLWallCollisionAdjNew(coll_data);
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipPhaseDiag("post_lwall", coll_data, fighter_gobj);
+#endif
     if (mpProcessCheckTestRWallCollisionAdjNew(coll_data) != FALSE)
     {
         mpProcessRunRWallCollisionAdjNew(coll_data);
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipPhaseDiag("post_rwall", coll_data, fighter_gobj);
+#endif
     if (mpProcessCheckTestCeilCollisionAdjNew(coll_data) != FALSE)
     {
         mpProcessRunCeilCollisionAdjNew(coll_data);
@@ -506,6 +518,9 @@ sb32 mpCommonRunFighterSpecialCollisions(MPCollData *coll_data, GObj *fighter_go
             coll_data->is_coll_end = TRUE;
         }
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipPhaseDiag("post_ceil", coll_data, fighter_gobj);
+#endif
                                          is_collide 
                              
                                             =
@@ -542,12 +557,19 @@ sb32 mpCommonRunFighterSpecialCollisions(MPCollData *coll_data, GObj *fighter_go
                 mpProcessRunFloorEdgeAdjust(coll_data);
 
                 coll_data->is_coll_end = TRUE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+		mpProcessNetplaySoftLipPhaseDiag("post_floor", coll_data, fighter_gobj);
+#endif
 
                 return TRUE;
             }
         }
     }
     else mpProcessSetCollProjectFloorID(coll_data);
+
+#if defined(PORT) && defined(SSB64_NETMENU)
+    mpProcessNetplaySoftLipPhaseDiag("post_floor", coll_data, fighter_gobj);
+#endif
 
     if ((flags & MAP_PROC_TYPE_CLIFF) && (this_fp->cliffcatch_wait == 0))
     {

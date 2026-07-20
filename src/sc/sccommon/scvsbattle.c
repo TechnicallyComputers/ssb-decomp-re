@@ -136,6 +136,12 @@ SYTaskmanSetup dSCVSBattleTaskmanSetup =
 void scVSBattleFuncUpdate(void)
 {
 #if defined(PORT) && defined(SSB64_NETMENU)
+	/*
+	 * Flush deferred FinishForwardResim (boundary Finish) and clear same-pass save block
+	 * before interface/PeerUpdate. AwaitLiveSimAfterResim stays until AllowLivePostBattleSave.
+	 * See docs/bugs/netplay_post_resim_live_save_without_battle_map_skew_2026-07-16.md.
+	 */
+	syNetRollbackOnLiveFuncUpdateBegin();
 	if ((gSCManagerSceneData.is_vs_replay_playback != FALSE) && (syNetReplayIsPlaybackLoaded() != FALSE))
 	{
 		mnVSReplayPlaybackUpdateHalted();
@@ -244,6 +250,8 @@ void scVSBattleFuncUpdate(void)
 	if ((syNetPeerIsVSSessionActive() != FALSE) &&
 	    (syNetInputRollbackSimAdvanceAllowed(syNetInputGetTick() + 1U) == FALSE))
 	{
+		/* Keep ICE/UDP drained while runway/wire_need holds Advance (Appear or live). */
+		syNetPeerPumpIngressTransport("advance_hold");
 		syNetPeerUpdate();
 		return;
 	}
@@ -296,6 +304,7 @@ void scVSBattleFuncUpdate(void)
 			ifCommonBattleUpdateInterfaceAll();
 			live_battle_sim_ran = TRUE;
 			tick_at_live_battle = syNetInputGetTick();
+			syNetRollbackNoteLiveInterfaceRanThisPass();
 			if (syNetRollbackIsResimulating() != FALSE)
 			{
 				syNetRbSnapshotRefreshLiveIntroPresentationAfterInterface();
