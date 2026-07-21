@@ -218,6 +218,10 @@ void ftCommonRebirthWaitProcUpdate(GObj *fighter_gobj)
 
     if (ftStatusVarsRebirth(fp)->halo_despawn_wait == 0)
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+        syNetplayRebirthGateLogLeaveStick(fighter_gobj, fp, "halo_timer", fp->status_id);
+#endif
         ftParamSetTimedHitStatusInvincible(fp, FTCOMMON_REBIRTH_INVINCIBLE_FRAMES);
         ftCommonFallSetStatus(fighter_gobj);
     }
@@ -227,9 +231,17 @@ void ftCommonRebirthWaitProcUpdate(GObj *fighter_gobj)
 void ftCommonRebirthWaitProcInterrupt(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    s32 status_before = fp->status_id;
+#endif
 
     if (ftCommonGroundCheckInterrupt(fighter_gobj))
     {
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+        /* Stick/ground leave — soak 1174892281 RebirthWait→Fall stick-Y peer fork. */
+        syNetplayRebirthGateLogLeaveStick(fighter_gobj, fp, "ground_interrupt", status_before);
+#endif
         ftParamSetTimedHitStatusInvincible(fp, FTCOMMON_REBIRTH_INVINCIBLE_FRAMES);
     }
 }

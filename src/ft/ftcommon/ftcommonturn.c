@@ -1,6 +1,7 @@
 #include <ft/fighter.h>
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netplay_sim_quantize.h>
+#include <sys/netplay_branch_predict.h>
 #endif
 
 // // // // // // // // // // // //
@@ -101,10 +102,22 @@ skip_interrupt_specials:
             {
                 return;
             }
-            ftCommonDashCheckTurn(fighter_gobj);
-
             {
                 sb32 will_dash = FALSE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+                /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+                /*
+                 * Transactional branch eval: DashCheckTurn prepare writes (lr_dash,
+                 * attacks4_buffer, entry sticky) + optional DashSetStatus are one unit.
+                 * Under predicted remote input, discard the whole candidate. See
+                 * docs/bugs/netplay_branch_sensitive_predict_2026-07-20.md.
+                 */
+                if (syNetplayRollbackSemanticsActive() != FALSE)
+                {
+                    syNetplayBranchTurnDashEvalBegin(fighter_gobj);
+                }
+#endif
+                ftCommonDashCheckTurn(fighter_gobj);
 
                 if ((ftStatusVarsTurn(fp)->is_allow_turn_direction != FALSE) &&
                     (ftStatusVarsTurn(fp)->lr_dash != 0) &&
@@ -114,8 +127,11 @@ skip_interrupt_specials:
                     will_dash = TRUE;
                 }
 #if defined(PORT) && defined(SSB64_NETMENU)
-                /* SSB64_NETMENU: stripped from offline builds. Runtime: witness env only. */
-                /* Netplay diagnostics: log Turn→Dash gate before status leaves Turn. */
+                if (syNetplayRollbackSemanticsActive() != FALSE)
+                {
+                    will_dash = syNetplayBranchTurnDashEvalResolve(fighter_gobj, will_dash);
+                }
+                /* Netplay diagnostics: log Turn→Dash gate after transactional resolve. */
                 syNetplayMaybeLogTurnDashWitness(fighter_gobj, "interrupt", 0, will_dash);
 #endif
                 if (will_dash != FALSE)

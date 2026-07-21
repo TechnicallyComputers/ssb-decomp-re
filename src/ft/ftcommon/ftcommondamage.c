@@ -4,6 +4,14 @@
 #include <if/ifscreenflash.h>
 #include <it/itmain.h>
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netinput.h>
+#include <sys/netplay_sim_quantize.h>
+#include <sys/netrollback.h>
+#include <sys/netreplay.h>
+
+extern void port_log(const char *fmt, ...);
+#endif
 
 extern alSoundEffect* func_800269C0_275C0(u16);
 
@@ -848,6 +856,56 @@ void ftCommonDamageUpdateMain(GObj *fighter_gobj)
             return;
         }
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+     * Netplay rollback only: name ColAnim vs GotoDamageStatus when hitlag multi-hit
+     * resist inputs matter (soak 1952491642 DamageE2). See
+     * docs/bugs/netplay_damage_knockback_resist_snapshot_2026-07-20.md.
+     */
+    if ((syNetplayRollbackSemanticsActive() != FALSE) && (this_fp->damage_knockback != 0.0F) &&
+        (this_fp->hitlag_tics > 0))
+    {
+        union
+        {
+            f32 f;
+            u32 u;
+        } kb_bits, stack_bits;
+        sb32 take_colanim;
+
+        kb_bits.f = this_fp->damage_knockback;
+        stack_bits.f = this_fp->damage_knockback_stack;
+        take_colanim =
+            ((this_fp->damage_element != nGMHitElementSleep) && (this_fp->is_knockback_paused != FALSE) &&
+             (this_fp->damage_knockback < (this_fp->damage_knockback_stack + 30.0F)))
+                ? TRUE
+                : FALSE;
+        {
+            u32 diag_tick;
+
+            /* Forced-resim diagnostic tick is ~(u32)0 outside that tool path — use live sim tick. */
+            diag_tick = syNetReplayGetDiagnosticResimTick();
+            if (diag_tick == ~(u32)0)
+            {
+                diag_tick = syNetInputGetTick();
+            }
+            port_log(
+                "SSB64 NetPlay: DAMAGE_RESIST_BRANCH tick=%u player=%d status=%d hitlag=%u paused=%u "
+                "kb=0x%08X stack=0x%08X element=%d branch=%s resim=%d status_tics=%u\n",
+                (unsigned int)diag_tick,
+                (int)this_fp->player,
+                (int)this_fp->status_id,
+                (unsigned int)this_fp->hitlag_tics,
+                (unsigned int)(this_fp->is_knockback_paused != FALSE),
+                (unsigned int)kb_bits.u,
+                (unsigned int)stack_bits.u,
+                (int)this_fp->damage_element,
+                (take_colanim != FALSE) ? "colanim" : "status_reentry",
+                (int)(syNetRollbackIsResimulating() != FALSE),
+                (unsigned int)this_fp->status_total_tics);
+        }
+    }
+#endif
     if ((this_fp->damage_element != nGMHitElementSleep) && ((this_fp->damage_knockback == 0.0F) || ((this_fp->hitlag_tics > 0) && (this_fp->is_knockback_paused) && (this_fp->damage_knockback < (this_fp->damage_knockback_stack + 30.0F)))))
     {
         ftCommonDamageSetDamageColAnim(fighter_gobj);

@@ -3,6 +3,9 @@
 #ifdef PORT
 #include <enhancements/enhancements.h>
 #endif
+#if defined(PORT) && defined(SSB64_NETMENU)
+#include <sys/netplay_sim_quantize.h>
+#endif
 
 // // // // // // // // // // // //
 //                               //
@@ -15,6 +18,9 @@ void ftCommonKneeBendProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     FTAttributes *attr = fp->attr;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    sb32 will_exit;
+#endif
 
     ftStatusVarsKneeBend(fp)->anim_frame += DObjGetStruct(fighter_gobj)->anim_speed;
 
@@ -27,6 +33,12 @@ void ftCommonKneeBendProcUpdate(GObj *fighter_gobj)
     {
         ftStatusVarsKneeBend(fp)->is_shorthop = TRUE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only. */
+    will_exit = (attr->kneebend_anim_length <= ftStatusVarsKneeBend(fp)->anim_frame) ? TRUE : FALSE;
+    syNetplayMaybeLogKneeBendWitness(fighter_gobj, will_exit != FALSE ? "jump_exit" : "update",
+                                     will_exit);
+#endif
     if (attr->kneebend_anim_length <= ftStatusVarsKneeBend(fp)->anim_frame)
     {
         ftCommonJumpSetStatus(fighter_gobj);
@@ -63,6 +75,10 @@ void ftCommonKneeBendSetStatusParam(GObj *fighter_gobj, s32 status_id, s32 input
     ftStatusVarsKneeBend(fp)->is_shorthop = FALSE;
 
     fp->is_special_interrupt = TRUE;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /* Netplay diagnostics: KneeBend entry (input_source / stick) for exit-timing forks. */
+    syNetplayMaybeLogKneeBendWitness(fighter_gobj, "entry", FALSE);
+#endif
 }
 
 // 0x8013F408
