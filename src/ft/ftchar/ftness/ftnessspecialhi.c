@@ -161,6 +161,31 @@ sb32 ftNessSpecialHiCheckCollidePKThunder(GObj *fighter_gobj)
     {
         return FALSE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * Resim / orphan-cull can leave a stale pkthunder_gobj pointer. Reacquire before
+     * treating the head as destroyed — a false destroy skips self-hit and lets Hold
+     * extend into a near-vertical relaunch after GGPO (soak 537887313 @1636→1640).
+     * See docs/bugs/netplay_jibaku_post_launch_micro_ggpo_relaunch_2026-07-26.md.
+     */
+    if (syNetplayRollbackSemanticsActive() != FALSE)
+    {
+        if ((pkthunder_gobj != NULL) && (wpNessPKThunderGObjIsLiveWeapon(pkthunder_gobj) == FALSE))
+        {
+            fp->status_vars.ness.specialhi.pkthunder_gobj = NULL;
+            pkthunder_gobj = NULL;
+        }
+        if (pkthunder_gobj == NULL)
+        {
+            pkthunder_gobj = syNetRbSnapReacquirePKThunderHeadForFighter(fighter_gobj);
+            if (pkthunder_gobj != NULL)
+            {
+                fp->status_vars.ness.specialhi.pkthunder_gobj = pkthunder_gobj;
+                fp->passive_vars.ness.is_thunder_destroy &= ~TRUE;
+            }
+        }
+    }
+#endif
     if ((fp->passive_vars.ness.is_thunder_destroy & TRUE) || (pkthunder_gobj == NULL))
     {
         return FALSE;

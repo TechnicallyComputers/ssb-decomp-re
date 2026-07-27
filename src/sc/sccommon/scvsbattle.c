@@ -370,7 +370,12 @@ void scVSBattleFuncUpdate(void)
 			 * (soak2 Android FC @600: live Kirby +1-tic artifact, Fox snap already forked @570).
 			 */
 			syNetPeerFrameCommitAfterCompletedSimStep();
-			syNetInputAdvanceAuthoritativeSimTick();
+			/*
+			 * Always advance after live gcRunAll. AdvanceAllowed may flip mid-pass when
+			 * Wait→Go arms zero-onset HardStall; refusing Advance re-sims GetTick later
+			 * (soak 656287266). Holds gate FuncUpdate entry only.
+			 */
+			syNetInputAdvanceAuthoritativeSimTickAfterLiveBattle();
 		}
 	}
 #else

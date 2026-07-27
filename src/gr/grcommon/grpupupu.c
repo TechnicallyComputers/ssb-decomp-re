@@ -583,6 +583,9 @@ void grPupupuWhispyRepairPresentationCosmetic(void)
 	GRCommonGroundVarsPupupu *pu = &gGRCommonStruct.pupupu;
 	s8 mouth_tex;
 	s8 eyes_tex;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	sb32 pin_loopstart_ended;
+#endif
 
 	if (pu->whispy_status != nGRPupupuWhispyWindStatusBlow)
 	{
@@ -591,6 +594,18 @@ void grPupupuWhispyRepairPresentationCosmetic(void)
 	/* Hash-safe: derive textures from snapshotted flower status only; never write back to pu. */
 	mouth_tex = grPupupuWhispyMouthTextureForFlowerStatus(pu->flowers_back_status);
 	eyes_tex = grPupupuWhispyEyesTextureForFlowerStatus(pu->flowers_front_status);
+#if defined(PORT) && defined(SSB64_NETMENU)
+	/*
+	 * Resim only: PlayAnim restarts the full texture clip; LoopStart→Loop is anim-gated so a
+	 * fresh clip leaves one peer stuck at WindLoopStart (soak 802174271 @1398). Live forward
+	 * must keep the natural LoopStart duration. Post-load pin also runs from snapshot refresh.
+	 * See docs/bugs/netplay_pupupu_flower_loopstart_repair_anim_map_diverge_2026-07-26.md.
+	 */
+	pin_loopstart_ended = ((syNetplayRollbackSemanticsActive() != FALSE) &&
+	                       (syNetRollbackIsResimulating() != FALSE))
+	                          ? TRUE
+	                          : FALSE;
+#endif
 	if ((mouth_tex >= 0) && (pu->map_gobj[2] != NULL))
 	{
 		gcAddAnimJointAll(
@@ -598,6 +613,21 @@ void grPupupuWhispyRepairPresentationCosmetic(void)
 		    (AObjEvent32 **)(dGRPupupuWhispyMouthTextures[pu->lr_players][mouth_tex] + (uintptr_t)pu->map_head),
 		    0.0F);
 		gcPlayAnimAll(pu->map_gobj[2]);
+#if defined(PORT) && defined(SSB64_NETMENU)
+		if ((pin_loopstart_ended != FALSE) &&
+		    (pu->flowers_back_status >= (u8)nGRPupupuFlowerStatusWindLoopStart) &&
+		    (pu->flowers_back_status <= (u8)nGRPupupuFlowerStatusWindStop))
+		{
+			DObj *root_dobj;
+
+			pu->map_gobj[2]->anim_frame = 0.0F;
+			root_dobj = DObjGetStruct(pu->map_gobj[2]);
+			if (root_dobj != NULL)
+			{
+				root_dobj->anim_frame = 0.0F;
+			}
+		}
+#endif
 	}
 	if ((eyes_tex >= 0) && (pu->map_gobj[3] != NULL))
 	{
@@ -606,6 +636,21 @@ void grPupupuWhispyRepairPresentationCosmetic(void)
 		    (AObjEvent32 **)(dGRPupupuWhispyEyesTextures[pu->lr_players][eyes_tex] + (uintptr_t)pu->map_head),
 		    0.0F);
 		gcPlayAnimAll(pu->map_gobj[3]);
+#if defined(PORT) && defined(SSB64_NETMENU)
+		if ((pin_loopstart_ended != FALSE) &&
+		    (pu->flowers_front_status >= (u8)nGRPupupuFlowerStatusWindLoopStart) &&
+		    (pu->flowers_front_status <= (u8)nGRPupupuFlowerStatusWindStop))
+		{
+			DObj *root_dobj;
+
+			pu->map_gobj[3]->anim_frame = 0.0F;
+			root_dobj = DObjGetStruct(pu->map_gobj[3]);
+			if (root_dobj != NULL)
+			{
+				root_dobj->anim_frame = 0.0F;
+			}
+		}
+#endif
 	}
 	if (grPupupuWhispyRepairDiagEnabled() != FALSE)
 	{
