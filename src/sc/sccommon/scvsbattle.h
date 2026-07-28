@@ -8,7 +8,7 @@
 
 extern void scVSBattleFuncUpdate(void);
 #if defined(PORT) && defined(SSB64_NETMENU)
-extern void scVSBattleFuncUpdateBattleSimOnly(void); /* Rollback resim: ifCommonBattleUpdateInterfaceAll + net rollback hooks; omits replay/HID/frame-commit (see scvsbattle.c). */
+extern void scVSBattleFuncUpdateBattleSimOnly(void); /* Rollback resim: interface + AfterBattleUpdate + FC late-mint arm on grid; omits replay/HID/live FC mint (see scvsbattle.c). */
 extern void scVSBattleFuncUpdateSkewPacingNetSlice(void);
 #endif
 extern s32 scVSBattleGetStartPlayerLR(s32 this_player);

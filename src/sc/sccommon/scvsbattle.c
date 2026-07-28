@@ -414,6 +414,12 @@ void scVSBattleFuncUpdateBattleSimOnly(void)
 		syNetSyncReconcileBattleTimePassedFromSimTick();
 	}
 	syNetRollbackAfterBattleUpdate();
+	/*
+	 * FuncUpdate early-returns while IsResimulating, so AfterCompleted never sees resim
+	 * grid ticks. Arm FC late mint here before Advance (GetTick still = completed).
+	 * See docs/bugs/netplay_fc_late_mint_resim_grid_skip_2026-07-28.md.
+	 */
+	syNetPeerFrameCommitNoteResimCompletedSimStep();
 	syNetInputAdvanceAuthoritativeSimTick();
 	syNetplayResimReplayHangDiagNoteBattleSimOnlyEnd();
 }
