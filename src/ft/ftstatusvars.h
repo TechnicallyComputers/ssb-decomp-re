@@ -70,6 +70,7 @@ typedef enum FTStatusVarsOverlay
 
 #if defined(PORT) && defined(SSB64_NETMENU)
 void syNetplayStatusVarsWitnessNoteAccess(const FTStruct *fp, FTStatusVarsOverlay overlay);
+void *syNetplayStatusVarsBankAuthoritySlot(FTStruct *fp, FTStatusVarsOverlay overlay, void *union_member);
 void syNetplayStatusVarsWitnessEnterDamageInit(void);
 void syNetplayStatusVarsWitnessLeaveDamageInit(void);
 void syNetplayStatusVarsWitnessProbeJumpAerialEntry(const FTStruct *fp);
@@ -100,13 +101,39 @@ static inline void ftStatusVarsProbeJumpAerialEntry(const FTStruct *fp)
 static inline ftCommonDeadStatusVars *ftStatusVarsDead(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayDead);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics. Mid-Dead loads were
+     * restoring stale bank[Dead] while dead_gate_wait stayed live (soak seed 3685555679
+     * FC@1389 dead_gate_wait live vs blob). SetWait writes bank then mirror; tagged capture
+     * round-trips wait+pos. Offline modes keep the vanilla union.
+     * See docs/bugs/netplay_dead_rebirth_damage_statusvars_bank_authority_2026-07-28.md.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayDead,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.dead;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.dead;
+#endif
 }
 
 static inline ftCommonRebirthStatusVars *ftStatusVarsRebirth(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayRebirth);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics. Rebirth SetStatus inits
+     * every field (pos/halo_offset/waits/halo_number); mid-rebirth loads were projecting
+     * stale bank zeros → topn_ty=0 FC (soak seed 3685555679 @1406). No sidecar — status-scoped.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayRebirth,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.rebirth;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.rebirth;
+#endif
 }
 
 static inline ftCommonSleepStatusVars *ftStatusVarsSleep(const FTStruct *fp)
@@ -124,31 +151,100 @@ static inline ftCommonEntryStatusVars *ftStatusVarsEntry(const FTStruct *fp)
 static inline ftCommonTurnStatusVars *ftStatusVarsTurn(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayTurn);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: under rollback semantics the sidecar bank slot is the forward-sim
+     * authority, so Turn bytes (lr_dash dash-tap buffer read from Wait..Ottotto/Dash) survive
+     * union aliasing and round-trip ring capture/apply exactly (blob turn_vars sidecar).
+     * Offline modes fall through to the vanilla union inside AuthoritySlot.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayTurn,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.turn;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.turn;
+#endif
 }
 
 static inline ftCommonKneeBendStatusVars *ftStatusVarsKneeBend(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayKneeBend);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics (same recipe as Turn).
+     * KneeBend SetStatus inits every field; JumpSetStatus reads kneebend while still in
+     * KneeBend status (before ftMainSetStatus) so no blob sidecar is required.
+     * See docs/bugs/netplay_kneebend_jumpaerial_statusvars_bank_authority_2026-07-28.md.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayKneeBend,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.kneebend;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.kneebend;
+#endif
 }
 
 static inline ftCommonJumpAerialStatusVars *ftStatusVarsJumpAerial(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayJumpAerial);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics. Mid-JA ring loads were
+     * projecting stale bank[JumpAerial] (zeros) over live ja_vel/drift — SoftLipPhase
+     * compound=softlip_ja_vel_fork after light GGPO (soak seed 2157085813 @1424).
+     * Ness/Yoshi SetStatus inits every overlay field used by ProcPhysics; tagged capture
+     * round-trips without a sidecar. Offline modes keep the vanilla union.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayJumpAerial,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.jumpaerial;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.jumpaerial;
+#endif
 }
 
 static inline ftCommonDamageStatusVars *ftStatusVarsDamage(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayDamage);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics. Hitstun / kb_over folds
+     * and DamageFly* into blastzone (soak seed 3685555679 FC@1266 DamageFlyRoll) round-trip
+     * via tagged capture. Thrown pre-seeds script_id into bank[Damage] without stomping the
+     * Thrown overlay — intentional bank isolation win. InitDamageVars sets hitstun/kb_over/
+     * dust/coll_mask_curr; remaining fields retain prior bank episode (same risk class as
+     * unscrubbed union leftovers). Offline modes keep the vanilla union.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayDamage,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.damage;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.damage;
+#endif
 }
 
 static inline ftCommonSquatStatusVars *ftStatusVarsSquat(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlaySquat);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics. Mid-Squat loads wiped
+     * pass_wait → Pass vs SquatRv FC (soak seed 733611745 @569). SetStatus inits all fields;
+     * blob squat_vars sidecar covers the interrupt window (same recipe as Turn). Offline modes
+     * keep the vanilla union.
+     * See docs/bugs/netplay_squat_landing_statusvars_bank_authority_2026-07-28.md.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlaySquat,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.squat;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.squat;
+#endif
 }
 
 static inline ftCommonDokanStatusVars *ftStatusVarsDokan(const FTStruct *fp)
@@ -160,13 +256,37 @@ static inline ftCommonDokanStatusVars *ftStatusVarsDokan(const FTStruct *fp)
 static inline ftCommonLandingStatusVars *ftStatusVarsLanding(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayLanding);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics. Single-field overlay
+     * (is_allow_interrupt) set on Landing SetStatus; tagged capture round-trips without a
+     * sidecar. Offline modes keep the vanilla union.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayLanding,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.landing;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.landing;
+#endif
 }
 
 static inline ftCommonFallSpecialStatusVars *ftStatusVarsFallSpecial(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayFallSpecial);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics. FallSpecial SetStatus
+     * inits every field; LandingFallSpecial shares this overlay (ownership table). No sidecar.
+     * Offline modes keep the vanilla union.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayFallSpecial,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.fallspecial;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.fallspecial;
+#endif
 }
 
 static inline ftCommonTwisterStatusVars *ftStatusVarsTwister(const FTStruct *fp)

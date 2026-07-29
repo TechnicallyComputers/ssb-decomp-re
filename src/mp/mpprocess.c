@@ -51,11 +51,22 @@ static GObj *sMPProcessNetplayCollGObj;
  * project can leave one peer without PASS|CLIFF residual while MpLanding still
  * logs CLIFF after this tick's floor sweep — Linux then keeps AdjNew wall (X
  * stalls ~JumpAerial vel) while Android free-flies (~−27u/frame) with Y matched.
- * Latch PASS|CLIFF when observed; clear only on grounded FLOOR. SoftLipEx ORs the
- * latch so suppress survives residual clear. See
+ * Latch PASS|CLIFF when observed; clear on grounded FLOOR *or* sticky TTL expiry.
+ * SoftLipEx ORs the latch so suppress survives residual clear. See
  * docs/bugs/netplay_airborne_cliff_lip_jumpaerial_sticky_softlip_2026-07-19.md.
+ *
+ * Under-stage clip (soak1 seed 2412131430 gut≈671–747): SetCollProjectFloorID
+ * fail left stale PASS floor_flags; floor StickyNote + SoftLipEx re-latched every
+ * frame so suppress stayed armed under the stage body (rwall_suppress @732–737)
+ * and JumpAerial rose through the underside onto fline=3. On project fail, clear
+ * PASS|CLIFF residual; only Note sticky from a live soft floor (fline!=-1) or a
+ * successful PASS|CLIFF project; expire sticky after SOFTLIP_STICKY_TTL UpdateMains
+ * without a refresh. See docs/bugs/netplay_softlip_understage_wall_passthrough_2026-07-28.md.
  */
 static u32 sMPProcessNetplaySoftLipStickyFlags[GMCOMMON_PLAYERS_MAX];
+/* Frames of sticky remaining; StickyNote refreshes. 0 => sticky inert. */
+static u8 sMPProcessNetplaySoftLipStickyTtl[GMCOMMON_PLAYERS_MAX];
+#define MPPROCESS_NETPLAY_SOFTLIP_STICKY_TTL 24
 
 static sb32 mpProcessNetplaySoftLipFloorFlags(u32 floor_flags)
 {
@@ -142,6 +153,16 @@ static void mpProcessNetplayCollIdentity(GObj *gobj, const char **domain_out, s3
 	}
 }
 
+static void mpProcessNetplaySoftLipStickyClearPlayer(s32 player)
+{
+	if ((player < 0) || (player >= GMCOMMON_PLAYERS_MAX))
+	{
+		return;
+	}
+	sMPProcessNetplaySoftLipStickyFlags[player] = 0U;
+	sMPProcessNetplaySoftLipStickyTtl[player] = 0U;
+}
+
 static void mpProcessNetplaySoftLipStickyNote(u32 floor_flags)
 {
 	s32 player;
@@ -161,6 +182,32 @@ static void mpProcessNetplaySoftLipStickyNote(u32 floor_flags)
 	}
 	sMPProcessNetplaySoftLipStickyFlags[player] =
 	    floor_flags & (MAP_VERTEX_COLL_PASS | MAP_VERTEX_COLL_CLIFF);
+	sMPProcessNetplaySoftLipStickyTtl[player] = (u8)MPPROCESS_NETPLAY_SOFTLIP_STICKY_TTL;
+}
+
+static void mpProcessNetplaySoftLipStickyTick(void)
+{
+	s32 player;
+
+	if (syNetplayRollbackSemanticsActive() == FALSE)
+	{
+		return;
+	}
+	player = mpProcessNetplaySoftLipPlayerIndex();
+	if (player < 0)
+	{
+		return;
+	}
+	if (sMPProcessNetplaySoftLipStickyTtl[player] == 0U)
+	{
+		sMPProcessNetplaySoftLipStickyFlags[player] = 0U;
+		return;
+	}
+	sMPProcessNetplaySoftLipStickyTtl[player]--;
+	if (sMPProcessNetplaySoftLipStickyTtl[player] == 0U)
+	{
+		sMPProcessNetplaySoftLipStickyFlags[player] = 0U;
+	}
 }
 
 static void mpProcessNetplaySoftLipStickyClearIfGrounded(MPCollData *coll_data)
@@ -191,7 +238,7 @@ static void mpProcessNetplaySoftLipStickyClearIfGrounded(MPCollData *coll_data)
 	{
 		return;
 	}
-	sMPProcessNetplaySoftLipStickyFlags[player] = 0U;
+	mpProcessNetplaySoftLipStickyClearPlayer(player);
 }
 
 static sb32 mpProcessNetplaySoftLipStickyActive(void)
@@ -207,7 +254,12 @@ static sb32 mpProcessNetplaySoftLipStickyActive(void)
 	{
 		return FALSE;
 	}
-	return (sMPProcessNetplaySoftLipStickyFlags[player] != 0U) ? TRUE : FALSE;
+	if ((sMPProcessNetplaySoftLipStickyFlags[player] == 0U) ||
+	    (sMPProcessNetplaySoftLipStickyTtl[player] == 0U))
+	{
+		return FALSE;
+	}
+	return TRUE;
 }
 
 u32 mpProcessNetplaySoftLipStickyGet(s32 player)
@@ -231,9 +283,15 @@ void mpProcessNetplaySoftLipStickySet(s32 player, u32 flags)
 	 * same way on both peers. Soak 1328818035: emergency_restore@992 matched
 	 * TopN through 993 then forked X@994 (Linux AdjNew +15.7, Android −3.4).
 	 * See docs/bugs/netplay_airborne_cliff_lip_jumpaerial_softlip_snapshot_2026-07-19.md.
+	 * Full TTL after load so the restored latch survives the first post-load
+	 * UpdateMain ticks the same way on both peers (TTL itself is not snapshotted).
 	 */
 	sMPProcessNetplaySoftLipStickyFlags[player] =
 	    flags & (MAP_VERTEX_COLL_PASS | MAP_VERTEX_COLL_CLIFF);
+	sMPProcessNetplaySoftLipStickyTtl[player] =
+	    (sMPProcessNetplaySoftLipStickyFlags[player] != 0U)
+		? (u8)MPPROCESS_NETPLAY_SOFTLIP_STICKY_TTL
+		: 0U;
 }
 
 static sb32 mpProcessNetplayUnattachedSoftLipActive(MPCollData *coll_data)
@@ -242,7 +300,13 @@ static sb32 mpProcessNetplayUnattachedSoftLipActive(MPCollData *coll_data)
 	{
 		return FALSE;
 	}
-	if (mpProcessNetplaySoftLipFloorFlags(coll_data->floor_flags) != FALSE)
+	/*
+	 * Residual PASS|CLIFF only counts with a live floor line. Stale bits with
+	 * fline==-1 (project miss) are not a soft lip — sticky TTL covers the
+	 * wall-before-floor / brief lip window instead.
+	 */
+	if ((coll_data->floor_line_id != -1) &&
+	    (mpProcessNetplaySoftLipFloorFlags(coll_data->floor_flags) != FALSE))
 	{
 		return TRUE;
 	}
@@ -310,11 +374,23 @@ static sb32 mpProcessNetplaySuppressAdjNewWallSoftLipEx(MPCollData *coll_data, u
 	{
 		return FALSE;
 	}
-	mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
-	mpProcessNetplaySoftLipStickyNote(swept_floor_flags);
+	/*
+	 * Live soft floor (fline!=-1): refresh sticky from residual + wall-from-floor sweep.
+	 * fline==-1: do not re-latch from stale residual or incidental swept PASS — sticky TTL
+	 * from the last live soft floor covers DamageFly/JumpAerial lip; under-stage must keep walls.
+	 */
+	if (coll_data->floor_line_id != -1)
+	{
+		mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
+		mpProcessNetplaySoftLipStickyNote(swept_floor_flags);
+	}
 	if (mpProcessNetplayUnattachedSoftLipActive(coll_data) != FALSE)
 	{
 		return TRUE;
+	}
+	if (coll_data->floor_line_id == -1)
+	{
+		return FALSE;
 	}
 	return mpProcessNetplaySoftLipFloorFlags(swept_floor_flags);
 }
@@ -939,10 +1015,26 @@ void mpProcessSetCollProjectFloorID(MPCollData *coll_data) // Check if object is
     if (mpCollisionCheckProjectFloor(&sp2C, &coll_data->floor_line_id, &coll_data->floor_dist, &coll_data->floor_flags, &coll_data->floor_angle) == FALSE)
     {
         coll_data->floor_line_id = -1;
+#if defined(PORT) && defined(SSB64_NETMENU)
+	/*
+	 * SSB64_NETMENU: stripped from offline builds. Runtime: active VS/resim only.
+	 * Project miss leaves floor_flags untouched — stale PASS|CLIFF would SoftLipEx
+	 * re-latch forever under the stage (soak1 seed 2412131430). Drop residual; sticky
+	 * TTL covers brief lip frames after the last live soft floor.
+	 */
+	if (syNetplayRollbackSemanticsActive() != FALSE)
+	{
+		coll_data->floor_flags &=
+		    (u32) ~(MAP_VERTEX_COLL_PASS | MAP_VERTEX_COLL_CLIFF);
+	}
+#endif
     }
 #if defined(PORT) && defined(SSB64_NETMENU)
-    /* Latch PASS|CLIFF from project so next tick's wall CheckTest still soft-lip suppresses. */
-    mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
+    else
+    {
+	/* Latch PASS|CLIFF from a live project so next tick's wall CheckTest suppresses. */
+	mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
+    }
 #endif
 }
 
@@ -1030,6 +1122,7 @@ sb32 mpProcessUpdateMain(MPCollData *coll_data, sb32 (*proc_coll)(MPCollData*, G
 
 #if defined(PORT) && defined(SSB64_NETMENU)
     mpProcessNetplaySoftLipStickyClearIfGrounded(coll_data);
+    mpProcessNetplaySoftLipStickyTick();
     sMPProcessNetplayCollGObj = NULL;
 #endif
     return result;
@@ -2784,8 +2877,14 @@ sb32 mpProcessCheckTestFloorCollisionAdjNew(MPCollData *coll_data, sb32(*proc_ma
             }
         }
     }
-    /* Floor sweep wrote floor_flags even on miss — latch soft-lip for next wall pass. */
-    mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
+    /*
+     * Only latch from a live soft floor line. Floor sweep can leave stale PASS|CLIFF
+     * bits on miss (fline==-1); noting those kept suppress armed under the stage.
+     */
+    if (coll_data->floor_line_id != -1)
+    {
+	mpProcessNetplaySoftLipStickyNote(coll_data->floor_flags);
+    }
 #endif
 
     if ((var_v0 != 0) && (!(coll_data->floor_flags & MAP_VERTEX_COLL_PASS) || (coll_data->floor_line_id != coll_data->ignore_line_id)) && ((proc_map == NULL) || (proc_map(gobj) != FALSE)))
