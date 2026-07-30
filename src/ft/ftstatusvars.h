@@ -382,7 +382,22 @@ static inline ftCommonCatchStatusVars *ftStatusVarsCatchMain(const FTStruct *fp)
 static inline ftCommonCatchWaITStatusVars *ftStatusVarsCatchWait(const FTStruct *fp)
 {
     ftStatusVarsNoteAccess(fp, nFTStatusVarsOverlayCatchWait);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * C2b migrated overlay: bank authority under rollback semantics (same recipe as Turn).
+     * Mid-CatchWait synctest/load projected stale bank[CatchWait] (zeros) over live
+     * throw_wait → throw_wait==0 fired ThrowF while the peer stayed in CatchWait
+     * (soak1 session 614503255 seed 1685497605 @1724). CatchWaitSetStatus inits
+     * throw_wait; status-scoped — no blob sidecar. Offline modes keep the vanilla union.
+     * See docs/bugs/netplay_catchwait_throw_wait_statusvars_bank_authority_2026-07-29.md.
+     */
+    return &((union FTStatusVars *)syNetplayStatusVarsBankAuthoritySlot(
+                 (FTStruct *)(void *)fp, nFTStatusVarsOverlayCatchWait,
+                 &((FTStruct *)(void *)fp)->status_vars))
+                ->common.catchwait;
+#else
     return &((FTStruct *)(void *)fp)->status_vars.common.catchwait;
+#endif
 }
 
 static inline ftCommonCaptureStatusVars *ftStatusVarsCapture(const FTStruct *fp)
