@@ -6,6 +6,10 @@
 #include <sys/rdp.h>
 #ifdef PORT
 #include <sys/debug.h>
+/* Enhanced-framerate frame interpolation recording hook — observational
+ * only. Tag 1 = projection-stack matrix (combined view*persp here).
+ * See port/interpolation/frame_interpolation.h. */
+extern void portInterpRecordMtx(void *mtx, void *owner, int ordinal, int tag);
 #endif
 #if defined(PORT) && defined(SSB64_NETMENU)
 #include <sys/netpeer.h>
@@ -1048,6 +1052,9 @@ sb32 gmCameraPrepLookAtFuncMatrix(Mtx *mtx, CObj *cobj, Gfx **dls)
     gSPLookAtX(dls[0]++, &gGMCameraStruct.look_at.l[0]);
     gSPLookAtY(dls[0]++, &gGMCameraStruct.look_at.l[1]);
 
+#ifdef PORT
+    portInterpRecordMtx(mtx, cobj, 0, 1 /* combined view*persp projection */);
+#endif
     gSPMatrix(dls[0]++, mtx, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
 
     gSPPerspNormalize(dls[0]++, cobj->projection.persp.norm);
@@ -1234,6 +1241,21 @@ void gmCameraMakeBattleCamera(void)
 // 0x8010DB2C
 GObj* gmCameraMakeMovieCamera(void (*func_camera)(GObj*))
 {
+#ifdef PORT
+    /* Issue #72: the opening-montage motion windows are created mid-scene
+     * (FuncRun tic 15) together with stage setup + fighter creation. On N64
+     * that work overruns the frame by a few VIs, so the first tics after
+     * creation — whose authored camera state is display-degenerate (eye-at
+     * dist.z == 0 slams the wallpaper parallax to its clamps, showing a
+     * full-window gold smear) — never reach the screen; VI keeps scanning
+     * the previous frame. The port completes setup within one host frame,
+     * so suppress the next two gfx submissions to reproduce the held-frame
+     * behavior verified against a cycle-accurate emulator. */
+    {
+        extern void port_sim_load_stall(int n);
+        port_sim_load_stall(2);
+    }
+#endif
     return gmCameraMakeDefaultCamera(nGCMatrixKindPerspFastF, 8, func_camera);
 }
 
@@ -1386,6 +1408,9 @@ sb32 gmCameraOrthoLookAtFuncMatrix(Mtx *mtx, CObj *cobj, Gfx **dls)
 // 0x8010E10C
 sb32 gmCameraPrepProjectionFuncMatrix(Mtx *mtx, CObj *cobj, Gfx **dls)
 {
+#ifdef PORT
+    portInterpRecordMtx(mtx, cobj, 0, 1 /* combined view*persp projection */);
+#endif
     gSPMatrix(dls[0]++, mtx, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
 
     return 0;

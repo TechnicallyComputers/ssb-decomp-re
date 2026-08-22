@@ -13,38 +13,48 @@
 #include <PR/mbi.h>
 #include <PR/gu.h>
 
+/* The du constant tables in sinf.c/cosf.c assemble doubles from {hi, lo}
+ * 32-bit word pairs laid out in the N64's big-endian order. On little-endian
+ * hosts (every PC/mobile port target) both the member order and the
+ * positional initializers must flip so .d reassembles the same double —
+ * initializers fill ascending addresses no matter what the members are
+ * named, so the swap has to happen in the initializer too (DU_INIT below).
+ * IDO and any other big-endian build keeps the original order via the
+ * #else branches and preprocesses to the original source, byte-identical.
+ * Netplay also depends on this: a mis-assembled rpi/pihi/pilo overflows the
+ * Cody-Waite range reduction (__cosf(0) -> +inf) and desyncs cross-ISA peers.
+ * See docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md. */
+#if defined(_MSC_VER) || (defined(__BYTE_ORDER__) && __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)
+#define DU_LITTLE_ENDIAN 1
+#endif
+
 typedef union
 {
 	struct
 	{
+#ifdef DU_LITTLE_ENDIAN
+		unsigned int lo;
+		unsigned int hi;
+#else
 		unsigned int hi;
 		unsigned int lo;
+#endif
 	} word;
 
 	double d;
 } du;
+
+#ifdef DU_LITTLE_ENDIAN
+#define DU_INIT(hi_, lo_) { lo_, hi_ }
+#else
+#define DU_INIT(hi_, lo_) { hi_, lo_ }
+#endif
 
 typedef union
 {
 	unsigned int i;
 	float f;
 } fu;
-
-/*
- * PORT: du constants in the libultra gu trig (sinf.c/cosf.c) are written as { hi, lo }
- * 32-bit halves of an IEEE-754 double in big-endian N64 memory order. Reading union
- * member .d on a little-endian host (x86/x64/aarch64) byte-swaps the halves, producing
- * garbage constants — e.g. rpi/pihi/pilo overflow the Cody-Waite range reduction so
- * __cosf(0) returns +inf instead of 1.0. Initialize via SSB64_DU_HL so .d reconstructs
- * the intended double regardless of host endianness. Big-endian keeps the N64 order;
- * little-endian (and unknown, i.e. all current PC targets) swaps the halves.
- * See docs/bugs/netplay_cross_isa_libm_trig_2026-06-04.md.
- */
-#if defined(__BYTE_ORDER__) && defined(__ORDER_BIG_ENDIAN__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
-#define SSB64_DU_HL(hi, lo) { { (unsigned int)(hi), (unsigned int)(lo) } }
-#else
-#define SSB64_DU_HL(hi, lo) { { (unsigned int)(lo), (unsigned int)(hi) } }
-#endif
 
 #ifndef __GL_GL_H__
 

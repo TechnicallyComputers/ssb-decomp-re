@@ -1116,23 +1116,12 @@ void mvOpeningRoomMakeLogoCamera(void)
 // 0x80133B58
 void mvOpeningRoomTransitionOverlayProcDisplay(GObj *gobj)
 {
-#ifdef PORT
-	// On N64 this callback redirects the color image to the Z buffer and
-	// draws a white-PRIM mesh, which (via Fast3D's color-image-redirect)
-	// writes a Z=far mask into the depth attachment without ever painting
-	// pixels. The wallpaper then Z_CMPs against that mask so it draws only
-	// inside the Overlay shape, leaving the explosion area transparent for
-	// the Outline silhouette to render against. libultraship's Fast3D
-	// backend doesn't emulate the color-image redirect, so the white-PRIM
-	// mesh lands directly on the framebuffer as an opaque white blob in
-	// the center of the explosion. Skip the draw entirely on PORT — the
-	// Outline silhouette then renders against the wallpaper/underlying
-	// scene, which approximates the intended visual much better than a
-	// flat white center. See
-	// docs/intro_explosion_alpha_cutout_handoff_2026-04-25.md.
-	(void)gobj;
-	return;
-#else
+	/* PORT note: this callback relies on the color-image-redirect-to-Z
+	 * idiom, which libultraship's Fast3D now emulates (redirect-active
+	 * draws write their constant combiner output as depth with no
+	 * framebuffer side effect — see
+	 * docs/bugs/color_image_redirect_z_emulation_2026-07-30.md). The
+	 * original N64 code runs unmodified. */
 	gDPPipeSync(gSYTaskmanDLHeads[0]++);
 	gDPSetCycleType(gSYTaskmanDLHeads[0]++, G_CYC_1CYCLE);
 	gDPSetColorImage(gSYTaskmanDLHeads[0]++, G_IM_FMT_RGBA, G_IM_SIZ_16b, gSYVideoResWidth, gSYVideoZBuffer);
@@ -1146,7 +1135,6 @@ void mvOpeningRoomTransitionOverlayProcDisplay(GObj *gobj)
 	gDPSetCycleType(gSYTaskmanDLHeads[0]++, G_CYC_1CYCLE);
 	gDPSetColorImage(gSYTaskmanDLHeads[0]++, G_IM_FMT_RGBA, gSYVideoColorDepth, gSYVideoResWidth, (void*)0x0F000000);
 	gDPSetRenderMode(gSYTaskmanDLHeads[0]++, G_RM_AA_ZB_OPA_SURF, G_RM_AA_ZB_OPA_SURF2);
-#endif
 }
 
 // 0x80133CEC
@@ -1204,22 +1192,11 @@ void mvOpeningRoomMakeTransitionCamera(void)
 		16,
 		GOBJ_PRIORITY_DEFAULT,
 		func_80017EC0,
-#ifdef PORT
-		// PORT: cam dl_link_priority is processed in descending order
-		// (lower number = later in the draw stack). Original 95 put the
-		// transition camera FIRST, so the Outline silhouette rendered
-		// behind the wallpaper and every other scene camera (fighter=40,
-		// main=80, wallpaper=90). On N64 this was masked by the
-		// color-image-redirect idiom (the Outline-fill cleared Z to a
-		// value that Z-rejected later draws over the explosion area).
-		// libultraship's Fast3D doesn't emulate that redirect, so we
-		// instead lower this camera below every other one (30 < 40) to
-		// force the silhouette to render in front of all geometry. See
-		// docs/intro_explosion_alpha_cutout_handoff_2026-04-25.md.
-		30,
-#else
+		/* Original N64 priority. The color-image-redirect idiom this
+		 * ordering depends on is now emulated by Fast3D (see
+		 * docs/bugs/color_image_redirect_z_emulation_2026-07-30.md);
+		 * the earlier PORT workaround (95 → 30) is no longer needed. */
 		95,
-#endif
 		COBJ_MASK_DLLINK(30),
 		~0,
 		TRUE,
@@ -1345,6 +1322,21 @@ void mvOpeningRoomFuncRun(GObj *gobj)
 {
 	sMVOpeningRoomTotalTimeTics++;
 
+#ifdef PORT
+	/* The desk-to-stage explosion uses the previous color buffer outside its
+	 * expanding redirect-to-Z mask. Preserve the complete widened framebuffer
+	 * for exactly that transition; normal widescreen frames still clear unused
+	 * 4:3 side strips so authored menus cannot show stale scene pixels. */
+	{
+		extern void GfxSetWidescreenFramebufferPersistence(int active);
+		GfxSetWidescreenFramebufferPersistence
+		(
+			(sMVOpeningRoomTotalTimeTics >= 1040) &&
+			(sMVOpeningRoomTotalTimeTics < I_SEC_TO_TICS(18))
+		);
+	}
+#endif
+
 	if (sMVOpeningRoomTotalTimeTics >= 10)
 	{
 		if (sMVOpeningRoomUnused0x80134D54 != 0)
@@ -1454,6 +1446,13 @@ void mvOpeningRoomFuncStart(void)
 {
 	s32 unused;
 	LBRelocSetup rl_setup;
+
+#ifdef PORT
+	{
+		extern void GfxSetWidescreenFramebufferPersistence(int active);
+		GfxSetWidescreenFramebufferPersistence(0);
+	}
+#endif
 
 	syTaskmanSetFuncSwapBuffer(mvOpeningRoomCheckSetFramebuffer);
 

@@ -1016,6 +1016,15 @@ void scManagerRunLoop(sb32 arg)
 	while (TRUE)
 	{
 #ifdef PORT
+		/* Console reset: consume a pending reset (re-applies the target
+		 * scene and clears the flag) before dispatching. For top-level
+		 * scenes this is where the reset lands; for 1P sub-scenes the
+		 * sc1pmanager.c guards consumed it already and this is a no-op. */
+		{
+			extern sb32 portSCManagerConsumeReset(void);
+			portSCManagerConsumeReset();
+		}
+
 		SCMANAGER_DIAG_LOG("SSB64: scManagerRunLoop — entering scene %d\n",
 		         (int)gSCManagerSceneData.scene_curr);
 
@@ -1925,3 +1934,76 @@ void scManagerRunPrintGObjStatus(void)
 {
 	syDebugRunFuncPrint(scManagerFuncPrint);
 }
+
+#ifdef PORT
+/* In-game reset for the port's ESC-menu Reset button / Ctrl+Cmd-R console
+ * "reset" command (registered in port/port.cpp). Mirrors what every scene's
+ * own exit path does (see sc1pintro.c, sc1pstageclear.c, scvsbattle.c):
+ * wind down audio, point scene_curr at the target scene, and ask the task
+ * manager to end the current scene at the frame boundary. scManagerRunLoop
+ * then runs its normal scene-boundary cleanup (GObj sweep, stale-pointer
+ * nulling) before entering the target — the same code path as any regular
+ * scene transition.
+ *
+ * The reset is STICKY (sPortResetPending + target) because 1P mode runs a
+ * nested scene chain: sc1PManagerUpdateScene dispatches sub-scenes back to
+ * back and rewrites scene_curr itself between them, so a plain scene_curr
+ * write gets clobbered and the manager chains into the next stage intro
+ * against half-torn-down battle state (crashed in
+ * ftManagerSetupFilesAllKind). sc1pmanager.c checks
+ * portSCManagerConsumeReset() after every sub-scene call and bails out to
+ * scManagerRunLoop; scManagerRunLoop consumes any remaining pending reset
+ * at the top of its dispatch loop (the top-level-scene case).
+ *
+ * The target mirrors the port's boot flow: nSCKindOpeningRoom (the port
+ * skips the ~3 s nSCKindStartup — see scManagerRunLoop), overridden to the
+ * VS character select when the Boot-to-CSS enhancement is active, exactly
+ * like boot. Safe to call from the ImGui/menu context: the port runs game
+ * and UI cooperatively on one coroutine, and the writes here are plain
+ * stores that taskman/scmanager consume at the next frame boundary. */
+static ub32 sPortResetPending = FALSE;
+static s32 sPortResetTarget = nSCKindOpeningRoom;
+
+void portSCManagerRequestReset(void)
+{
+	extern void func_800266A0_272A0(void); /* audio wind-down used by every scene exit */
+	extern int port_enhancement_boot_to_vs_css(void);
+
+	sPortResetTarget = port_enhancement_boot_to_vs_css() ? nSCKindPlayersVS : nSCKindOpeningRoom;
+	sPortResetPending = TRUE;
+
+	/* Speak the game's native match-abort language: is_reset is what the
+	 * original A+B+R+Z combo sets (ifcommon.c), and every battle-end flow
+	 * already honors it — scvsbattle.c:684 skips sudden death, the VS
+	 * results and 1P bonus/challenger flows short-circuit. Without it, a
+	 * forced mid-match exit reads as "time up, tied score" and VS battles
+	 * chain into sudden death. Each battle start clears it, so no staleness. */
+	gSCManagerSceneData.is_reset = TRUE;
+
+	func_800266A0_272A0();
+
+	/* Boot-like state: prev == curr == target (same as the default scene
+	 * data and the Boot-to-CSS override at the top of scManagerRunLoop). */
+	gSCManagerSceneData.scene_prev = sPortResetTarget;
+	gSCManagerSceneData.scene_curr = sPortResetTarget;
+
+	syTaskmanSetLoadScene();
+}
+
+/* If a reset is pending: re-apply the target scene (undoing any scene_curr
+ * writes a nested manager made since the request), clear the pending flag,
+ * and return TRUE so nested managers know to unwind to scManagerRunLoop. */
+sb32 portSCManagerConsumeReset(void)
+{
+	if (!sPortResetPending)
+	{
+		return FALSE;
+	}
+	sPortResetPending = FALSE;
+
+	gSCManagerSceneData.scene_prev = sPortResetTarget;
+	gSCManagerSceneData.scene_curr = sPortResetTarget;
+
+	return TRUE;
+}
+#endif

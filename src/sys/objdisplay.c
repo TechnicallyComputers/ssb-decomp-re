@@ -13,6 +13,11 @@
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
+/* Enhanced-framerate frame interpolation recording hook — observational
+ * only, near-zero cost while the feature is disabled. Tags: 0 = DObj
+ * modelview, 1 = projection (possibly combined view*persp), 2 = view.
+ * See port/interpolation/frame_interpolation.h. */
+extern void portInterpRecordMtx(void *mtx, void *owner, int ordinal, int tag);
 #ifdef _MSC_VER
 #include <excpt.h>
 #endif
@@ -1537,6 +1542,9 @@ s32 gcPrepDObjMatrix(Gfx **dl, DObj *dobj)
             }
             if (xobj->kind != 2)
             {
+#ifdef PORT
+                portInterpRecordMtx(mtx_hub.gbi, dobj, sp2CC, 0 /* DObj modelview */);
+#endif
                 if ((sp2CC == 0) && (dobj->parent == DOBJ_PARENT_NULL || dobj->sib_next != NULL))
                 {
                     gSPMatrix(current_dl++, mtx_hub.gbi, G_MTX_PUSH | G_MTX_MUL | G_MTX_MODELVIEW);
@@ -3648,11 +3656,17 @@ void gcPrepCameraMatrix(Gfx **dls, CObj *cobj)
 
                 case nGCMatrixKindPerspFastF:
                 case nGCMatrixKindPerspF:
+#ifdef PORT
+                    portInterpRecordMtx(mtx_hub.gbi, cobj, i, 1 /* projection */);
+#endif
                     gSPMatrix(dl++, mtx_hub.gbi, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
                     gSPPerspNormalize(dl++, cobj->projection.persp.norm);
                     break;
 
                 case nGCMatrixKindOrtho:
+#ifdef PORT
+                    portInterpRecordMtx(mtx_hub.gbi, cobj, i, 1 /* projection */);
+#endif
                     gSPMatrix(dl++, mtx_hub.gbi, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_PROJECTION);
                     break;
 
@@ -3665,6 +3679,9 @@ void gcPrepCameraMatrix(Gfx **dls, CObj *cobj)
                 case 6:
                 case 8:
                 case 10:
+#ifdef PORT
+                    portInterpRecordMtx(mtx_hub.gbi, cobj, i, 1 /* view merged into projection */);
+#endif
                     gSPMatrix(dl++, mtx_hub.gbi, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_PROJECTION);
                     break;
 
@@ -3677,6 +3694,9 @@ void gcPrepCameraMatrix(Gfx **dls, CObj *cobj)
                 case 7:
                 case 9:
                 case 11:
+#ifdef PORT
+                    portInterpRecordMtx(mtx_hub.gbi, cobj, i, 2 /* view */);
+#endif
                     gSPMatrix(dl++, mtx_hub.gbi, G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
                     break;
 

@@ -53,18 +53,18 @@ static int ssb64_float_bits(float x)
 
 /* coefficients for polynomial approximation of cos on +/- pi/2 */
 
-/* PORT: SSB64_DU_HL reorders the { hi, lo } halves for the host endianness so .d is
+/* PORT: DU_INIT reorders the { hi, lo } halves for the host endianness so .d is
  * the intended double. Without it, __cosf(0)=+inf on little-endian. See guint.h. */
 static const du P[] = {
-	SSB64_DU_HL(0x3ff00000, 0x00000000), SSB64_DU_HL(0xbfc55554, 0xbc83656d), SSB64_DU_HL(0x3f8110ed, 0x3804c2a0),
-	SSB64_DU_HL(0xbf29f6ff, 0xeea56814), SSB64_DU_HL(0x3ec5dbdf, 0x0e314bfe),
+	DU_INIT(0x3ff00000, 0x00000000), DU_INIT(0xbfc55554, 0xbc83656d), DU_INIT(0x3f8110ed, 0x3804c2a0),
+	DU_INIT(0xbf29f6ff, 0xeea56814), DU_INIT(0x3ec5dbdf, 0x0e314bfe),
 };
 
-static const du rpi = SSB64_DU_HL(0x3fd45f30, 0x6dc9c883);
+static const du rpi = DU_INIT(0x3fd45f30, 0x6dc9c883);
 
-static const du pihi = SSB64_DU_HL(0x400921fb, 0x50000000);
+static const du pihi = DU_INIT(0x400921fb, 0x50000000);
 
-static const du pilo = SSB64_DU_HL(0x3e6110b4, 0x611a6263);
+static const du pilo = DU_INIT(0x3e6110b4, 0x611a6263);
 
 static const fu zero = { 0x00000000 };
 

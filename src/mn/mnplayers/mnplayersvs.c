@@ -4928,31 +4928,39 @@ void mnPlayersVSSetSceneData(void)
 
 #ifdef PORT
 /* Classic Co-op handoff: translate the VS CSS slots into what the 1P game
- * manager reads, mirroring mnPlayers1PGameSetSceneData (mnplayers1pgame.c).
- * The first confirmed human slot becomes P1 (gSCManagerSceneData.player/
- * fkind/costume); the second becomes the co-op partner via the coop_*
- * handoff fields; CPU slots and any 3rd/4th human are ignored. Slot index
- * == controller port on the VS CSS, which is exactly what the 1P game
- * expects in .player. */
+ * manager reads. The first confirmed human slot becomes P1; the first
+ * available other slot (Human or CPU) becomes the co-op partner. */
 void mnPlayersVSSetSceneDataClassicCoop(void)
 {
-	s32 humans[2] = { -1, -1 };
-	s32 human_count = 0;
+	s32 p1_human = -1;
+	s32 p2_partner = -1;
 	s32 i;
 
+	// 1. Find the primary human player (P1)
 	for (i = 0; i < ARRAY_COUNT(sMNPlayersVSSlots); i++)
 	{
-		if ((human_count < 2) && (sMNPlayersVSSlots[i].pkind == nFTPlayerKindMan) && (sMNPlayersVSSlots[i].is_fighter_selected != FALSE))
+		if ((p1_human == -1) && (sMNPlayersVSSlots[i].pkind == nFTPlayerKindMan) && (sMNPlayersVSSlots[i].is_fighter_selected != FALSE))
 		{
-			humans[human_count++] = i;
+			p1_human = i;
 		}
 	}
+
+	// 2. Find the co-op partner (can be Man or Com)
+	for (i = 0; i < ARRAY_COUNT(sMNPlayersVSSlots); i++)
+	{
+		if ((p2_partner == -1) && (i != p1_human) && (sMNPlayersVSSlots[i].pkind != nFTPlayerKindNot) && (sMNPlayersVSSlots[i].is_fighter_selected != FALSE))
+		{
+			p2_partner = i;
+		}
+	}
+
 	/* CheckReady guarantees at least one confirmed human in classic
-	 * context, so humans[0] is always valid here. */
-	gSCManagerSceneData.player = humans[0];
-	gSCManagerSceneData.fkind = sMNPlayersVSSlots[humans[0]].fkind;
-	gSCManagerSceneData.costume = sMNPlayersVSSlots[humans[0]].costume;
+	 * context, so p1_human is always valid here. */
+	gSCManagerSceneData.player = p1_human;
+	gSCManagerSceneData.fkind = sMNPlayersVSSlots[p1_human].fkind;
+	gSCManagerSceneData.costume = sMNPlayersVSSlots[p1_human].costume;
 	gSCManagerSceneData.spgame_stage = 0;
+
 	{
 		const char *stage_env = getenv("SSB64_SPGAME_STAGE");
 		if (stage_env != NULL)
@@ -4960,14 +4968,22 @@ void mnPlayersVSSetSceneDataClassicCoop(void)
 			gSCManagerSceneData.spgame_stage = (u8)atoi(stage_env);
 		}
 	}
-	if (humans[1] != -1)
+
+	if (p2_partner != -1)
 	{
-		gSCManagerSceneData.coop_player2 = humans[1];
-		gSCManagerSceneData.coop_fkind2 = sMNPlayersVSSlots[humans[1]].fkind;
-		gSCManagerSceneData.coop_costume2 = sMNPlayersVSSlots[humans[1]].costume;
-		gSCManagerSceneData.coop_shade2 = sMNPlayersVSSlots[humans[1]].shade;
+		gSCManagerSceneData.coop_player2 = p2_partner;
+		gSCManagerSceneData.coop_fkind2 = sMNPlayersVSSlots[p2_partner].fkind;
+		gSCManagerSceneData.coop_costume2 = sMNPlayersVSSlots[p2_partner].costume;
+		gSCManagerSceneData.coop_shade2 = sMNPlayersVSSlots[p2_partner].shade;
+
+		// Pass the new CPU variables to the 1P Manager
+		gSCManagerSceneData.coop_pkind2 = sMNPlayersVSSlots[p2_partner].pkind;
+		gSCManagerSceneData.coop_level2 = sMNPlayersVSSlots[p2_partner].cpu_level;
 	}
-	else gSCManagerSceneData.coop_player2 = SCCOMMON_COOP_NO_PLAYER2;
+	else
+	{
+		gSCManagerSceneData.coop_player2 = SCCOMMON_COOP_NO_PLAYER2;
+	}
 
 	gSCManagerBackupData.spgame_difficulty = sMNPlayersVSClassicLevelValue;
 	gSCManagerBackupData.spgame_stock_count = sMNPlayersVSStockValue;

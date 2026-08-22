@@ -492,6 +492,8 @@ struct SCCommonData
 	u8 coop_fkind2;									// P2's character
 	u8 coop_costume2;								// P2's costume
 	u8 coop_shade2;									// P2's duplicate-costume shade
+	u8 coop_pkind2;									// P2's player kind
+	u8 coop_level2;									// P2's CPU level
 #endif
 };
 

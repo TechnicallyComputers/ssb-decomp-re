@@ -2023,6 +2023,21 @@ EFDesc dEFManagerItemGetSwirlEffectDesc =
 // 0x801313B0
 void *gEFManagerFiles[3];
 
+#ifdef PORT
+/* Scene-boundary scrub, called from syTaskmanStartTask after the scene
+ * arena is wiped. gEFManagerFiles points into that arena; scenes that use
+ * effects re-set it in efManagerInitEffects, but scenes that don't (e.g.
+ * nSCKindTitle only calls efParticleInitAll) would otherwise carry
+ * non-NULL-but-stale pointers into efManagerMakeEffect, whose NULL guard
+ * can only catch a cleared pointer. */
+void efManagerPortClearFileRefs(void)
+{
+	gEFManagerFiles[0] = NULL;
+	gEFManagerFiles[1] = NULL;
+	gEFManagerFiles[2] = NULL;
+}
+#endif
+
 // 0x801313BC
 EFStruct *sEFManagerStructsAllocFree;
 

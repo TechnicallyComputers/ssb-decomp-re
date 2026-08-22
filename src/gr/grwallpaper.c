@@ -117,6 +117,16 @@ void grWallpaperCalcPersp(SObj *wallpaper_sobj)
             pos_x = neg;
         }
     }
+#ifdef PORT
+    if (getenv("SSB64_TRACE_WALLPAPER_PERSP") != NULL) {
+        extern int port_get_frame_count(void);
+        port_log("[wp-persp] frame=%d ", port_get_frame_count());
+        port_log("eye=(%f,%f,%f) at=(%f,%f,%f) dist=(%f,%f,%f) mag=%f ang=(%f,%f) scale=%f bak=(%f,%f)\n",
+            cobj->vec.eye.x, cobj->vec.eye.y, cobj->vec.eye.z,
+            cobj->vec.at.x, cobj->vec.at.y, cobj->vec.at.z,
+            dist.x, dist.y, dist.z, mag, angle.x, angle.y, scale, bak_pos_x, bak_pos_y);
+    }
+#endif
     if (bak_pos_y > 10.0F)
     {
         pos_y = 10.0F;

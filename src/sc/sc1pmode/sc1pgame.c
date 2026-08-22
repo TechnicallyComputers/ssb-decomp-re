@@ -1060,14 +1060,22 @@ void sc1PGameSetupStageAll(void)
     gSCManagerBattleState->gkind = stagesetup->gkind;
     gSCManagerBattleState->is_team_attack = comsetup->is_team_attack;
 #ifdef PORT
-    /* Co-op: both humans are on team 0 with is_team_battle forced TRUE, so
-     * the stage tables' is_team_attack would let them hit each other.
-     * Friendly fire is off by default, opt-in via the port menu. (Also
-     * stops the Giant DK CPU ally trading hits with the humans.) */
-    if (sc1PManagerIsCoopActive())
+    /* Co-op: the blanket clear above wiped P2's slot — re-activate it on
+     * every common stage and the Master Hand fight. */
+    if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.spgame_stage <= nSC1PGameStageCommonEnd))
     {
-        extern int port_classic_coop_friendly_fire(void);
-        gSCManagerBattleState->is_team_attack = port_classic_coop_friendly_fire() ? TRUE : FALSE;
+        s32 p2_slot = gSCManagerSceneData.coop_player2;
+
+        // Pass the dynamic pkind instead of hardcoding nFTPlayerKindMan
+        gSCManagerBattleState->players[p2_slot].pkind = gSCManagerSceneData.coop_pkind2;
+
+        // Ensure the AI level persists through the stage clear
+        if (gSCManagerSceneData.coop_pkind2 == nFTPlayerKindCom) {
+            gSCManagerBattleState->players[p2_slot].level = gSCManagerSceneData.coop_level2;
+        }
+
+        gSCManagerBattleState->players[p2_slot].is_single_stockicon = FALSE;
+        sSC1PGamePlayerSetups[p2_slot].mapobj_kind = nMPMapObjKind1PGamePlayer;
     }
 #endif
 
@@ -1129,7 +1137,15 @@ void sc1PGameSetupStageAll(void)
         s32 p2_slot = gSCManagerSceneData.coop_player2;
         sb32 is_challenger = (gSCManagerSceneData.spgame_stage > nSC1PGameStageCommonEnd);
 
-        gSCManagerBattleState->players[p2_slot].pkind = nFTPlayerKindMan;
+        //gSCManagerBattleState->players[p2_slot].pkind = nFTPlayerKindMan;
+        // Replace nFTPlayerKindMan with the dynamic pkind
+        gSCManagerBattleState->players[p2_slot].pkind = gSCManagerSceneData.coop_pkind2;
+
+        // Ensure the level carries over here too, just in case
+        if (gSCManagerSceneData.coop_pkind2 == nFTPlayerKindCom) {
+            gSCManagerBattleState->players[p2_slot].level = gSCManagerSceneData.coop_level2;
+        }
+
         gSCManagerBattleState->players[p2_slot].is_single_stockicon = is_challenger ? TRUE : FALSE;
         sSC1PGamePlayerSetups[p2_slot].mapobj_kind = is_challenger ? nMPMapObjKind1PGameChallengerPlayer : nMPMapObjKind1PGamePlayer;
 

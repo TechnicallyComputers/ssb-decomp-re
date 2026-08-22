@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <string.h>
 extern void port_log(const char *fmt, ...);
+extern char *getenv(const char *name); /* decomp include/stdlib.h shadows the host header */
 #include "intro_room_draw_diag.h"
 #include <gr/ground.h>
 #if defined(SSB64_NETMENU)
@@ -1448,31 +1449,67 @@ void syTaskmanStartTask(SYTaskmanSetup *tsetup)
 	 * the symptom universally; this band-aid prevents the crash on Linux
 	 * where the allocator is unforgiving. */
 	{
+		extern void port_dl_range_register(const void *base, size_t size, const char *label);
+		extern void port_dl_range_unregister(const void *base);
+		extern void port_taskman_evict_arena_caches(const void *base, size_t size);
+
+		/* SSB64_SCENE_HEAP_FREE=1 — sanitizer diagnostic mode. Instead of
+		 * recycling the singleton arena, free() it and malloc() a fresh one
+		 * on every scene transition. Under ASan the freed arena sits in
+		 * quarantine poisoned, so ANY stale cross-scene read becomes a
+		 * heap-use-after-free report with full alloc/free/read stacks —
+		 * exactly the evidence the recycle band-aid hides. Not for normal
+		 * play (deliberately reintroduces the issue #128 crash shape). */
+		static int sPortSceneHeapFreeMode = -1;
+
+		if (sPortSceneHeapFreeMode < 0)
+		{
+			const char *env = getenv("SSB64_SCENE_HEAP_FREE");
+			sPortSceneHeapFreeMode = (env != NULL && env[0] == '1') ? 1 : 0;
+			if (sPortSceneHeapFreeMode)
+			{
+				port_log("SSB64: SSB64_SCENE_HEAP_FREE=1 — scene arena free+malloc per transition (sanitizer mode)\n");
+			}
+		}
+
+		if (gPortSceneHeap != NULL)
+		{
+			port_taskman_evict_arena_caches(gPortSceneHeap, gPortSceneHeapSize);
+			if (sPortSceneHeapFreeMode)
+			{
+				port_dl_range_unregister(gPortSceneHeap);
+				free(gPortSceneHeap);
+				gPortSceneHeap = NULL;
+			}
+		}
+		if (gPortSceneHeap == NULL)
+		{
+			gPortSceneHeap = malloc(gPortSceneHeapSize);
 			if (gPortSceneHeap == NULL)
 			{
-				gPortSceneHeap = malloc(gPortSceneHeapSize);
-				if (gPortSceneHeap == NULL)
-				{
-#if defined(SSB64_NETMENU)
-					port_log("SSB64: syTaskmanStartTask — failed to allocate PORT heap size=0x%llx\n",
-					         (unsigned long long)gPortSceneHeapSize);
-#endif
-					while (TRUE);
-				}
+				port_log("SSB64: syTaskmanStartTask — failed to allocate PORT heap size=0x%llx\n",
+				         (unsigned long long)gPortSceneHeapSize);
+				while (TRUE);
+			}
 			/* Register the scene arena range with the DL-range registry so
-			 * gfx_step can detect walks that escape the arena. Once-only
-			 * because the arena is recycled, never freed. */
-			extern void port_dl_range_register(const void *base, size_t size, const char *label);
+			 * gfx_step can detect walks that escape the arena. Registered
+			 * once in recycle mode (arena never moves); re-registered per
+			 * scene in free mode. */
 			port_dl_range_register(gPortSceneHeap, gPortSceneHeapSize, "scene_arena");
-		}
-		else
-		{
-			extern void port_taskman_evict_arena_caches(const void *base, size_t size);
-			port_taskman_evict_arena_caches(gPortSceneHeap, gPortSceneHeapSize);
 		}
 		memset(gPortSceneHeap, 0, gPortSceneHeapSize);
 		tsetup->scene_setup.arena_start = gPortSceneHeap;
 		tsetup->scene_setup.arena_size = (u32)gPortSceneHeapSize;
+
+		/* The arena contents are gone either way (wiped or freed), so
+		 * scrub long-lived globals that point into it and whose consumers
+		 * NULL-guard. Scenes that use effects re-set these in
+		 * efManagerInitEffects; scenes that don't (nSCKindTitle) would
+		 * otherwise carry non-NULL-but-stale pointers forward. */
+		{
+			extern void efManagerPortClearFileRefs(void);
+			efManagerPortClearFileRefs();
+		}
 	}
 #endif
 	syTaskmanInitGeneralHeap(tsetup->scene_setup.arena_start, tsetup->scene_setup.arena_size);

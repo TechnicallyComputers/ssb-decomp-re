@@ -182,7 +182,11 @@ void port_fighter_seed_vanilla(void)
         desc.opening_descs          = D_ovl1_80390D20[fkind];
 
         desc.costume_row            = &dFTParamCostumeIDs[fkind];
-        desc.scale                  = dSCSubsysFighterScales[fkind];
+        /* dSCSubsysFighterScales has rows for the 12 playable fkinds only;
+         * vanilla read sites never index it beyond nFTKindPlayableEnd. Give
+         * boss/metal/polygon/giant rows a neutral 1.0 instead of reading
+         * past the table. */
+        desc.scale                  = (fkind <= nFTKindPlayableEnd) ? dSCSubsysFighterScales[fkind] : 1.0f;
         desc.skeleton_col_anim_base = dFTParamSkeletonColAnimIDs[fkind];
         desc.yoshi_egg_damage_coll  = &dFTCommonYoshiEggDamageCollDescs[fkind];
         desc.down_bounce_fgm        = (s32)dFTCommonDataDownBounceSFX[fkind];

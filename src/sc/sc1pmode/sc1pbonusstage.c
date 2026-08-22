@@ -454,7 +454,14 @@ void sc1PBonusStageInitVars(void)
 		 * nSCKind1PGame); bonus-practice entries stay solo. */
 		else if (sc1PManagerIsCoopActive() && (gSCManagerSceneData.scene_prev == nSCKind1PGame) && (player == gSCManagerSceneData.coop_player2))
 		{
-			gSCManagerBattleState->players[player].pkind = nFTPlayerKindMan;
+			// Pass the dynamic pkind
+			gSCManagerBattleState->players[player].pkind = gSCManagerSceneData.coop_pkind2;
+
+			// Ensure the AI level is set for the bonus stage
+			if (gSCManagerSceneData.coop_pkind2 == nFTPlayerKindCom) {
+				gSCManagerBattleState->players[player].level = gSCManagerSceneData.coop_level2;
+			}
+
 			gSCManagerBattleState->players[player].fkind = gSCManagerSceneData.coop_fkind2;
 			gSCManagerBattleState->players[player].costume = gSCManagerSceneData.coop_costume2;
 			gSCManagerBattleState->players[player].color = player;
