@@ -54,7 +54,16 @@ void ftCommonCapturePulledProcPhysics(GObj *fighter_gobj)
     DObjGetStruct(fighter_gobj)->translate.vec.f.x = pos.x;
     DObjGetStruct(fighter_gobj)->translate.vec.f.z = pos.z;
 
-    if ((fp->status_id == nFTCommonStatusCapturePulled) && (fp->status_vars.common.capture.is_goto_pulled_wait != FALSE))
+    /*
+     * Accessor, not raw union: is_goto_pulled_wait is the sole gate on CapturePulled ->
+     * CaptureWait, and three of its four accesses (this read plus both FALSE writes below)
+     * bypassed ftStatusVarsCapture(), so the statusvars witness was blind to exactly the
+     * field that decides whether a grab holds. Soak 2026-08-22: the victim's own peer took
+     * 171 CapturePulled -> 10 Wait while the grabber's peer took 171 -> 172 CaptureWait,
+     * dropping the grab and leaving the grabber unable to grab for seconds.
+     * See docs/bugs/netplay_grab_guard_overlay_stomp_2026-08-22.md and CLAUDE.md directive 6.
+     */
+    if ((fp->status_id == nFTCommonStatusCapturePulled) && (ftStatusVarsCapture(fp)->is_goto_pulled_wait != FALSE))
     {
         ftCommonCaptureWaitSetStatus(fighter_gobj);
     }
@@ -165,7 +174,7 @@ void ftCommonCapturePulledProcCapture(GObj *fighter_gobj, GObj *capture_gobj)
             ftMainSetStatus(fighter_gobj, custom_action, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
             ftMainPlayAnimEventsAll(fighter_gobj);
 
-            this_fp->status_vars.common.capture.is_goto_pulled_wait = FALSE;
+            ftStatusVarsCapture(this_fp)->is_goto_pulled_wait = FALSE;
 
             ftParamSetCaptureImmuneMask(this_fp, FTCATCHKIND_MASK_ALL);
             ftParamMakeRumble(this_fp, 9, 0);
@@ -180,7 +189,7 @@ void ftCommonCapturePulledProcCapture(GObj *fighter_gobj, GObj *capture_gobj)
     ftMainSetStatus(fighter_gobj, nFTCommonStatusCapturePulled, 0.0F, 1.0F, FTSTATUS_PRESERVE_NONE);
     ftMainPlayAnimEventsAll(fighter_gobj);
 
-    this_fp->status_vars.common.capture.is_goto_pulled_wait = FALSE;
+    ftStatusVarsCapture(this_fp)->is_goto_pulled_wait = FALSE;
 
     ftParamSetCaptureImmuneMask(this_fp, FTCATCHKIND_MASK_ALL);
     ftParamMakeRumble(this_fp, 9, 0);

@@ -70,6 +70,9 @@ typedef enum FTStatusVarsOverlay
 
 #if defined(PORT) && defined(SSB64_NETMENU)
 void syNetplayStatusVarsWitnessNoteAccess(const FTStruct *fp, FTStatusVarsOverlay overlay);
+/* Same, plus the accessor's caller address so a stomp names its writer. */
+void syNetplayStatusVarsWitnessNoteAccessFrom(const FTStruct *fp, FTStatusVarsOverlay overlay,
+                                             const void *caller);
 void *syNetplayStatusVarsBankAuthoritySlot(FTStruct *fp, FTStatusVarsOverlay overlay, void *union_member);
 void syNetplayStatusVarsWitnessEnterDamageInit(void);
 void syNetplayStatusVarsWitnessLeaveDamageInit(void);
@@ -82,7 +85,20 @@ void syNetplayStatusVarsWitnessProbeAirVelTransN(const FTStruct *fp, const DObj 
 static inline void ftStatusVarsNoteAccess(const FTStruct *fp, FTStatusVarsOverlay overlay)
 {
 #if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * __builtin_return_address(0) is the accessor's caller — i.e. the code that touched this
+     * overlay. Without it a stomp reports only which overlays collided, never who did it:
+     * soak 2026-08-22 logged 16 guard/catchmain, 12 guard/catchwait and 10 guard/throwf stomps
+     * landing exactly on grab ticks, with every gated snapshot path ruled out by inspection
+     * (is_shield=0 and catch statuses sit outside [GuardStart, GuardEnd]).
+     * GCC/Clang only; MSVC keeps the plain entry point.
+     * See docs/bugs/netplay_grab_guard_overlay_stomp_2026-08-22.md.
+     */
+#if defined(__GNUC__)
+    syNetplayStatusVarsWitnessNoteAccessFrom(fp, overlay, __builtin_return_address(0));
+#else
     syNetplayStatusVarsWitnessNoteAccess(fp, overlay);
+#endif
 #else
     (void)fp;
     (void)overlay;
