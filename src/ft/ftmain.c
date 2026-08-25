@@ -4853,6 +4853,20 @@ void ftMainSetStatus(GObj *fighter_gobj, s32 status_id, f32 frame_begin, f32 ani
 #endif
     FTStruct *fp = ftGetStruct(fighter_gobj);
     intptr_t event_file_head;
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * Grab-band SetStatus trace (SSB64_NETPLAY_GUARD_GRAB_DIAG=1). Soak 2026-08-25 showed
+     * the surviving grab failure is a status transition, not the anim-end edge: both peers
+     * enter 167 CatchPull together, then the predicting peer is back at 166 Catch the next
+     * tick so ftCommonCatchPullProcUpdate never runs. This names whoever makes that call.
+     */
+    syNetplayGuardGrabDiagLogSetStatus(fighter_gobj, (fp != NULL) ? (s32)fp->status_id : -1, status_id,
+#if defined(_MSC_VER)
+                                       _ReturnAddress());
+#else
+                                       __builtin_return_address(0));
+#endif
+#endif
     FTAttributes *attr = fp->attr;
     FTStatusDesc *status_struct;
     FTOpeningDesc *opening_struct;
