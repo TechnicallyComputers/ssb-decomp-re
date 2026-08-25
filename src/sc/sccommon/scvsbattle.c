@@ -198,14 +198,13 @@ void scVSBattleFuncUpdate(void)
 	{
 		syNetRollbackPumpCorrectionBeforeBattleSim();
 	}
-	if ((syNetPeerIsVSSessionActive() != FALSE) &&
-	    (syNetRollbackShouldDeferInterfaceDuringResimWait() != FALSE))
-	{
-		/* Seal-wait: no live interface or battle sim until baseline gate opens (prevents LOAD_SLOT_LIVE_DRIFT). */
-		syNetRollbackRefreshDeferredIntroPresentation();
-		syNetPeerUpdate();
-		return;
-	}
+	/*
+	 * Hold check must precede the seal-wait defer above: a load-fail hold is terminal for the
+	 * match, and the defer branch returns before ever reaching here. Soak 2026-08-25 hung ~6 s
+	 * in exactly that order — hold armed, seal-wait deferring, so
+	 * syNetRollbackPumpLoadFailBattleExit() (which owns the escape watchdog) never ran and the
+	 * match froze until the player killed it. See docs/bugs/netplay_battle_sim_hold_no_escape_2026-08-22.md.
+	 */
 	if (syNetRollbackIsBattleSimHoldActive() != FALSE)
 	{
 		static u32 sLastHoldBlockedBattleUpdateLogTick = ~(u32)0;
@@ -223,6 +222,15 @@ void scVSBattleFuncUpdate(void)
 		}
 		syNetPeerUpdate();
 		syNetRollbackPumpLoadFailBattleExit();
+		return;
+	}
+
+	if ((syNetPeerIsVSSessionActive() != FALSE) &&
+	    (syNetRollbackShouldDeferInterfaceDuringResimWait() != FALSE))
+	{
+		/* Seal-wait: no live interface or battle sim until baseline gate opens (prevents LOAD_SLOT_LIVE_DRIFT). */
+		syNetRollbackRefreshDeferredIntroPresentation();
+		syNetPeerUpdate();
 		return;
 	}
 	if (((syNetPeerIsVSSessionActive() != FALSE) || (syNetReplayIsDiagnosticPlaybackActive() != FALSE)) &&
