@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <sys/netinput.h>
 #include <sys/net_debug_agent_log.h>
+#include <sys/netplay_guard_grab_diag.h>
 #endif
 
 // // // // // // // // // // // //
@@ -25,13 +26,43 @@ Vec3f dFTCommonCatchPullEffectOffset = { 0.0F, 0.0F, 0.0F };
 void ftCommonCatchPullProcUpdate(GObj *fighter_gobj)
 {
     FTStruct *this_fp = ftGetStruct(fighter_gobj);
+#if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * Capture the anim-end input before the check consumes it: ftAnimEndCheckSetStatus is
+     * purely gobj->anim_frame <= 0, and this edge is the only thing that sets the victim's
+     * capture.is_goto_pulled_wait — i.e. the only thing that makes a grab hold. Sampled
+     * here so the value is the pre-transition frame on every pass, replay included.
+     */
+    f32 ssb64_animend_frame = fighter_gobj->anim_frame;
+#endif
 
     if (ftAnimEndCheckSetStatus(fighter_gobj, ftCommonCatchWaitSetStatus) != FALSE)
     {
         FTStruct *catch_fp = ftGetStruct(this_fp->catch_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+        syNetplayGuardGrabDiagLogCatchPullAnimEnd(fighter_gobj, TRUE, ssb64_animend_frame,
+                                                  this_fp->catch_gobj);
+        /*
+         * catch_gobj is scrubbed by the snapshot layer when is_catch_or_capture is FALSE
+         * (syNetRbSnapClearCoupledGObjPointers…), so a replayed pass can reach here with it
+         * cleared. Vanilla dereferences unconditionally; guard the netmenu build the same
+         * way ftcommoncapturepulled.c already guards its capture_gobj use.
+         */
+        if (catch_fp == NULL)
+        {
+            return;
+        }
+#endif
         ftStatusVarsCapture(catch_fp)->is_goto_pulled_wait = TRUE;
     }
+#if defined(PORT) && defined(SSB64_NETMENU)
+    else
+    {
+        syNetplayGuardGrabDiagLogCatchPullAnimEnd(fighter_gobj, FALSE, ssb64_animend_frame,
+                                                  this_fp->catch_gobj);
+    }
+#endif
 }
 
 // 0x80149F04
