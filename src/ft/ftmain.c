@@ -4080,6 +4080,15 @@ void ftMainProcSearchCatch(GObj *fighter_gobj)
     {
         ftMainSearchFighterCatch(fighter_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /*
+         * Both gates of the grab connect, logged on every pass including resim replay
+         * (SSB64_NETPLAY_GUARD_GRAB_DIAG=1). The predicting peer replays the connect tick
+         * from a matching snapshot and fails to reconnect while the input owner succeeds;
+         * this separates "is_catchstatus lost" from "search found no target".
+         */
+        syNetplayGuardGrabDiagLogSearchCatch(fighter_gobj, TRUE, fp->search_gobj);
+#endif
         if (fp->search_gobj != NULL)
         {
             fp->proc_catch(fighter_gobj);
