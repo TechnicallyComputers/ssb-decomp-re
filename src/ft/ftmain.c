@@ -3998,6 +3998,13 @@ void ftMainSearchFighterCatch(GObj *this_gobj)
         }
         other_fp = ftGetStruct(other_gobj);
 
+#if defined(PORT) && defined(SSB64_NETMENU)
+        /* SSB64_NETMENU: stripped from offline builds. Runtime: guard-grab diag only.
+         * Netplay rollback only: reports every rejection gate below without altering the
+         * flow, so a resim that loses the grab connect names its gate. See
+         * docs/bugs/netplay_grab_correction_treadmill_2026-08-26.md. */
+        syNetplayGuardGrabDiagLogCatchGates(this_gobj, other_gobj);
+#endif
         if (other_fp->is_ghost) 
         {
             goto next_gobj;
@@ -4055,12 +4062,35 @@ void ftMainSearchFighterCatch(GObj *this_gobj)
                 }
                 if ((damage_coll->hitstatus != nGMHitStatusIntangible) && (damage_coll->hitstatus != nGMHitStatusInvincible))
                 {
+#if defined(PORT) && defined(SSB64_NETMENU)
+                    /* SSB64_NETMENU: stripped from offline builds. Runtime: guard-grab diag only.
+                     * Netplay rollback only: the overlap test is what actually accepts the grab,
+                     * so it is evaluated once into a temp and reported, rather than called twice. */
+                    {
+                        /* Preserve the original short-circuit: the overlap test is only
+                         * reached when is_grabbable, so it must not be called otherwise. */
+                        sb32 ssb64_collide = (damage_coll->is_grabbable != FALSE)
+                                                 ? (sb32)(gmCollisionCheckFighterAttackDamageCollide(attack_coll, damage_coll) != FALSE)
+                                                 : FALSE;
+
+                        syNetplayGuardGrabDiagLogCatchCollide(this_gobj, other_gobj, i, j,
+                                                              (sb32)(damage_coll->is_grabbable != FALSE),
+                                                              (s32)damage_coll->hitstatus, ssb64_collide);
+                        if ((damage_coll->is_grabbable != FALSE) && (ssb64_collide != FALSE))
+                        {
+                            ftMainUpdateCatchStatFighter(this_fp, attack_coll, other_fp, this_gobj, other_gobj);
+
+                            goto next_gobj;
+                        }
+                    }
+#else
                     if ((damage_coll->is_grabbable != FALSE) && (gmCollisionCheckFighterAttackDamageCollide(attack_coll, damage_coll) != FALSE))
                     {
                         ftMainUpdateCatchStatFighter(this_fp, attack_coll, other_fp, this_gobj, other_gobj);
 
                         goto next_gobj;
                     }
+#endif
                 }
             }        
         }
