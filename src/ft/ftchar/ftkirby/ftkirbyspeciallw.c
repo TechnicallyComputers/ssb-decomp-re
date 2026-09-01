@@ -9,7 +9,6 @@ extern void port_log(const char *fmt, ...);
  * SSB64_NETMENU compile gate: stripped from offline (NETMENU=OFF) builds.
  * Runtime: syNetplayRollbackSemanticsActive() gates active VS / resim only.
  */
-#define FTKIRBY_STONE_ROLLBACK_RELEASE_SUPPRESS_TICS 4
 #endif
 
 // // // // // // // // // // // //
@@ -137,21 +136,17 @@ f32 ftKirbySpecialLwGetGroundAxisYaw(FTStruct *fp)
 #if defined(PORT) && defined(SSB64_NETMENU)
 static sb32 ftKirbySpecialLwIsGenuineButtonTapB(const FTStruct *fp)
 {
-    sb32 is_tap;
-
-    is_tap = ((fp->input.pl.button_tap & fp->input.button_mask_b) != 0) ? TRUE : FALSE;
-
     /*
-     * SSB64_NETMENU: stripped from offline builds. Runtime: resim only.
-     * Netplay rollback only: resim can replay a stale B edge while B is still held from stone entry.
-     * Forward netplay must accept tap+hold on the first frame of a fresh B press (vanilla release path).
+     * 2026-09-01: the resim tap-eat that lived here is removed. It discarded a
+     * tap whenever B was also held during resim — but tap implies hold on every
+     * genuine press frame, so it ate ALL authentic replayed release edges and
+     * forked stone status against the peer that ran the same tick live (soak
+     * 1486098688 FC@811/858/904). The stale-edge disease it masked is fixed at
+     * the root: syNetInputReseedPublishEdgeBaselineAfterLoad rewinds the
+     * publish edge baseline on rollback load, so replayed taps ARE genuine.
+     * See docs/bugs/netplay_derived_input_latch_forks_2026-09-01.md.
      */
-    if ((is_tap != FALSE) && (syNetRollbackIsResimulating() != FALSE) &&
-        ((fp->input.pl.button_hold & fp->input.button_mask_b) != 0))
-    {
-        is_tap = FALSE;
-    }
-    return is_tap;
+    return ((fp->input.pl.button_tap & fp->input.button_mask_b) != 0) ? TRUE : FALSE;
 }
 
 static sb32 ftKirbySpecialLwStoneReleaseDiagEnabled(void)
@@ -219,19 +214,18 @@ sb32 ftKirbySpecialLwCheckRelease(GObj *fighter_gobj, sb32 is_allow_release)
 {
     FTStruct *fp = ftGetStruct(fighter_gobj);
     sb32 is_b_release_tap;
-#if defined(PORT) && defined(SSB64_NETMENU)
-    s16 rollback_release_suppress;
-#endif
 
 #if defined(PORT) && defined(SSB64_NETMENU)
+    /*
+     * 2026-09-01: the unk_0x2 post-load tap-suppression window is removed. It
+     * armed on every snapshot load (ReconcileStoneAfterRollback) and ate B taps
+     * for 4 ticks after — but loads happen at each peer's own rollback cadence,
+     * so a genuine release inside one peer's window and outside the other's
+     * forked status 262/263 by construction, invisibly (the counter is not in
+     * the fighter hash fold). Root fix is the publish edge-baseline reseed on
+     * load; see ftKirbySpecialLwIsGenuineButtonTapB above.
+     */
     is_b_release_tap = ftKirbySpecialLwIsGenuineButtonTapB(fp);
-    rollback_release_suppress = fp->status_vars.kirby.speciallw.unk_0x2;
-    if ((syNetplayRollbackSemanticsActive() != FALSE) && (rollback_release_suppress > 0))
-    {
-        /* Netplay rollback only: block stale orphan B taps for a few ticks after snapshot apply. */
-        is_b_release_tap = FALSE;
-        fp->status_vars.kirby.speciallw.unk_0x2 = rollback_release_suppress - 1;
-    }
 #else
     is_b_release_tap = ((fp->input.pl.button_tap & fp->input.button_mask_b) != 0) ? TRUE : FALSE;
 #endif
@@ -291,8 +285,12 @@ void ftKirbySpecialLwReconcileStoneAfterRollback(GObj *fighter_gobj, s16 blob_du
     {
         fp->status_vars.kirby.speciallw.duration = blob_duration;
     }
-    /* Netplay rollback only: resim after load can replay orphan B tap on immediate-release stone statuses. */
-    fp->status_vars.kirby.speciallw.unk_0x2 = FTKIRBY_STONE_ROLLBACK_RELEASE_SUPPRESS_TICS;
+    /*
+     * 2026-09-01: no longer arms the unk_0x2 release-suppression window — see
+     * ftKirbySpecialLwCheckRelease. Clear any value restored from an old blob
+     * so mixed-era snapshots cannot re-enter the suppression path.
+     */
+    fp->status_vars.kirby.speciallw.unk_0x2 = 0;
 }
 #endif
 
