@@ -1539,6 +1539,20 @@ void ftMainProcUpdateInterrupt(GObj *fighter_gobj)
             this_fp->hold_stick_y = FTINPUT_STICKBUFFER_TICS_MAX;
         }
 #if defined(PORT) && defined(SSB64_NETMENU)
+        /*
+         * SSB64_NETMENU: stripped from offline builds. Observe-only, and inert
+         * unless SSB64_NETPLAY_LATCH_WITNESS is set.
+         * Netplay diagnostic only: the tap/hold derivation above is integrative,
+         * so one tick consuming a predicted stick row resets the counter and
+         * every later tick inherits it — a permanent fork (soak 1387370931:
+         * p1 tapy 14 vs 254 with all other fighter state identical). The witness
+         * records derivations taken off a predicted row so they can be paired
+         * with the timeline's incorrect-marks.
+         * See docs/bugs/netplay_derived_input_latch_forks_2026-09-01.md.
+         */
+        syNetInputLatchWitnessNoteStickDerive((s32) this_fp->player, (s32) pl->stick_range.y,
+                                              (s32) pl->stick_prev.y, (u32) this_fp->tap_stick_y,
+                                              (u32) this_fp->hold_stick_y);
         syNetFighterPhaseOnInterruptAfterInputControl(fighter_gobj);
 #endif
     }
